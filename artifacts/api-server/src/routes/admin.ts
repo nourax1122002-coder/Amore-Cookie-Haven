@@ -5,6 +5,7 @@ import {
   GetAdminSessionResponse, GetAdminSummaryResponse, GetAdminSettingsResponse,
   SaveSettingsBody, SaveSettingsResponse, ListInquiriesResponse, UpdateInquiryParams,
   UpdateInquiryBody, UpdateInquiryResponse, ListAdminProductsResponse, SaveProductBody, SaveProductResponse,
+  ListAdminOrdersQueryParams, ListAdminOrdersResponse,
 } from "@workspace/api-zod";
 import { approvedAdminEmails, isAdministrator, requireAdmin } from "../middlewares/security";
 import { getCatalog, saveCatalogProduct } from "../lib/catalog";
@@ -12,6 +13,7 @@ import { getShopifyStorefrontConfig } from "../lib/shopifyStorefrontClient";
 import { readSettings, writeSettings } from "../lib/store-settings";
 import { readiness } from "../lib/cart";
 import { HttpError } from "../lib/errors";
+import { listOrders } from "../lib/orders";
 
 const router = Router();
 router.use("/admin", (_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
@@ -19,6 +21,10 @@ router.get("/admin/me", async (req, res): Promise<void> => {
   res.json(GetAdminSessionResponse.parse({ isAdmin: await isAdministrator(req), setupRequired: !approvedAdminEmails().length }));
 });
 router.use("/admin", requireAdmin);
+router.get("/admin/orders", async (req, res): Promise<void> => {
+  const { after } = ListAdminOrdersQueryParams.parse(req.query);
+  res.json(ListAdminOrdersResponse.parse(await listOrders(after)));
+});
 router.get("/admin/summary", async (_req, res): Promise<void> => {
   const [totals, newOnes, products, ready, config] = await Promise.all([
     db.select({ value: count() }).from(inquiriesTable),
@@ -34,7 +40,7 @@ router.get("/admin/summary", async (_req, res): Promise<void> => {
       ...(ready.launchMessage ? [ready.launchMessage] : []),
       "Sales, orders, discount codes, delivery zones, shipping rates and payment providers are managed in Shopify. / تدار المبيعات والطلبات وأكواد الخصم ومناطق التوصيل ورسومه وطرق الدفع في Shopify.",
       "Stock starts at zero until approved quantities are entered. / يبدأ المخزون بصفر حتى إدخال الكميات الفعلية.",
-      "Number-and-phone tracking requires order-data access. Customers can use Shopify's secure confirmation link. / التتبع برقم الطلب والهاتف يتطلب صلاحية بيانات الطلبات، ويمكن للعميل استخدام رابط تأكيد Shopify.",
+      "Order tracking reads live Shopify data. Order updates and cancellations remain in Shopify. / التتبع يقرأ بيانات Shopify الفعلية. تحديث الطلبات وإلغاؤها يتمان في Shopify.",
     ],
   }));
 });

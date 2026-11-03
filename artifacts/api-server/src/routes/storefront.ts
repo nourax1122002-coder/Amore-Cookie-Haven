@@ -11,10 +11,18 @@ import {
 import { getCatalog, productByHandle } from "../lib/catalog";
 import { rawCart, cartId, presentCart, mutateCart, checkout, readiness } from "../lib/cart";
 import { HttpError } from "../lib/errors";
+import { normalizeOrderNumber, trackOrder } from "../lib/orders";
 
 const router = Router();
 const mutationLimit = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Please wait before trying again. / يرجى الانتظار قبل المحاولة مجدداً." } });
 const inquiryLimit = rateLimit({ windowMs: 60 * 60_000, limit: 15, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many requests. Please try later. / طلبات كثيرة. يرجى المحاولة لاحقاً." } });
+const trackingLimit = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many tracking attempts. Try later. / محاولات تتبع كثيرة. يرجى المحاولة لاحقاً." } });
+const orderAttemptLimit = rateLimit({
+  windowMs: 60 * 60_000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false,
+  // Across IPs and phone variations; no raw identifiers retained in the limiter.
+  keyGenerator: req => createHash("sha256").update((normalizeOrderNumber(String(req.body?.orderNumber ?? "")) ?? "invalid").replace(/^#/, "")).digest("hex"),
+  message: { error: "Too many tracking attempts. Try later. / محاولات تتبع كثيرة. يرجى المحاولة لاحقاً." },
+});
 
 router.get("/store", async (_req, res): Promise<void> => {
   res.json(GetStoreResponse.parse(await readiness()));
@@ -53,14 +61,10 @@ router.post("/wholesale", inquiryLimit, async (req, res): Promise<void> => {
   res.setHeader("Cache-Control", "no-store");
   res.status(201).json(CreateInquiryResponse.parse({ ...inquiry, createdAt: inquiry.createdAt.toISOString() }));
 });
-router.post("/tracking", inquiryLimit, async (req, res): Promise<void> => {
-  TrackOrderBody.parse(req.body);
-  res.setHeader("Cache-Control", "no-store");
-  // This connection does not grant order/customer-data access. Do not fabricate
-  // a local order or leak existence by guessing customer records.
-  res.json(TrackOrderResponse.parse({
-    available: false, statusUrl: "",
-    message: "Use the secure order-status link in your Shopify order confirmation. Lookup by order number and phone requires an approved order-data integration and is not enabled yet. / يرجى استخدام رابط متابعة الطلب الآمن في رسالة تأكيد Shopify. البحث برقم الطلب والهاتف يحتاج ربطاً معتمداً ببيانات الطلبات ولم يُفعّل بعد.",
-  }));
+router.post("/tracking", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store"); next();
+}, trackingLimit, orderAttemptLimit, async (req, res): Promise<void> => {
+  const input = TrackOrderBody.parse(req.body);
+  res.json(TrackOrderResponse.parse(await trackOrder(input.orderNumber, input.phone)));
 });
 export default router;

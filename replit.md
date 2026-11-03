@@ -42,8 +42,10 @@ Bilingual English/Arabic store for frozen, ready-to-bake cookie dough for homes 
 ## Product
 
 - Catalogue/detail pages, server-checked Shopify cart, discount entry, guarded checkout, baking instructions, about/policies pages, persistent café inquiry form, protected product/inventory/content/inquiry administration.
-- Sales, order management, cancellations, discount creation, shipping regions/rates and payment-provider settings are managed in Shopify through dashboard links, not copied local dashboards.
-- Phone-and-order-number tracking is **not enabled**: the current connector does not grant order-reading permissions. The page explains the restriction; buyers use the secure Shopify confirmation/status link. Do not manufacture order histories.
+- Shopify order summaries are read live in the protected dashboard; order updates/cancellations, discount creation, shipping regions/rates and payment-provider settings remain in Shopify through dashboard links. The current connection grants `read_orders` and `read_all_orders`, but not `write_orders`.
+- Phone-and-order-number tracking verifies an exact order number against the checkout/shipping phone in Shopify. Responses expose only status, items and totals, never phone/address or privileged confirmation links. Protected-field errors fail closed; buyers can still use their existing Shopify confirmation link. A store with no orders cannot prove protected phone access for a real order.
+- Tracking rate limits currently use process-local memory (10/IP/15 minutes and 20/order/hour). Before scaling the API to multiple instances, use a shared limiter store; restarts reset these limits. Do not cache or persist order/customer records locally.
+- `pnpm --filter @workspace/api-server run test:orders` checks phone matching, disclosure boundaries and Shopify status mapping without making orders.
 
 ## User preferences
 

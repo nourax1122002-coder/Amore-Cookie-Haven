@@ -292,6 +292,9 @@ export const CreateInquiryResponse = zod.object({
 }))
 
 
+/**
+ * Exact order number and checkout phone verification. Returns minimal Shopify data only; no customer addresses or privileged status links.
+ */
 export const trackOrderBodyOrderNumberMax = 100;
 
 export const trackOrderBodyPhoneMin = 8;
@@ -307,7 +310,53 @@ export const TrackOrderBody = zod.object({
 export const TrackOrderResponse = zod.object({
   "available": zod.boolean(),
   "message": zod.string(),
-  "statusUrl": zod.string()
+  "statusUrl": zod.string(),
+  "order": zod.object({
+  "number": zod.string(),
+  "stage": zod.enum(['received', 'confirmed', 'preparing', 'partially_fulfilled', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
+  "financialStatus": zod.string(),
+  "fulfillmentStatus": zod.string(),
+  "createdAt": zod.string(),
+  "total": zod.string(),
+  "currency": zod.string(),
+  "hasMoreItems": zod.boolean(),
+  "items": zod.array(zod.object({
+  "title": zod.string(),
+  "quantity": zod.number().int()
+}))
+}).optional()
+})
+
+
+/**
+ * Administrator-only live Shopify orders, newest first. Updates and cancellations are handled in Shopify.
+ */
+export const listAdminOrdersQueryAfterMax = 1000;
+
+
+
+export const ListAdminOrdersQueryParams = zod.object({
+  "after": zod.coerce.string().max(listAdminOrdersQueryAfterMax).optional()
+})
+
+export const ListAdminOrdersResponse = zod.object({
+  "orders": zod.array(zod.object({
+  "number": zod.string(),
+  "stage": zod.enum(['received', 'confirmed', 'preparing', 'partially_fulfilled', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
+  "financialStatus": zod.string(),
+  "fulfillmentStatus": zod.string(),
+  "createdAt": zod.string(),
+  "total": zod.string(),
+  "currency": zod.string(),
+  "hasMoreItems": zod.boolean(),
+  "items": zod.array(zod.object({
+  "title": zod.string(),
+  "quantity": zod.number().int()
+}))
+})),
+  "hasNextPage": zod.boolean(),
+  "endCursor": zod.string(),
+  "refreshedAt": zod.string()
 })
 
 

@@ -103,6 +103,7 @@ paths:
   /tracking:
     post:
       operationId: trackOrder
+      description: Exact order number and checkout phone verification. Returns minimal Shopify data only; no customer addresses or privileged status links.
       requestBody:
         required: true
         content:
@@ -110,10 +111,32 @@ paths:
             schema: { $ref: "#/components/schemas/TrackingInput" }
       responses:
         "200":
-          description: Tracking information
+          description: Verified Shopify status or identical response for every unsuccessful match
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TrackingResult" }
+        "429":
+          description: Too many attempts; retry after the Retry-After header
+        "503":
+          description: Shopify tracking temporarily unavailable
+  /admin/orders:
+    get:
+      operationId: listAdminOrders
+      description: Administrator-only live Shopify orders, newest first. Updates and cancellations are handled in Shopify.
+      parameters:
+        - in: query
+          name: after
+          schema: { type: string, maxLength: 1000 }
+      responses:
+        "200":
+          description: A live page of Shopify orders
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderPage" }
+        "401":
+          description: Sign in required
+        "403":
+          description: Approved administrator required
   /admin/me:
     get:
       operationId: getAdminSession
@@ -386,6 +409,39 @@ components:
         available: { type: boolean }
         message: { type: string }
         statusUrl: { type: string }
+        order: { $ref: "#/components/schemas/OrderStatus" }
+    OrderStatus:
+      type: object
+      required: [number, stage, financialStatus, fulfillmentStatus, createdAt, total, currency, items, hasMoreItems]
+      properties:
+        number: { type: string }
+        stage:
+          type: string
+          enum: [received, confirmed, preparing, partially_fulfilled, shipped, out_for_delivery, delivered, cancelled]
+        financialStatus: { type: string }
+        fulfillmentStatus: { type: string }
+        createdAt: { type: string }
+        total: { type: string }
+        currency: { type: string }
+        hasMoreItems: { type: boolean }
+        items:
+          type: array
+          items:
+            type: object
+            required: [title, quantity]
+            properties:
+              title: { type: string }
+              quantity: { type: integer }
+    OrderPage:
+      type: object
+      required: [orders, hasNextPage, endCursor, refreshedAt]
+      properties:
+        orders:
+          type: array
+          items: { $ref: "#/components/schemas/OrderStatus" }
+        hasNextPage: { type: boolean }
+        endCursor: { type: string }
+        refreshedAt: { type: string }
     AdminSummary:
       type: object
       required: [inquiryCount, newInquiryCount, lowStock, shopAdminUrl, shopCurrency, checkoutEnabled, notices]

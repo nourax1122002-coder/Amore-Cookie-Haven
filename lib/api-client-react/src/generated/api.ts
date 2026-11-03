@@ -34,6 +34,8 @@ import type {
   Inquiry,
   InquiryInput,
   InquiryUpdate,
+  ListAdminOrdersParams,
+  OrderPage,
   Product,
   ProductInput,
   StartCheckout200,
@@ -799,6 +801,9 @@ export const getTrackOrderUrl = () => {
   return `/api/tracking`
 }
 
+/**
+ * Exact order number and checkout phone verification. Returns minimal Shopify data only; no customer addresses or privileged status links.
+ */
 export const trackOrder = async (trackingInput: TrackingInput, options?: Parameters<typeof customFetch>[1]): Promise<TrackingResult> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
@@ -830,7 +835,7 @@ return customFetch<TrackingResult>(getTrackOrderUrl(),
 
 export const getTrackOrderMutationKey = () => ['trackOrder'] as const;
 
-export const getTrackOrderMutationOptions = <TError = ErrorType<unknown>,
+export const getTrackOrderMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof trackOrder>>, TError,TrackOrderMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof trackOrder>>, TError,TrackOrderMutationVariables, TContext> => {
 
@@ -859,10 +864,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type TrackOrderMutationResult = NonNullable<Awaited<ReturnType<typeof trackOrder>>>
     export type TrackOrderMutationBody = BodyType<TrackingInput>
-    export type TrackOrderMutationError = ErrorType<unknown>
+    export type TrackOrderMutationError = ErrorType<void>
     export type TrackOrderMutationVariables = {data: BodyType<TrackingInput>}
 
-    export const useTrackOrder = <TError = ErrorType<unknown>,
+    export const useTrackOrder = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof trackOrder>>, TError,TrackOrderMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof trackOrder>>,
@@ -872,6 +877,111 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getTrackOrderMutationOptions(options), queryClient);
     }
+
+export const getListAdminOrdersUrl = (params?: ListAdminOrdersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/orders?${stringifiedParams}` : `/api/admin/orders`
+}
+
+/**
+ * Administrator-only live Shopify orders, newest first. Updates and cancellations are handled in Shopify.
+ */
+export const listAdminOrders = async (params?: ListAdminOrdersParams, options?: Parameters<typeof customFetch>[1]): Promise<OrderPage> => {
+
+  return customFetch<OrderPage>(getListAdminOrdersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminOrdersQueryKey = (params?: ListAdminOrdersParams,) => {
+    return [
+    `/api/admin/orders`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAdminOrdersQueryOptions = <TData = Awaited<ReturnType<typeof listAdminOrders>>, TError = ErrorType<void>>(params?: ListAdminOrdersParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminOrders>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminOrdersQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminOrders>>> = ({ signal }) => listAdminOrders(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminOrders>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListAdminOrdersQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminOrders>>>
+export type ListAdminOrdersQueryError = ErrorType<void>
+
+
+export function useListAdminOrders<TData = Awaited<ReturnType<typeof listAdminOrders>>, TError = ErrorType<void>>(
+ params: undefined |  ListAdminOrdersParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminOrders>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminOrders>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminOrders>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListAdminOrders<TData = Awaited<ReturnType<typeof listAdminOrders>>, TError = ErrorType<void>>(
+ params?: ListAdminOrdersParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminOrders>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminOrders>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminOrders>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListAdminOrders<TData = Awaited<ReturnType<typeof listAdminOrders>>, TError = ErrorType<void>>(
+ params?: ListAdminOrdersParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminOrders>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useListAdminOrders<TData = Awaited<ReturnType<typeof listAdminOrders>>, TError = ErrorType<void>>(
+ params?: ListAdminOrdersParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminOrders>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListAdminOrdersQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetAdminSessionUrl = () => {
 

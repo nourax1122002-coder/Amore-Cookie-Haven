@@ -1,1 +1,2 @@
 - [Shopify inventory API compatibility](shopify-inventory-api.md) — inspect the live schema for inventory write requirements; older examples do not match the connector API.
+- [Shopify order access](shopify-order-access.md) — inspect live grants rather than assuming catalog-only scopes; phone access needs separate protected-data approval.

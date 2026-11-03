@@ -273,10 +273,49 @@ export interface TrackingInput {
   phone: string;
 }
 
+export type OrderStatusStage = typeof OrderStatusStage[keyof typeof OrderStatusStage];
+
+
+export const OrderStatusStage = {
+  received: 'received',
+  confirmed: 'confirmed',
+  preparing: 'preparing',
+  partially_fulfilled: 'partially_fulfilled',
+  shipped: 'shipped',
+  out_for_delivery: 'out_for_delivery',
+  delivered: 'delivered',
+  cancelled: 'cancelled',
+} as const;
+
+export type OrderStatusItemsItem = {
+  title: string;
+  quantity: number;
+};
+
+export interface OrderStatus {
+  number: string;
+  stage: OrderStatusStage;
+  financialStatus: string;
+  fulfillmentStatus: string;
+  createdAt: string;
+  total: string;
+  currency: string;
+  hasMoreItems: boolean;
+  items: OrderStatusItemsItem[];
+}
+
 export interface TrackingResult {
   available: boolean;
   message: string;
   statusUrl: string;
+  order?: OrderStatus;
+}
+
+export interface OrderPage {
+  orders: OrderStatus[];
+  hasNextPage: boolean;
+  endCursor: string;
+  refreshedAt: string;
 }
 
 export interface AdminSummary {
@@ -291,6 +330,13 @@ export interface AdminSummary {
 
 export type StartCheckout200 = {
   url: string;
+};
+
+export type ListAdminOrdersParams = {
+/**
+ * @maxLength 1000
+ */
+after?: string;
 };
 
 export type GetAdminSession200 = {
