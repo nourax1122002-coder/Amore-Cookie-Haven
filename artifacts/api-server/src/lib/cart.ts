@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { GetCartResponse, UpdateCartBody } from "@workspace/api-zod";
+import { GetCartResponse, UpdateCartBody, StartCheckoutBody } from "@workspace/api-zod";
 import { shopifyStorefrontRequest } from "./shopifyStorefrontClient";
 import { getCatalog, getShopCurrency } from "./catalog";
 import { readSettings } from "./store-settings";
@@ -142,7 +142,14 @@ export async function mutateCart(req: Request, res: Response, body: ReturnType<t
   return presentCart(cart);
 }
 
-export async function checkout(req: Request, body: { email?: string; phone?: string; note?: string }) {
+export async function checkout(req: Request, body: ReturnType<typeof StartCheckoutBody.parse>) {
+  const address = body.address && {
+    area: body.address.area.trim(), block: body.address.block.trim(),
+    street: body.address.street.trim(), house: body.address.house.trim(),
+  };
+  if (address && Object.values(address).some(value => !value)) {
+    throw new HttpError(400, "Complete all address fields. / يرجى تعبئة جميع خانات العنوان.");
+  }
   const ready = await readiness();
   if (!ready.checkoutReady) throw new HttpError(409, ready.launchMessage);
   const cart = await rawCart(cartId(req));
@@ -157,6 +164,22 @@ export async function checkout(req: Request, body: { email?: string; phone?: str
     `mutation($id:ID!,$b:CartBuyerIdentityInput!) { cartBuyerIdentityUpdate(cartId:$id,buyerIdentity:$b) { userErrors { message } } }`,
     { id: cart.id, b: { countryCode: "KW", ...(body.email ? { email: body.email } : {}), ...(body.phone ? { phone: body.phone } : {}) } });
   assertCartErrors(buyer.cartBuyerIdentityUpdate.userErrors);
+  if (address) {
+    const delivery = await shopifyStorefrontRequest<{ cartDeliveryAddressesReplace: { userErrors: Array<{ message: string }> } }>(
+      `mutation($id:ID!,$addresses:[CartSelectableAddressInput!]!) {
+        cartDeliveryAddressesReplace(cartId:$id,addresses:$addresses) { userErrors { message } }
+      }`,
+      { id: cart.id, addresses: [{
+        selected: true, oneTimeUse: true,
+        address: { deliveryAddress: {
+          countryCode: "KW", city: address.area,
+          address1: `Block / قطعة ${address.block}, Street / شارع ${address.street}`,
+          address2: `House / منزل ${address.house}`,
+          ...(body.phone ? { phone: body.phone } : {}),
+        } },
+      }] });
+    assertCartErrors(delivery.cartDeliveryAddressesReplace.userErrors);
+  }
   if (body.note !== undefined) {
     const noted = await shopifyStorefrontRequest<{ cartNoteUpdate: { userErrors: Array<{ message: string }> } }>(
       `mutation($id:ID!,$note:String!) { cartNoteUpdate(cartId:$id,note:$note) { userErrors { message } } }`, { id: cart.id, note: body.note });

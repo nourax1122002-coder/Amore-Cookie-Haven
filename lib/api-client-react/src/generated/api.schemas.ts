@@ -187,12 +187,36 @@ export interface CartInput {
   note?: string;
 }
 
+export interface DeliveryAddressInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  area: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  block: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  street: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  house: string;
+}
+
 export interface CheckoutInput {
   email?: string;
   /** @maxLength 30 */
   phone?: string;
   /** @maxLength 2000 */
   note?: string;
+  address?: DeliveryAddressInput;
 }
 
 export interface InquiryInput {

@@ -370,6 +370,16 @@ components:
         email: { type: string, format: email }
         phone: { type: string, maxLength: 30 }
         note: { type: string, maxLength: 2000 }
+        address:
+          $ref: "#/components/schemas/DeliveryAddressInput"
+    DeliveryAddressInput:
+      type: object
+      required: [area, block, street, house]
+      properties:
+        area: { type: string, minLength: 1, maxLength: 100 }
+        block: { type: string, minLength: 1, maxLength: 100 }
+        street: { type: string, minLength: 1, maxLength: 100 }
+        house: { type: string, minLength: 1, maxLength: 100 }
     InquiryInput:
       type: object
       required: [cafeName, contactName, phone, email, area, products, notes, requestKey]

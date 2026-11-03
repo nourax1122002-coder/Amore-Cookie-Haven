@@ -212,12 +212,26 @@ export const startCheckoutBodyPhoneMax = 30;
 
 export const startCheckoutBodyNoteMax = 2000;
 
+export const startCheckoutBodyAddressAreaMax = 100;
+
+export const startCheckoutBodyAddressBlockMax = 100;
+
+export const startCheckoutBodyAddressStreetMax = 100;
+
+export const startCheckoutBodyAddressHouseMax = 100;
+
 
 
 export const StartCheckoutBody = zod.object({
   "email": zod.string().email().optional(),
   "phone": zod.string().max(startCheckoutBodyPhoneMax).optional(),
-  "note": zod.string().max(startCheckoutBodyNoteMax).optional()
+  "note": zod.string().max(startCheckoutBodyNoteMax).optional(),
+  "address": zod.object({
+  "area": zod.string().min(1).max(startCheckoutBodyAddressAreaMax),
+  "block": zod.string().min(1).max(startCheckoutBodyAddressBlockMax),
+  "street": zod.string().min(1).max(startCheckoutBodyAddressStreetMax),
+  "house": zod.string().min(1).max(startCheckoutBodyAddressHouseMax)
+}).optional()
 })
 
 export const StartCheckoutResponse = zod.object({

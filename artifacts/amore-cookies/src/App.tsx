@@ -245,7 +245,6 @@ function HomePage({lang,settings,store}:{lang:Lang;settings?:StoreSettings;store
       </div>
     </section>
     <section className="container-wide py-12 flex flex-wrap gap-3 justify-center text-[10px] tracking-wide text-[#87666e]"><span className="rounded-full bg-[#f7eaed] px-4 py-2">Frozen cookie dough</span><span className="rounded-full bg-[#f7eaed] px-4 py-2">Ready to bake</span><span className="rounded-full bg-[#f7eaed] px-4 py-2">12 pieces per bag</span></section>
-    {store&&!store.checkoutReady&&<div className="container-wide pb-10 text-center text-[11px] text-[#8b6870]">{c.checkoutNote}</div>}
   </>;
 }
 function EmptyState({text}:{text:string}) {return <div className="card-surface p-12 text-center text-sm text-[#8b6870]"><Cookie className="mx-auto mb-4 text-[#bc8794]"/>{text}</div>}
@@ -341,11 +340,20 @@ function CartPage({lang}:{lang:Lang}) {
 }
 function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shopCurrency:string;settings:StoreSettings}}) {
   const c=copy[lang], cartQ=useGetCart({query:{queryKey:getGetCartQueryKey()}}), cart=cartQ.data;
-  const start=useStartCheckout();const [email,setEmail]=useState(''),[phone,setPhone]=useState(''),[note,setNote]=useState('');
+  const start=useStartCheckout();const [phone,setPhone]=useState(''),[note,setNote]=useState('');
+  const [address,setAddress]=useState({area:'',block:'',street:'',house:''});
   const ready=Boolean(store?.checkoutReady&&store.settings.checkoutEnabled&&store.shopCurrency==='KWD'&&cart?.checkoutReady&&cart.lines.length);
   return <div className="container-wide py-14 md:py-20"><span className="eyebrow">{c.checkout}</span><p className="mt-4 text-xs text-[#896a71] max-w-2xl">{c.checkoutNote}</p>
-    {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={e=>{e.preventDefault();if(!ready)return;start.mutate({data:{email:email.trim()||undefined,phone:phone||undefined,note:note||undefined}},{onSuccess:r=>{window.location.assign(r.url)}})}}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
-      <label><span className="field-label">{c.email} <span className="font-normal text-[#896a71]">({lang==='ar'?'اختياري':'optional'})</span></span><input className="field" type="email" autoComplete="email" required={false} value={email} onChange={e=>setEmail(e.target.value)}/></label>
+    {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={e=>{e.preventDefault();if(!ready||Object.values(address).some(value=>!value.trim()))return;start.mutate({data:{address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim()},phone:phone||undefined,note:note||undefined}},{onSuccess:r=>{window.location.assign(r.url)}})}}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
+      <fieldset className="grid sm:grid-cols-2 gap-5">
+        <legend className="field-label mb-3">{lang==='ar'?'عنوان التوصيل':'Delivery address'}</legend>
+        {([
+          ['area',lang==='ar'?'المنطقة':'Area'],
+          ['block',lang==='ar'?'القطعة':'Block'],
+          ['street',lang==='ar'?'الشارع':'Street'],
+          ['house',lang==='ar'?'رقم المنزل':'House number'],
+        ] as const).map(([field,label])=><label key={field}><span className="field-label">{label} *</span><input name={field} className="field" required maxLength={100} pattern=".*\S.*" value={address[field]} onChange={e=>setAddress(previous=>({...previous,[field]:e.target.value}))}/></label>)}
+      </fieldset>
       <label><span className="field-label">{c.phone}</span><input className="field" type="tel" value={phone} onChange={e=>setPhone(e.target.value)}/></label><label><span className="field-label">{c.note}</span><textarea className="field min-h-28" value={note} onChange={e=>setNote(e.target.value)}/></label><div className="rounded-xl bg-[#f8e8ec] p-4 text-xs leading-6 text-[#795963]">{lang==='ar'?'تُستكمل بيانات العنوان والتوصيل وطريقة الدفع بأمان في الخطوة التالية.':'Complete your address, delivery details and payment method securely in the next step.'} {c.shipping}</div>{!ready&&<p className="rounded-xl bg-[#fff1f3] p-4 text-xs leading-6 text-[#763246]">{c.notReady}</p>}{start.isError&&<p className="text-xs text-red-700">{lang==='ar'?'تعذر بدء الدفع. يرجى المحاولة مجدداً.':'Checkout could not be started. Please retry.'}</p>}<button disabled={!ready||start.isPending} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:c.checkout}<ExternalLink size={14}/></button></form><aside className="card-surface p-6 h-fit"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.bag}</h2>{cart.lines.map(line=><div key={line.id} className="flex justify-between gap-4 py-4 border-b border-[#efdee2] text-xs"><span>{line.title} × {line.quantity}</span><strong>{(line.price*line.quantity).toFixed(3)} KWD</strong></div>)}<div className="flex justify-between pt-5 font-semibold text-sm"><span>{c.total}</span><span>{cart.total.toFixed(3)} KWD</span></div></aside></div>}
   </div>;
 }

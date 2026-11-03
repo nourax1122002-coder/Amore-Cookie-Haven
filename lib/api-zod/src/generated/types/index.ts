@@ -14,6 +14,7 @@ export * from './cartInput';
 export * from './cartInputAction';
 export * from './cartLine';
 export * from './checkoutInput';
+export * from './deliveryAddressInput';
 export * from './getAdminSession200';
 export * from './healthStatus';
 export * from './inquiry';
