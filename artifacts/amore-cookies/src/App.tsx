@@ -230,7 +230,7 @@ function HomePage({lang,settings,store}:{lang:Lang;settings?:StoreSettings;store
     </section>
     <section className="bg-[#5B0D1E] text-[#fff6f3] overflow-hidden">
       <div className="container-wide py-20 grid md:grid-cols-[1fr_.7fr] gap-12 items-center">
-        <div><span className="eyebrow text-[#f4b8cb]">{c.about}</span><h2 className="serif md:text-6xl mt-4 max-w-[610px] text-[38px] pl-[10px] pr-[10px] pt-[10px] pb-[10px]">{lang==='ar'?(settings?.aboutAr||c.storyTitle):(settings?.aboutEn||c.storyTitle)}</h2><p className="mt-6 max-w-[500px] text-sm leading-7 text-[#f0cdd5]">{lang==='ar'?(settings?.aboutAr||c.story):(settings?.aboutEn||c.story)}</p><Link href="/about" className="inline-flex items-center gap-2 mt-7 text-xs font-bold border-b border-[#f4b8cb] pb-2 text-[#fff6f3]">{c.about}<ArrowRight size={14}/></Link></div>
+        <div><span className="eyebrow text-[#f4b8cb]">{c.about}</span><h2 className="serif md:text-6xl mt-4 max-w-[610px] pl-[10px] pr-[10px] pt-[10px] pb-[10px] text-[38px]">{lang==='ar'?(settings?.aboutAr||c.storyTitle):(settings?.aboutEn||c.storyTitle)}</h2><p className="mt-6 max-w-[500px] text-sm leading-7 text-[#f0cdd5]">{lang==='ar'?(settings?.aboutAr||c.story):(settings?.aboutEn||c.story)}</p><Link href="/about" className="inline-flex items-center gap-2 mt-7 text-xs font-bold border-b border-[#f4b8cb] pb-2 text-[#fff6f3]">{c.about}<ArrowRight size={14}/></Link></div>
         <div className="relative"><div className="absolute inset-4 rounded-[50%] bg-[#8f3048] rotate-6"/><Picture src={settings?.cookieImage||images.cookie} alt="Amore cookie" className="relative rounded-[44%_56%_48%_52%/48%_44%_56%_52%] w-full aspect-square object-cover border-[10px] border-[#6d1930] rotate-2"/></div>
       </div>
     </section>
