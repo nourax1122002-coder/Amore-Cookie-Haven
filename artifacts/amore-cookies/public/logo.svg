@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <rect width="180" height="180" rx="90" fill="#5B0D1E"/>
+  <circle cx="90" cy="73" r="48" fill="#FFD6E5" stroke="#fff2f5" stroke-width="3"/>
+  <path d="M55 74c0-21 15-37 35-37s35 16 35 37v20H55z" fill="#fffaf8" stroke="#5B0D1E" stroke-width="4"/>
+  <path d="M64 56c-2-9 8-15 15-10 5-11 22-8 23 3 11-3 19 8 13 17H65z" fill="#fffaf8" stroke="#5B0D1E" stroke-width="4"/>
+  <path d="M65 88c4 22 15 32 25 32s21-10 25-32" fill="#5B0D1E"/>
+  <circle cx="87" cy="78" r="3" fill="#5B0D1E"/><circle cx="104" cy="78" r="3" fill="#5B0D1E"/>
+  <path d="M87 88q8 7 15 0" fill="none" stroke="#5B0D1E" stroke-width="2" stroke-linecap="round"/>
+  <path d="M74 132h32M82 141h16" stroke="#FFD6E5" stroke-width="3" stroke-linecap="round"/>
+  <text x="90" y="163" text-anchor="middle" font-family="Georgia,serif" font-size="16" font-style="italic" fill="#fffaf8">Amore</text>
+</svg>

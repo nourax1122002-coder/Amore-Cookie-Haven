@@ -1,36 +1,403 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 1.0.0
+  description: Amore Cookies storefront and management API
 servers:
   - url: /api
-    description: Base API path
-tags:
-  - name: health
-    description: Health operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
-      tags: [health]
-      summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
           content:
             application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+  /store:
+    get:
+      operationId: getStore
+      responses:
+        "200":
+          description: Public content and launch readiness
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Store" }
+  /products:
+    get:
+      operationId: listProducts
+      responses:
+        "200":
+          description: Shopify products
+          content:
+            application/json:
               schema:
-                $ref: "#/components/schemas/HealthStatus"
+                type: array
+                items: { $ref: "#/components/schemas/Product" }
+  /products/{handle}:
+    get:
+      operationId: getProduct
+      parameters:
+        - { name: handle, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Product detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+  /cart:
+    get:
+      operationId: getCart
+      responses:
+        "200":
+          description: Current Shopify cart
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
+    post:
+      operationId: updateCart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CartInput" }
+      responses:
+        "200":
+          description: Updated cart
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
+  /checkout:
+    post:
+      operationId: startCheckout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CheckoutInput" }
+      responses:
+        "200":
+          description: Real Shopify checkout URL, only when enabled and KWD configured
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url: { type: string }
+  /wholesale:
+    post:
+      operationId: createInquiry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InquiryInput" }
+      responses:
+        "201":
+          description: Saved inquiry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Inquiry" }
+  /tracking:
+    post:
+      operationId: trackOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TrackingInput" }
+      responses:
+        "200":
+          description: Tracking information
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrackingResult" }
+  /admin/me:
+    get:
+      operationId: getAdminSession
+      responses:
+        "200":
+          description: Server verified authorization
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [isAdmin, setupRequired]
+                properties:
+                  isAdmin: { type: boolean }
+                  setupRequired: { type: boolean }
+  /admin/summary:
+    get:
+      operationId: getAdminSummary
+      responses:
+        "200":
+          description: Actual inquiries and inventory; Shopify management destinations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminSummary" }
+  /admin/settings:
+    get:
+      operationId: getAdminSettings
+      responses:
+        "200":
+          description: Editable settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoreSettings" }
+    put:
+      operationId: saveSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StoreSettings" }
+      responses:
+        "200":
+          description: Saved settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoreSettings" }
+  /admin/inquiries:
+    get:
+      operationId: listInquiries
+      responses:
+        "200":
+          description: Café inquiries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Inquiry" }
+  /admin/inquiries/{id}:
+    patch:
+      operationId: updateInquiry
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InquiryUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Inquiry" }
+  /admin/products:
+    get:
+      operationId: listAdminProducts
+      responses:
+        "200":
+          description: Product inventory
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Product" }
+    post:
+      operationId: saveProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProductInput" }
+      responses:
+        "200":
+          description: Saved Shopify product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
-        status:
-          type: string
-      required:
-        - status
-
+        status: { type: string }
+    Product:
+      type: object
+      required: [id, handle, title, titleAr, description, descriptionAr, price, currency, shopCurrency, pieces, imageUrl, variantId, available, stock, lowStockThreshold, ingredients, ingredientsAr]
+      properties:
+        id: { type: string }
+        handle: { type: string }
+        title: { type: string }
+        titleAr: { type: string }
+        description: { type: string }
+        descriptionAr: { type: string }
+        price: { type: number }
+        currency: { type: string }
+        shopCurrency: { type: string }
+        pieces: { type: integer }
+        imageUrl: { type: string }
+        variantId: { type: string }
+        available: { type: boolean }
+        stock: { type: integer }
+        lowStockThreshold: { type: integer }
+        ingredients: { type: string }
+        ingredientsAr: { type: string }
+    ProductInput:
+      type: object
+      required: [title, titleAr, description, descriptionAr, price, pieces, imageUrl, stock, lowStockThreshold, ingredients, ingredientsAr]
+      properties:
+        id: { type: string }
+        title: { type: string, minLength: 1, maxLength: 150 }
+        titleAr: { type: string, maxLength: 150 }
+        description: { type: string, maxLength: 5000 }
+        descriptionAr: { type: string, maxLength: 5000 }
+        price: { type: number, exclusiveMinimum: 0, maximum: 10000 }
+        pieces: { type: integer, minimum: 1, maximum: 1000 }
+        imageUrl: { type: string, maxLength: 2000 }
+        stock: { type: integer, minimum: 0, maximum: 1000000 }
+        lowStockThreshold: { type: integer, minimum: 0, maximum: 1000000 }
+        ingredients: { type: string, maxLength: 5000 }
+        ingredientsAr: { type: string, maxLength: 5000 }
+    BakingStep:
+      type: object
+      required: [titleEn, titleAr, textEn, textAr]
+      properties:
+        titleEn: { type: string, maxLength: 150 }
+        titleAr: { type: string, maxLength: 150 }
+        textEn: { type: string, maxLength: 1000 }
+        textAr: { type: string, maxLength: 1000 }
+    StoreSettings:
+      type: object
+      required: [heroTitleEn, heroTitleAr, heroTextEn, heroTextAr, aboutEn, aboutAr, storageEn, storageAr, policiesEn, policiesAr, whatsapp, email, phone, hoursEn, hoursAr, bakingSteps, checkoutEnabled, logoImage, bakerImage, packageImage, cookieImage]
+      properties:
+        heroTitleEn: { type: string, maxLength: 250 }
+        heroTitleAr: { type: string, maxLength: 250 }
+        heroTextEn: { type: string, maxLength: 1000 }
+        heroTextAr: { type: string, maxLength: 1000 }
+        aboutEn: { type: string, maxLength: 5000 }
+        aboutAr: { type: string, maxLength: 5000 }
+        storageEn: { type: string, maxLength: 2000 }
+        storageAr: { type: string, maxLength: 2000 }
+        policiesEn: { type: string, maxLength: 5000 }
+        policiesAr: { type: string, maxLength: 5000 }
+        whatsapp: { type: string, maxLength: 30 }
+        email: { type: string, maxLength: 200 }
+        phone: { type: string, maxLength: 40 }
+        hoursEn: { type: string, maxLength: 500 }
+        hoursAr: { type: string, maxLength: 500 }
+        bakingSteps:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items: { $ref: "#/components/schemas/BakingStep" }
+        checkoutEnabled: { type: boolean }
+        logoImage: { type: string, maxLength: 2000 }
+        bakerImage: { type: string, maxLength: 2000 }
+        packageImage: { type: string, maxLength: 2000 }
+        cookieImage: { type: string, maxLength: 2000 }
+    Store:
+      type: object
+      required: [settings, checkoutReady, launchMessage, shopCurrency]
+      properties:
+        settings: { $ref: "#/components/schemas/StoreSettings" }
+        checkoutReady: { type: boolean }
+        launchMessage: { type: string }
+        shopCurrency: { type: string }
+    CartLine:
+      type: object
+      required: [id, variantId, handle, title, quantity, price, imageUrl]
+      properties:
+        id: { type: string }
+        variantId: { type: string }
+        handle: { type: string }
+        title: { type: string }
+        quantity: { type: integer }
+        price: { type: number }
+        imageUrl: { type: string }
+    Cart:
+      type: object
+      required: [lines, subtotal, discount, total, currency, checkoutReady, message, discountCodes]
+      properties:
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/CartLine" }
+        subtotal: { type: number }
+        discount: { type: number }
+        total: { type: number }
+        currency: { type: string }
+        checkoutReady: { type: boolean }
+        message: { type: string }
+        discountCodes:
+          type: array
+          items:
+            type: object
+            required: [code, applicable]
+            properties:
+              code: { type: string }
+              applicable: { type: boolean }
+    CartInput:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, enum: [add, update, remove, discount, note] }
+        variantId: { type: string }
+        lineId: { type: string }
+        quantity: { type: integer, minimum: 1, maximum: 1000 }
+        code: { type: string, maxLength: 100 }
+        note: { type: string, maxLength: 2000 }
+    CheckoutInput:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        phone: { type: string, maxLength: 30 }
+        note: { type: string, maxLength: 2000 }
+    InquiryInput:
+      type: object
+      required: [cafeName, contactName, phone, email, area, products, notes, requestKey]
+      properties:
+        cafeName: { type: string, minLength: 1, maxLength: 200 }
+        contactName: { type: string, minLength: 1, maxLength: 200 }
+        phone: { type: string, minLength: 8, maxLength: 30 }
+        email: { type: string, format: email, maxLength: 200 }
+        area: { type: string, minLength: 1, maxLength: 200 }
+        products: { type: string, minLength: 1, maxLength: 3000 }
+        notes: { type: string, maxLength: 3000 }
+        requestKey: { type: string, minLength: 10, maxLength: 100 }
+    Inquiry:
+      allOf:
+        - { $ref: "#/components/schemas/InquiryInput" }
+        - type: object
+          required: [id, status, createdAt]
+          properties:
+            id: { type: integer }
+            status: { type: string, enum: [new, contacted, closed] }
+            createdAt: { type: string }
+    InquiryUpdate:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [new, contacted, closed] }
+    TrackingInput:
+      type: object
+      required: [orderNumber, phone]
+      properties:
+        orderNumber: { type: string, minLength: 1, maxLength: 100 }
+        phone: { type: string, minLength: 8, maxLength: 30 }
+    TrackingResult:
+      type: object
+      required: [available, message, statusUrl]
+      properties:
+        available: { type: boolean }
+        message: { type: string }
+        statusUrl: { type: string }
+    AdminSummary:
+      type: object
+      required: [inquiryCount, newInquiryCount, lowStock, shopAdminUrl, shopCurrency, checkoutEnabled, notices]
+      properties:
+        inquiryCount: { type: integer }
+        newInquiryCount: { type: integer }
+        lowStock:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        shopAdminUrl: { type: string }
+        shopCurrency: { type: string }
+        checkoutEnabled: { type: boolean }
+        notices:
+          type: array
+          items: { type: string }

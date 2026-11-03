@@ -1,0 +1,1 @@
+- [Shopify inventory API compatibility](shopify-inventory-api.md) — inspect the live schema for inventory write requirements; older examples do not match the connector API.

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Amore Cookies"
+description = "Bilingual English and Arabic frozen cookie dough storefront for individuals and cafés in Kuwait, with Shopify catalog, cart and checkout, and secure content and wholesale management."
+version = "1.0.0"
+id = "artifacts/amore-cookies"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18441
+
+[services.development]
+run = "pnpm --filter @workspace/amore-cookies run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/amore-cookies", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/amore-cookies/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18441"
+BASE_PATH = "/"
