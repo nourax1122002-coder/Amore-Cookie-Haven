@@ -2,9 +2,11 @@
 
 From the repository root:
 
-- `pnpm run validate` — project typechecks plus order and shared-limiter suites.
+- `pnpm run validate` — project typechecks plus order, admin-write and shared-limiter suites.
 - `pnpm --filter @workspace/api-server run test:orders:http` — HTTP checks only.
 - `pnpm --filter @workspace/api-server run test:orders` — existing order logic checks.
+- `pnpm --filter @workspace/api-server run test:admin:http` — isolated admin-write
+  security checks; see `../admin-http/README.md`.
 - `pnpm --filter @workspace/api-server run test:tracking:shared` — real PostgreSQL
   concurrency, replacement-instance persistence, expiry, privacy and failure checks.
 

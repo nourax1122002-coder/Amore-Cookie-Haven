@@ -6,12 +6,14 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const temp = await mkdtemp(join(tmpdir(), "amore-orders-http-"));
+const suite = process.argv[2] ?? "orders-http";
+if (!["orders-http", "admin-http"].includes(suite)) throw new Error("Unknown HTTP suite");
+const temp = await mkdtemp(join(tmpdir(), `amore-${suite}-`));
 try {
-  const outfile = join(temp, "orders-http.test.cjs");
+  const outfile = join(temp, `${suite}.test.cjs`);
   await build({
     absWorkingDir: root,
-    entryPoints: ["test/orders-http/orders-http.test.ts"],
+    entryPoints: [`test/${suite}/${suite}.test.ts`],
     outfile,
     bundle: true,
     platform: "node",
@@ -20,7 +22,7 @@ try {
     alias: {
       "@clerk/express": join(root, "test/orders-http/mocks/clerk.ts"),
       "@clerk/shared/keys": join(root, "test/orders-http/mocks/clerk-keys.ts"),
-      "@workspace/db": join(root, "test/orders-http/mocks/db.ts"),
+      "@workspace/db": join(root, `test/${suite}/mocks/db.ts`),
     },
     plugins: [{
       name: "isolate-clerk-proxy",
@@ -32,7 +34,7 @@ try {
     }],
   });
   // Whitelist rather than inherit: real secrets, accounts and DB URLs never
-  // enter the test process. All Shopify fetches are intercepted by the suite.
+  // enter the test process. All Shopify fetches are intercepted by each suite.
   const child = spawn(process.execPath, ["--test", outfile], {
     stdio: "inherit",
     env: {
