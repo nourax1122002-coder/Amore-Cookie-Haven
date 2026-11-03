@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { pruneSecurityCounters } from "./lib/tracking-limits";
 
 const rawPort = process.env["PORT"];
 
@@ -14,6 +15,13 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+// Independent of request traffic; every replica may safely run this janitor.
+const prune = () => pruneSecurityCounters().catch(() => {
+  logger.error({ errorType: "SecurityCounterCleanupFailed" }, "Security counter cleanup failed");
+});
+void prune();
+setInterval(() => { void prune(); }, 60_000).unref();
 
 app.listen(port, (err) => {
   if (err) {

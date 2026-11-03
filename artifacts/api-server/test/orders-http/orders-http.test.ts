@@ -5,6 +5,7 @@ import { Writable } from "node:stream";
 import pino from "pino";
 import { logger } from "../../src/lib/logger";
 import type { ShopifyOrder } from "../../src/lib/orders";
+import { failCounters } from "./mocks/db";
 
 // Fictional canaries deliberately include fields not requested by our GraphQL
 // query. They must be stripped even if an upstream payload contains extra data.
@@ -82,6 +83,7 @@ before(async () => {
 
 beforeEach(() => {
   mode = "ok"; nodes = []; calls = []; logs = []; responses = [];
+  failCounters(null);
 });
 
 afterEach(async () => {
@@ -211,6 +213,31 @@ test("tracking: order limit spans IPs, phone variations and optional hash prefix
   assert.match(String(response.headers["retry-after"]), /^\d+$/);
   assert.ok(Number(response.headers["retry-after"]) > 0 && Number(response.headers["retry-after"]) <= 3600);
   assert.equal(calls.length, 20);
+});
+
+for (const scope of ["tracking:ip", "tracking:order"]) {
+  test(`tracking fails closed before Shopify when ${scope} storage fails`, async () => {
+    failCounters(scope);
+    const response = await track(freshOrder());
+    assert.equal(response.status, 503);
+    assert.equal(response.headers["retry-after"], "60");
+    assert.equal(calls.length, 0);
+    failCounters(null);
+    assert.equal((await track(freshOrder())).status, 200);
+  });
+}
+
+test("tracking fails closed without a stable shared hashing secret", async () => {
+  const secret = process.env.SESSION_SECRET;
+  try {
+    delete process.env.SESSION_SECRET;
+    const response = await track(freshOrder());
+    assert.equal(response.status, 503);
+    assert.equal(response.headers["retry-after"], "60");
+    assert.equal(calls.length, 0);
+  } finally {
+    process.env.SESSION_SECRET = secret;
+  }
 });
 
 for (const failure of ["protected", "http-denied", "network"] as const) {

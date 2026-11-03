@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import rateLimit from "express-rate-limit";
 import { createHash } from "node:crypto";
 import { db, inquiriesTable } from "@workspace/db";
@@ -11,18 +11,13 @@ import {
 import { getCatalog, productByHandle } from "../lib/catalog";
 import { rawCart, cartId, presentCart, mutateCart, checkout, readiness } from "../lib/cart";
 import { HttpError } from "../lib/errors";
-import { normalizeOrderNumber, trackOrder } from "../lib/orders";
+import { trackOrder } from "../lib/orders";
+import { createTrackingLimits, trackingStoreUnavailable } from "../lib/tracking-limits";
 
 const router = Router();
 const mutationLimit = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Please wait before trying again. / يرجى الانتظار قبل المحاولة مجدداً." } });
 const inquiryLimit = rateLimit({ windowMs: 60 * 60_000, limit: 15, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many requests. Please try later. / طلبات كثيرة. يرجى المحاولة لاحقاً." } });
-const trackingLimit = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many tracking attempts. Try later. / محاولات تتبع كثيرة. يرجى المحاولة لاحقاً." } });
-const orderAttemptLimit = rateLimit({
-  windowMs: 60 * 60_000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false,
-  // Across IPs and phone variations; no raw identifiers retained in the limiter.
-  keyGenerator: req => createHash("sha256").update((normalizeOrderNumber(String(req.body?.orderNumber ?? "")) ?? "invalid").replace(/^#/, "")).digest("hex"),
-  message: { error: "Too many tracking attempts. Try later. / محاولات تتبع كثيرة. يرجى المحاولة لاحقاً." },
-});
+const trackingLimits = createTrackingLimits();
 
 router.get("/store", async (_req, res): Promise<void> => {
   res.json(GetStoreResponse.parse(await readiness()));
@@ -61,9 +56,9 @@ router.post("/wholesale", inquiryLimit, async (req, res): Promise<void> => {
   res.setHeader("Cache-Control", "no-store");
   res.status(201).json(CreateInquiryResponse.parse({ ...inquiry, createdAt: inquiry.createdAt.toISOString() }));
 });
-router.post("/tracking", (_req, res, next) => {
+router.post("/tracking", (_req: Request, res: Response, next: NextFunction) => {
   res.setHeader("Cache-Control", "no-store"); next();
-}, trackingLimit, orderAttemptLimit, async (req, res): Promise<void> => {
+}, ...trackingLimits, trackingStoreUnavailable, async (req: Request, res: Response): Promise<void> => {
   const input = TrackOrderBody.parse(req.body);
   res.json(TrackOrderResponse.parse(await trackOrder(input.orderNumber, input.phone)));
 });
