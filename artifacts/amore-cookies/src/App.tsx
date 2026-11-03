@@ -178,7 +178,11 @@ function AppShell() {
 function Picture({src,alt,className=''}:{src:string;alt:string;className?:string}) { return <img src={src} alt={alt} loading="lazy" className={className}/>; }
 function ProductCard({product,lang,index=0}:{product:Product;lang:Lang;index?:number}) {
   const c=copy[lang], title=lang==='ar'?(product.titleAr||product.title):product.title;
-  const add=useUpdateCart({mutation:{onSuccess:cart=>queryClient.setQueryData(getGetCartQueryKey(),cart)}});
+  const [,navigate]=useLocation();
+  const add=useUpdateCart({mutation:{onSuccess:cart=>{
+    queryClient.setQueryData(getGetCartQueryKey(),cart);
+    navigate('/checkout');
+  }}});
   const sold=!product.available || product.stock<=0;
   return <article className={`group reveal delay-${Math.min(index+1,3)}`}>
     <Link href={`/products/${product.handle}`} className="block overflow-hidden rounded-[24px] bg-[#f8e8ec] aspect-[.94] relative" data-testid={`link-product-${product.id}`}>
@@ -254,15 +258,41 @@ function ProductsPage({lang}:{lang:Lang}) {const q=useListProducts({query:{query
 function PageIntro({eyebrow,title,children}:{eyebrow:string;title:string;children:ReactNode}) {return <div className="container-wide py-14 md:py-20"><div className="mb-10"><span className="eyebrow">{eyebrow}</span><h1 className="serif text-5xl md:text-6xl text-[#5B0D1E] mt-3">{title}</h1></div>{children}</div>}
 function ProductDetail({lang,settings}:{lang:Lang;settings?:StoreSettings}) {
   const [,params]=useRoute('/products/:handle');const handle=params?.handle||'';const q=useGetProduct(handle,{query:{queryKey:getGetProductQueryKey(handle),enabled:!!handle,refetchInterval:60000}});const p=q.data;const c=copy[lang];
-  const add=useUpdateCart({mutation:{onSuccess:cart=>queryClient.setQueryData(getGetCartQueryKey(),cart)}});
+  const [,navigate]=useLocation();
+  const [quantity,setQuantity]=useState('1');
+  const add=useUpdateCart({mutation:{onSuccess:cart=>{
+    queryClient.setQueryData(getGetCartQueryKey(),cart);
+    navigate('/checkout');
+  }}});
+  useEffect(()=>{setQuantity('1');add.reset();},[handle]);
   if(q.isLoading)return <LoadingBlock lang={lang}/>;if(q.isError)return <div className="container-wide py-20"><ErrorNotice lang={lang} onRetry={()=>q.refetch()}/></div>;
   if(!p)return <div className="container-wide py-20"><EmptyState text={c.noProducts}/></div>;
   const sold=!p.available||p.stock<=0;
+  const selectedQuantity=Number(quantity);
+  const maxQuantity=Math.min(p.stock,1000);
+  const validQuantity=Number.isInteger(selectedQuantity)&&selectedQuantity>=1&&selectedQuantity<=maxQuantity;
   return <div className="container-wide py-12 md:py-20"><Link href="/products" className="text-xs text-[#8b6870] inline-flex gap-2 items-center mb-8"><ArrowLeft size={14}/>{c.browse}</Link><div className="grid md:grid-cols-2 gap-10 lg:gap-20 items-center">
     <div className="rounded-[28px] overflow-hidden bg-[#f8e8ec] aspect-square"><Picture src={p.imageUrl||images.cookie} alt={lang==='ar'?p.titleAr:p.title} className="w-full h-full object-cover"/></div>
     <div><span className="eyebrow">{c.frozen}</span><h1 className="serif text-5xl md:text-6xl text-[#5B0D1E] mt-3">{lang==='ar'?(p.titleAr||p.title):p.title}</h1><p className="mt-5 leading-7 text-sm text-[#795963]">{lang==='ar'?(p.descriptionAr||p.description):(p.description||p.descriptionAr)}</p><div className="flex gap-5 mt-6 text-[11px] text-[#8b6870]"><span>{p.pieces} {c.piece}</span><span>{lang==='ar'?'مجمدة · جاهزة للخبز':'Frozen · Ready to bake'}</span></div><div className="mt-7 font-semibold text-xl text-[#5B0D1E]">{p.currency||'KWD'} {p.price.toFixed(3)}</div>
     <div className="mt-5 p-4 rounded-xl bg-[#f8e8ec] text-[11px] text-[#7b4d5a] flex gap-3"><Snowflake size={17}/>{lang==='ar'?(settings?.storageAr||c.storage):(settings?.storageEn||c.storage)}</div>
-    <div className="mt-4 flex gap-3"><button className="btn-primary flex-1 disabled:opacity-50" disabled={sold||add.isPending} onClick={()=>p.variantId&&add.mutate({data:{action:'add',variantId:p.variantId,quantity:1}})}>{sold?c.sold:c.add}<Plus size={15}/></button><Link href="/cart" className="btn-outline">{c.bag}<ShoppingBag size={15}/></Link></div>
+    <form className="mt-5" onSubmit={event=>{
+      event.preventDefault();
+      if(sold||add.isPending||!validQuantity||!p.variantId)return;
+      add.mutate({data:{action:'add',variantId:p.variantId,quantity:selectedQuantity}});
+    }}>
+      <label htmlFor="product-quantity" className="field-label">{lang==='ar'?'الكمية (عدد الأكياس)':'Quantity (bags)'}</label>
+      <div className="flex flex-wrap items-center gap-4 mt-2">
+        <div className="inline-flex items-center rounded-full border border-[#e9d2d8] overflow-hidden">
+          <button type="button" aria-label={lang==='ar'?'تقليل الكمية':'Decrease quantity'} disabled={sold||add.isPending||!validQuantity||selectedQuantity<=1} onClick={()=>setQuantity(String(selectedQuantity-1))} className="h-11 w-11 grid place-items-center text-[#5B0D1E] disabled:opacity-30"><Minus size={16}/></button>
+          <input id="product-quantity" name="quantity" type="number" inputMode="numeric" min={1} max={Math.max(1,maxQuantity)} step={1} required value={quantity} onChange={event=>setQuantity(event.target.value)} disabled={sold||add.isPending} aria-describedby="product-quantity-help" aria-invalid={!sold&&!validQuantity} className="w-16 h-11 bg-transparent text-center text-sm text-[#5B0D1E] outline-none focus:ring-2 focus:ring-inset focus:ring-[#a35168]" data-testid="input-product-quantity"/>
+          <button type="button" aria-label={lang==='ar'?'زيادة الكمية':'Increase quantity'} disabled={sold||add.isPending||!validQuantity||selectedQuantity>=maxQuantity} onClick={()=>setQuantity(String(selectedQuantity+1))} className="h-11 w-11 grid place-items-center text-[#5B0D1E] disabled:opacity-30"><Plus size={16}/></button>
+        </div>
+        <p id="product-quantity-help" className="text-xs text-[#896a71]">{lang==='ar'?`المتوفر: ${p.stock} كيس`:`${p.stock} bags available`}</p>
+      </div>
+      {!sold&&!validQuantity&&<p role="alert" className="mt-2 text-xs text-red-700">{lang==='ar'?`اختاري عدداً صحيحاً من 1 إلى ${maxQuantity}.`:`Choose a whole number from 1 to ${maxQuantity}.`}</p>}
+      <div className="mt-4 flex flex-wrap gap-3"><button type="submit" className="btn-primary flex-1 disabled:opacity-50" disabled={sold||add.isPending||!validQuantity} data-testid="button-add-product">{sold?c.sold:add.isPending?c.loading:c.add}<Plus size={15}/></button><Link href="/cart" className="btn-outline">{c.bag}<ShoppingBag size={15}/></Link></div>
+      {add.isError&&<p role="alert" className="mt-3 text-xs text-red-700">{lang==='ar'?'تعذرت الإضافة. تحققي من الكمية المتوفرة وما أضفتِه مسبقاً للسلة، ثم حاولي مجدداً.':'Could not add this quantity. Check available stock and items already in your bag, then retry.'}</p>}
+    </form>
     <div className="mt-8 border-t border-[#efdee2] pt-6"><h2 className="font-semibold text-sm text-[#5B0D1E]">{c.ingredients}</h2><p className="mt-2 text-xs leading-6 text-[#795963]">{(lang==='ar'?p.ingredientsAr:p.ingredients)||c.awaitingApproval}</p></div>
     <div className="mt-6"><h2 className="font-semibold text-sm text-[#5B0D1E]">{c.storage}</h2><BakingSteps lang={lang} settings={settings}/></div>
     </div></div></div>;
