@@ -140,7 +140,6 @@ function AppShell() {
   }, [path, lang]);
   return <div className="noise min-h-[100dvh] flex flex-col">
     {storeQuery.isError&&<div className="bg-[#fff1f3] px-4 py-2 text-center text-[10px] text-[#763246]" role="alert">{lang==='ar'?'تعذر تحميل إعدادات المتجر.':'Store details could not be loaded.'} <button className="underline ms-2 font-bold" onClick={()=>storeQuery.refetch()}>{c.retry}</button></div>}
-    {!storeQuery.isLoading && store && !store.checkoutReady && <div className="bg-[#5B0D1E] text-[#fff0f3] text-center py-2 px-3 text-[10px] tracking-wide">{lang==='ar'?c.checkoutDisabled:(store.launchMessage||c.checkoutDisabled)}</div>}
     <header className="sticky top-0 z-20 bg-[#fffaf8]/95 backdrop-blur border-b border-[#f0e1e4]">
       <div className="container-wide h-[76px] flex items-center justify-between gap-5">
         <Link href="/" className="flex items-center gap-2 shrink-0" data-testid="link-home"><img src={settings?.logoImage || images.logo} className="h-[56px] w-[64px] object-contain rounded-full" alt="Amore Cookies"/><span className="hidden sm:block text-[#5B0D1E] font-display italic text-[21px]">Amore <span className="not-italic text-[9px] tracking-[.26em] font-sans">COOKIES</span></span></Link>
