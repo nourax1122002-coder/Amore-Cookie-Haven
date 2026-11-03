@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "incremental": false
+  },
+  "include": ["../src", "./orders-http"],
+  "references": [
+    { "path": "../../../lib/db" },
+    { "path": "../../../lib/api-zod" }
+  ]
+}

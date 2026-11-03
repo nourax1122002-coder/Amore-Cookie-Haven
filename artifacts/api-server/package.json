@@ -7,8 +7,10 @@
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:orders": "esbuild src/lib/orders.test.ts --bundle --platform=node --format=esm --outfile=/tmp/amore-orders.test.mjs && node --test /tmp/amore-orders.test.mjs"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/tsconfig.json --noEmit",
+    "test:orders": "esbuild src/lib/orders.test.ts --bundle --platform=node --format=esm --outfile=/tmp/amore-orders.test.mjs && node --test /tmp/amore-orders.test.mjs",
+    "test:orders:http": "node test/run-orders-http.mjs",
+    "test": "pnpm run test:orders && pnpm run test:orders:http"
   },
   "dependencies": {
     "@clerk/express": "^2.1.86",

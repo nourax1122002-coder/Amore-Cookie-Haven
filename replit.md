@@ -46,6 +46,7 @@ Bilingual English/Arabic store for frozen, ready-to-bake cookie dough for homes 
 - Phone-and-order-number tracking verifies an exact order number against the checkout/shipping phone in Shopify. Responses expose only status, items and totals, never phone/address or privileged confirmation links. Protected-field errors fail closed; buyers can still use their existing Shopify confirmation link. A store with no orders cannot prove protected phone access for a real order.
 - Tracking rate limits currently use process-local memory (10/IP/15 minutes and 20/order/hour). Before scaling the API to multiple instances, use a shared limiter store; restarts reset these limits. Do not cache or persist order/customer records locally.
 - `pnpm --filter @workspace/api-server run test:orders` checks phone matching, disclosure boundaries and Shopify status mapping without making orders.
+- `pnpm run validate` typechecks the project and runs order logic plus isolated HTTP security regressions for tracking and admin orders. See `artifacts/api-server/test/orders-http/README.md`; no real orders, payments or accounts are used.
 
 ## User preferences
 
