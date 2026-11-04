@@ -26,6 +26,10 @@ import type {
 
 import type {
   AdminSummary,
+  AssistantFailure,
+  AssistantInput,
+  AssistantReply,
+  AssistantStatus,
   Cart,
   CartInput,
   CheckoutInput,
@@ -77,6 +81,183 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetAssistantStatusUrl = () => {
+
+
+
+
+  return `/api/assistant/status`
+}
+
+export const getAssistantStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<AssistantStatus> => {
+
+  return customFetch<AssistantStatus>(getGetAssistantStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAssistantStatusQueryKey = () => {
+    return [
+    `/api/assistant/status`
+    ] as const;
+    }
+
+
+export const getGetAssistantStatusQueryOptions = <TData = Awaited<ReturnType<typeof getAssistantStatus>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAssistantStatus>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAssistantStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAssistantStatus>>> = ({ signal }) => getAssistantStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAssistantStatus>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetAssistantStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getAssistantStatus>>>
+export type GetAssistantStatusQueryError = ErrorType<unknown>
+
+
+export function useGetAssistantStatus<TData = Awaited<ReturnType<typeof getAssistantStatus>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAssistantStatus>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAssistantStatus>>,
+          TError,
+          Awaited<ReturnType<typeof getAssistantStatus>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetAssistantStatus<TData = Awaited<ReturnType<typeof getAssistantStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAssistantStatus>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAssistantStatus>>,
+          TError,
+          Awaited<ReturnType<typeof getAssistantStatus>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetAssistantStatus<TData = Awaited<ReturnType<typeof getAssistantStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAssistantStatus>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetAssistantStatus<TData = Awaited<ReturnType<typeof getAssistantStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAssistantStatus>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetAssistantStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendAssistantMessageUrl = () => {
+
+
+
+
+  return `/api/assistant/chat`
+}
+
+export const sendAssistantMessage = async (assistantInput: AssistantInput, options?: Parameters<typeof customFetch>[1]): Promise<AssistantReply> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AssistantReply>(getSendAssistantMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(assistantInput)
+  }
+);}
+
+
+
+
+
+export const getSendAssistantMessageMutationKey = () => ['sendAssistantMessage'] as const;
+
+export const getSendAssistantMessageMutationOptions = <TError = ErrorType<AssistantFailure>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAssistantMessage>>, TError,SendAssistantMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendAssistantMessage>>, TError,SendAssistantMessageMutationVariables, TContext> => {
+
+const mutationKey = getSendAssistantMessageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendAssistantMessage>>, SendAssistantMessageMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendAssistantMessage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendAssistantMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendAssistantMessage>>>
+    export type SendAssistantMessageMutationBody = BodyType<AssistantInput>
+    export type SendAssistantMessageMutationError = ErrorType<AssistantFailure>
+    export type SendAssistantMessageMutationVariables = {data: BodyType<AssistantInput>}
+
+    export const useSendAssistantMessage = <TError = ErrorType<AssistantFailure>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAssistantMessage>>, TError,SendAssistantMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof sendAssistantMessage>>,
+        TError,
+        SendAssistantMessageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSendAssistantMessageMutationOptions(options), queryClient);
+    }
 
 export const getHealthCheckUrl = () => {
 

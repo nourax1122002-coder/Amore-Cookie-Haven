@@ -8,6 +8,33 @@
 import * as zod from 'zod';
 
 
+export const GetAssistantStatusResponse = zod.object({
+  "enabled": zod.boolean(),
+  "dailyLimit": zod.number().int(),
+  "perMinuteLimit": zod.number().int()
+})
+
+
+export const sendAssistantMessageBodyMessagesItemContentMax = 1200;
+
+export const sendAssistantMessageBodyMessagesMax = 8;
+
+
+
+export const SendAssistantMessageBody = zod.object({
+  "messages": zod.array(zod.object({
+  "role": zod.enum(['user', 'assistant']),
+  "content": zod.string().min(1).max(sendAssistantMessageBodyMessagesItemContentMax)
+})).min(1).max(sendAssistantMessageBodyMessagesMax)
+})
+
+export const SendAssistantMessageResponse = zod.object({
+  "reply": zod.string(),
+  "model": zod.string(),
+  "zeroCostVerified": zod.boolean()
+})
+
+
 export const HealthCheckResponse = zod.object({
   "status": zod.string()
 })

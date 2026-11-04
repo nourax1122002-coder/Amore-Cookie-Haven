@@ -17,6 +17,7 @@ import type { Cart, Inquiry, Product, ProductInput, StoreSettings, TrackingResul
 import { AdminOrders, OrderDetails } from '@/components/order-status';
 import { PaymentResult, LocalOrdersAdmin } from '@/components/payments';
 import { DeliveryLocationPicker } from '@/components/delivery-location-picker';
+import { SafeAssistantWidget } from '@/components/assistant-widget';
 import type { DeliveryLocation } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -176,6 +177,7 @@ function AppShell() {
       </Switch>
     </main>
     <Footer lang={lang} settings={settings}/>
+    {!path.startsWith('/admin') && <SafeAssistantWidget lang={lang} floating={!['/cart','/checkout'].includes(path)}/>}
     {settings?.whatsapp&&<a className="fixed bottom-5 end-5 z-20 bg-[#5B0D1E] text-white rounded-full px-5 py-3 shadow-lg text-xs font-semibold transition-transform hover:-translate-y-1" href={`https://wa.me/${settings.whatsapp.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" data-testid="link-whatsapp">WhatsApp <ArrowUpRight size={14} className="inline ms-1"/></a>}
   </div>;
 }

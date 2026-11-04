@@ -15,3 +15,13 @@ services or incur charges.
 when free quotas or availability are exhausted, and never silently fall back
 to paid AI routes. Preserve the existing branding. Do not claim the bonus
 features complete until they have also been tested in the published version.
+
+A zero-priced model catalogue entry is not proof that a usable free route
+exists under the required privacy and capability constraints.
+
+**Why:** Live free-provider requests can be throttled or unavailable even when
+the account check and zero-price catalogue discovery succeed.
+
+**How to apply:** Require an actual Arabic model reply and zero-cost metadata
+where available before declaring the assistant ready. Treat failed live
+verification as a blocker, not permission to loosen privacy or pay for access.

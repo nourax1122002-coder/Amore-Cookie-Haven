@@ -7,6 +7,12 @@
  */
 
 export * from './adminSummary';
+export * from './assistantFailure';
+export * from './assistantInput';
+export * from './assistantMessage';
+export * from './assistantMessageRole';
+export * from './assistantReply';
+export * from './assistantStatus';
 export * from './bakingStep';
 export * from './cart';
 export * from './cartDiscountCodesItem';

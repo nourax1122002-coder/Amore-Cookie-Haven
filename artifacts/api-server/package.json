@@ -13,7 +13,8 @@
     "test:orders:http": "node test/run-orders-http.mjs",
     "test:admin:http": "node test/run-orders-http.mjs admin-http",
     "test:tracking:shared": "esbuild src/lib/tracking-limits.pg.test.ts --bundle --platform=node --format=cjs --outfile=/tmp/amore-tracking-shared.test.cjs && NODE_ENV=production node --test /tmp/amore-tracking-shared.test.cjs",
-    "test": "pnpm run test:orders && pnpm run test:orders:http && pnpm run test:admin:http && pnpm run test:tracking:shared && pnpm run test:payments"
+    "test:assistant": "node test/run-assistant.mjs",
+    "test": "pnpm run test:orders && pnpm run test:orders:http && pnpm run test:admin:http && pnpm run test:tracking:shared && pnpm run test:payments && pnpm run test:assistant"
   },
   "dependencies": {
     "@clerk/express": "^2.1.86",

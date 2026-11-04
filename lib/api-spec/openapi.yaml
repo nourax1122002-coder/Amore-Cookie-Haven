@@ -6,6 +6,49 @@ info:
 servers:
   - url: /api
 paths:
+  /assistant/status:
+    get:
+      operationId: getAssistantStatus
+      responses:
+        "200":
+          description: Public assistant configuration without credentials
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistantStatus" }
+  /assistant/chat:
+    post:
+      operationId: sendAssistantMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssistantInput" }
+      responses:
+        "200":
+          description: Genuine Arabic model response
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistantReply" }
+        "400":
+          description: Invalid or private input
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistantFailure" }
+        "429":
+          description: Shared free allowance or per-client limit
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistantFailure" }
+        "503":
+          description: No safe free route, configuration or temporary service failure
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistantFailure" }
+        "504":
+          description: Bounded assistant request timed out
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistantFailure" }
   /healthz:
     get:
       operationId: healthCheck
@@ -294,6 +337,42 @@ paths:
               schema: { $ref: "#/components/schemas/Product" }
 components:
   schemas:
+    AssistantStatus:
+      type: object
+      required: [enabled, dailyLimit, perMinuteLimit]
+      properties:
+        enabled: { type: boolean }
+        dailyLimit: { type: integer }
+        perMinuteLimit: { type: integer }
+    AssistantMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role: { type: string, enum: [user, assistant] }
+        content: { type: string, minLength: 1, maxLength: 1200 }
+    AssistantInput:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items: { $ref: "#/components/schemas/AssistantMessage" }
+    AssistantReply:
+      type: object
+      required: [reply, model, zeroCostVerified]
+      properties:
+        reply: { type: string }
+        model: { type: string }
+        zeroCostVerified: { type: boolean }
+    AssistantFailure:
+      type: object
+      required: [error, code]
+      properties:
+        error: { type: string }
+        code: { type: string }
+        retryAfterSeconds: { type: integer, minimum: 1 }
     HealthStatus:
       type: object
       required: [status]

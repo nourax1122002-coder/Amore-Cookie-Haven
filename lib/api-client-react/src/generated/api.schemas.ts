@@ -5,6 +5,50 @@
  * Amore Cookies storefront and management API
  * OpenAPI spec version: 1.0.0
  */
+export interface AssistantStatus {
+  enabled: boolean;
+  dailyLimit: number;
+  perMinuteLimit: number;
+}
+
+export type AssistantMessageRole = typeof AssistantMessageRole[keyof typeof AssistantMessageRole];
+
+
+export const AssistantMessageRole = {
+  user: 'user',
+  assistant: 'assistant',
+} as const;
+
+export interface AssistantMessage {
+  role: AssistantMessageRole;
+  /**
+     * @minLength 1
+     * @maxLength 1200
+     */
+  content: string;
+}
+
+export interface AssistantInput {
+  /**
+     * @minItems 1
+     * @maxItems 8
+     */
+  messages: AssistantMessage[];
+}
+
+export interface AssistantReply {
+  reply: string;
+  model: string;
+  zeroCostVerified: boolean;
+}
+
+export interface AssistantFailure {
+  error: string;
+  code: string;
+  /** @minimum 1 */
+  retryAfterSeconds?: number;
+}
+
 export interface HealthStatus {
   status: string;
 }
