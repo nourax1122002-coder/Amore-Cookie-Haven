@@ -2,3 +2,4 @@
 - [Shopify order access](shopify-order-access.md) — inspect live grants rather than assuming catalog-only scopes; phone access needs separate protected-data approval.
 - [Live payment approval](live-payment-approval.md) — explain provider fees first; no live transactions or paid services without the owner's approval.
 - [Shopify cart markets](shopify-market-cart.md) — a forced, unconfigured Kuwait Market can silently zero cart quantities despite catalog stock.
+- [Free services and release](free-services-and-release.md) — no paid map/AI services; explain quotas first and verify the published bonus features before claiming completion.
