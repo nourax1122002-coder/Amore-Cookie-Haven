@@ -4,7 +4,7 @@
     "rootDir": "..",
     "incremental": false
   },
-  "include": ["../src", "./orders-http", "./admin-http"],
+  "include": ["../src", "./orders-http", "./admin-http", "./payments"],
   "references": [
     { "path": "../../../lib/db" },
     { "path": "../../../lib/api-zod" }

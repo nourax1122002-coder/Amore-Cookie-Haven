@@ -21,6 +21,12 @@ export const requireAdmin: RequestHandler = async (req, _res, next) => {
 };
 
 export const sameOrigin: RequestHandler = (req, _res, next) => {
+  // Only this exact route bypasses browser CSRF checks. Its handler requires
+  // MyFatoorah's V2 HMAC and independently re-verifies the payment via API.
+  if (req.method === "POST" && req.path === "/payments/webhook") {
+    if (!req.is("application/json")) throw new HttpError(415, "Send application/json.");
+    next(); return;
+  }
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) { next(); return; }
   const origin = req.get("origin");
   const host = (req.get("x-forwarded-host") ?? req.get("host") ?? "").split(",")[0]?.trim();

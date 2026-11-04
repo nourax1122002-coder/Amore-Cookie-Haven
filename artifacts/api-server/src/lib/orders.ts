@@ -2,7 +2,8 @@ import { timingSafeEqual, createHash } from "node:crypto";
 import { shopifyAdminRequest } from "./shopify-admin-api";
 import { HttpError } from "./errors";
 
-// Shopify remains the only order ledger. Never cache customer phone data.
+// Historical Shopify orders remain read-only. New MyFatoorah orders use
+// local-orders.ts. Never cache customer phone data from Shopify.
 export interface ShopifyOrder {
   name: string;
   phone?: string | null;

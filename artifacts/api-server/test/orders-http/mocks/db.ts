@@ -24,3 +24,4 @@ export const db = new Proxy({}, {
 });
 export const inquiriesTable = {};
 export const storeSettingsTable = {};
+export { customerOrdersTable } from "../../../../../lib/db/src/schema/customer-orders";

@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { pruneSecurityCounters } from "./lib/tracking-limits";
+import { startPaymentReconciliation } from "./lib/local-orders";
 
 const rawPort = process.env["PORT"];
 
@@ -21,6 +22,7 @@ const prune = () => pruneSecurityCounters().catch(() => {
   logger.error({ errorType: "SecurityCounterCleanupFailed" }, "Security counter cleanup failed");
 });
 void prune();
+startPaymentReconciliation();
 setInterval(() => { void prune(); }, 60_000).unref();
 
 app.listen(port, (err) => {

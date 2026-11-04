@@ -187,6 +187,14 @@ export interface CartInput {
   note?: string;
 }
 
+export type CheckoutInputLang = typeof CheckoutInputLang[keyof typeof CheckoutInputLang];
+
+
+export const CheckoutInputLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
 export interface DeliveryAddressInput {
   /**
      * @minLength 1
@@ -211,6 +219,8 @@ export interface DeliveryAddressInput {
 }
 
 export interface CheckoutInput {
+  requestKey?: string;
+  lang?: CheckoutInputLang;
   email?: string;
   /** @maxLength 30 */
   phone?: string;
@@ -309,6 +319,7 @@ export const OrderStatusStage = {
   out_for_delivery: 'out_for_delivery',
   delivered: 'delivered',
   cancelled: 'cancelled',
+  review: 'review',
 } as const;
 
 export type OrderStatusItemsItem = {
@@ -335,6 +346,41 @@ export interface TrackingResult {
   order?: OrderStatus;
 }
 
+export interface PaymentAvailability {
+  enabled: boolean;
+  /** @nullable */
+  shippingFils: number | null;
+  methods: string[];
+}
+
+export type OrderFulfillmentInputStage = typeof OrderFulfillmentInputStage[keyof typeof OrderFulfillmentInputStage];
+
+
+export const OrderFulfillmentInputStage = {
+  preparing: 'preparing',
+  out_for_delivery: 'out_for_delivery',
+  delivered: 'delivered',
+} as const;
+
+export interface OrderFulfillmentInput {
+  stage: OrderFulfillmentInputStage;
+}
+
+export interface OperationResult {
+  ok: boolean;
+}
+
+export type LocalOrder = OrderStatus & {
+  id: string;
+  phone: string;
+  address: DeliveryAddressInput;
+  note: string;
+  subtotal: string;
+  shipping: string;
+  stockStatus: string;
+  invoiceId: string;
+};
+
 export interface OrderPage {
   orders: OrderStatus[];
   hasNextPage: boolean;
@@ -354,6 +400,11 @@ export interface AdminSummary {
 
 export type StartCheckout200 = {
   url: string;
+};
+
+export type GetPaymentOrderParams = {
+id: string;
+token: string;
 };
 
 export type ListAdminOrdersParams = {

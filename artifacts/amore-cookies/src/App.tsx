@@ -11,9 +11,11 @@ import {
   useGetAdminSettings, useGetAdminSummary, useGetCart, useGetProduct, useGetStore,
   useListAdminProducts, useListInquiries, useListProducts, useSaveProduct, useSaveSettings,
   useStartCheckout, useTrackOrder, useUpdateCart, useUpdateInquiry,
+  useGetPaymentAvailability,
 } from '@workspace/api-client-react';
 import type { Cart, Inquiry, Product, ProductInput, StoreSettings, TrackingResult } from '@workspace/api-client-react';
 import { AdminOrders, OrderDetails } from '@/components/order-status';
+import { PaymentResult, LocalOrdersAdmin } from '@/components/payments';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -48,7 +50,7 @@ const copy: Record<Lang, Record<string, string>> = {
     step1:'Heat the oven', step1t:'Preheat to 175°C.', step2:'Bake from frozen', step2t:'Place cookies in the oven for 10–12 minutes at 150°C.', step3:'Let them rest', step3t:'Take them out and let them cool outside the oven before serving.',
     ingredients:'Ingredients', storage:'Storage & baking', awaiting:'Ingredients awaiting approval.', wholesale:'A good thing for your café.', wholesaleText:'Tell us a little about your café and what you have in mind. We’ll be in touch to explore a fit.',
     inquiry:'Start a café conversation', browse:'Browse the collection', all:'All cookies', details:'Discover this dough', add:'Add to bag', shopBlocked:'Online checkout is not available yet. The shop is preparing its KWD checkout setup.', piece:'pieces',
-    checkoutNote:'Your bag uses approved KWD catalog pricing. Checkout is currently unavailable while the shop currency is configured in USD.',
+    checkoutNote:'Prices are in KWD. Live payment opens only after the merchant account, fees and delivery settings are approved.',
     empty:'Your bag is waiting for something lovely.', continue:'Continue browsing', subtotal:'Subtotal', discount:'Discount', total:'Total', shipping:'Shipping is calculated at checkout.',
     review:'Review your bag', checkout:'Pay now', email:'Email', phone:'Phone', note:'Order note (optional)', promo:'Discount code', apply:'Apply code',
     notReady:'Checkout is not available yet. Your bag is saved; please check back later.', policies:'Policies', tracking:'Track an order',
@@ -77,7 +79,7 @@ const copy: Record<Lang, Record<string, string>> = {
     step1:'سخّني الفرن', step1t:'سخّني الفرن مسبقاً إلى ١٧٥°م.', step2:'اخبزي العجينة', step2t:'ضعي الكوكيز في الفرن لمدة ١٠–١٢ دقيقة على ١٥٠°م.', step3:'اتركيها ترتاح', step3t:'أخرجي الكوكيز واتركيه يبرد خارج الفرن قبل التقديم.',
     ingredients:'المكونات', storage:'الحفظ والخبز', awaiting:'المكونات بانتظار الاعتماد.', wholesale:'حلاوة تناسب مقهاك.', wholesaleText:'أخبرينا قليلاً عن مقهاك وما تفكرين به. سنتواصل معك لاستكشاف فرص التعاون.',
     inquiry:'ابدئي محادثة للمقاهي', browse:'تصفحي المجموعة', all:'كل الكوكيز', details:'اكتشفي العجينة', add:'أضيفي إلى السلة', shopBlocked:'الشراء الإلكتروني غير متاح حالياً. يجري تجهيز إعدادات الدفع بالدينار الكويتي.',
-    checkoutNote:'تعرض السلة أسعار الكتالوج المعتمدة بالدينار الكويتي. الدفع غير متاح حالياً لأن عملة المتجر مضبوطة بالدولار الأمريكي.',
+    checkoutNote:'الأسعار بالدينار الكويتي. يتاح الدفع الحقيقي بعد اعتماد حساب التاجر والرسوم وإعدادات التوصيل.',
     empty:'سلتك تنتظر شيئاً لذيذاً.', continue:'تابعي التصفح', subtotal:'المجموع الفرعي', discount:'الخصم', total:'الإجمالي', shipping:'تُحسب رسوم التوصيل في صفحة الدفع.',
     review:'راجعي سلتك', checkout:'الدفع الآن', email:'البريد الإلكتروني', phone:'رقم الهاتف', note:'ملاحظة الطلب (اختياري)', promo:'رمز الخصم', apply:'تطبيق الرمز',
     notReady:'الدفع غير متاح حالياً. سلتك محفوظة، يرجى العودة لاحقاً.', policies:'السياسات', tracking:'تتبع طلب', orderNumber:'رقم الطلب', track:'تحققي من حالة الطلب',
@@ -163,6 +165,7 @@ function AppShell() {
         <Route path="/wholesale"><WholesalePage lang={lang}/></Route>
         <Route path="/cart"><CartPage lang={lang}/></Route>
         <Route path="/checkout"><CheckoutPage lang={lang} store={store}/></Route>
+        <Route path="/payment/:result"><PaymentResult lang={lang}/></Route>
         <Route path="/tracking"><TrackingPage lang={lang}/></Route>
         <Route path="/policies"><PoliciesPage lang={lang} settings={settings}/></Route>
         <Route path="/admin"><AdminPage lang={lang}/></Route>
@@ -342,9 +345,13 @@ function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shop
   const c=copy[lang], cartQ=useGetCart({query:{queryKey:getGetCartQueryKey()}}), cart=cartQ.data;
   const start=useStartCheckout();const [phone,setPhone]=useState(''),[note,setNote]=useState('');
   const [address,setAddress]=useState({area:'',block:'',street:'',house:''});
-  const ready=Boolean(store?.checkoutReady&&store.settings.checkoutEnabled&&store.shopCurrency==='KWD'&&cart?.checkoutReady&&cart.lines.length);
-  return <div className="container-wide py-14 md:py-20"><span className="eyebrow">{c.checkout}</span><p className="mt-4 text-xs text-[#896a71] max-w-2xl">{c.checkoutNote}</p>
-    {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={e=>{e.preventDefault();if(!ready||Object.values(address).some(value=>!value.trim()))return;start.mutate({data:{address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim()},phone:phone||undefined,note:note||undefined}},{onSuccess:r=>{window.location.assign(r.url)}})}}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
+  const [requestKey]=useState(()=>crypto.randomUUID());
+  const availability=useGetPaymentAvailability({query:{refetchInterval:60000}});
+  const ready=Boolean(store?.checkoutReady&&availability.data?.enabled&&cart?.checkoutReady&&cart.lines.length);
+  const subtotal=cart?.lines.reduce((sum,line)=>sum+Math.round(line.price*1000)*line.quantity,0)??0;
+  const shipping=availability.data?.shippingFils;
+  return <div className="container-wide py-14 md:py-20"><span className="eyebrow">{c.checkout}</span><p className="mt-4 text-xs text-[#896a71] max-w-2xl">{lang==='ar'?'تتم معالجة الدفع بأمان عبر ماي فاتورة. لا نجمع بيانات بطاقتك في الموقع.':'Payments are processed securely by MyFatoorah. We never collect your card details.'}</p>
+    {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={e=>{e.preventDefault();if(!ready||Object.values(address).some(value=>!value.trim()))return;start.mutate({data:{requestKey,lang,address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim()},phone:phone.trim(),note:note||undefined}},{onSuccess:r=>{window.location.assign(r.url)}})}}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
       <fieldset className="grid sm:grid-cols-2 gap-5">
         <legend className="field-label mb-3">{lang==='ar'?'عنوان التوصيل':'Delivery address'}</legend>
         {([
@@ -354,7 +361,17 @@ function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shop
           ['house',lang==='ar'?'رقم المنزل':'House number'],
         ] as const).map(([field,label])=><label key={field}><span className="field-label">{label} *</span><input name={field} className="field" required maxLength={100} pattern=".*\S.*" value={address[field]} onChange={e=>setAddress(previous=>({...previous,[field]:e.target.value}))}/></label>)}
       </fieldset>
-      <label><span className="field-label">{c.phone}</span><input className="field" type="tel" value={phone} onChange={e=>setPhone(e.target.value)}/></label><label><span className="field-label">{c.note}</span><textarea className="field min-h-28" value={note} onChange={e=>setNote(e.target.value)}/></label><div className="rounded-xl bg-[#f8e8ec] p-4 text-xs leading-6 text-[#795963]">{lang==='ar'?'تُستكمل بيانات العنوان والتوصيل وطريقة الدفع بأمان في الخطوة التالية.':'Complete your address, delivery details and payment method securely in the next step.'} {c.shipping}</div>{!ready&&<p className="rounded-xl bg-[#fff1f3] p-4 text-xs leading-6 text-[#763246]">{c.notReady}</p>}{start.isError&&<p className="text-xs text-red-700">{lang==='ar'?'تعذر بدء الدفع. يرجى المحاولة مجدداً.':'Checkout could not be started. Please retry.'}</p>}<button disabled={!ready||start.isPending} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:c.checkout}<ExternalLink size={14}/></button></form><aside className="card-surface p-6 h-fit"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.bag}</h2>{cart.lines.map(line=><div key={line.id} className="flex justify-between gap-4 py-4 border-b border-[#efdee2] text-xs"><span>{line.title} × {line.quantity}</span><strong>{(line.price*line.quantity).toFixed(3)} KWD</strong></div>)}<div className="flex justify-between pt-5 font-semibold text-sm"><span>{c.total}</span><span>{cart.total.toFixed(3)} KWD</span></div></aside></div>}
+      <label><span className="field-label">{c.phone} *</span><input className="field" name="phone" type="tel" required minLength={8} maxLength={30} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)}/></label>
+      <label><span className="field-label">{c.note}</span><textarea className="field min-h-28" maxLength={2000} value={note} onChange={e=>setNote(e.target.value)}/></label>
+      <div className="rounded-xl bg-[#f8e8ec] p-4 text-xs leading-6 text-[#795963]">{lang==='ar'?'تظهر طرق الدفع المفعّلة لحساب المتجر في صفحة ماي فاتورة الآمنة.':'Available methods appear on MyFatoorah’s secure payment page.'}{availability.data?.methods.length?<p dir="ltr" className="mt-2">{availability.data.methods.join(' · ')}</p>:null}</div>
+      {!ready&&<p role="status" className="rounded-xl bg-[#fff1f3] p-4 text-xs leading-6 text-[#763246]">{lang==='ar'?'الدفع الحقيقي غير مفعّل بعد. بانتظار اعتماد حساب التاجر والرسوم وإعدادات التوصيل.':'Live payments are not enabled yet. Merchant approval, accepted fees and delivery configuration are required.'}</p>}
+      {start.isError&&<p role="alert" className="text-xs text-red-700">{start.error.message || (lang==='ar'?'تعذر بدء الدفع. لا تعيدي الدفع إذا كانت هناك عملية قيد التحقق.':'Checkout could not be started. Do not pay again while a payment is being verified.')}</p>}
+      <button disabled={!ready||start.isPending} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:c.checkout}<ExternalLink size={14}/></button>
+      </form><aside className="card-surface p-6 h-fit"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.bag}</h2>{cart.lines.map(line=><div key={line.id} className="flex justify-between gap-4 py-4 border-b border-[#efdee2] text-xs"><span>{line.title} × {line.quantity}</span><strong>{(line.price*line.quantity).toFixed(3)} KWD</strong></div>)}
+      <div className="flex justify-between pt-5 text-sm"><span>{lang==='ar'?'التوصيل':'Delivery'}</span><span>{shipping==null?(lang==='ar'?'بانتظار الاعتماد':'Awaiting approval'):`${(shipping/1000).toFixed(3)} KWD`}</span></div>
+      <div className="flex justify-between pt-5 font-semibold text-sm"><span>{c.total}</span><span>{((subtotal+(shipping??0))/1000).toFixed(3)} KWD</span></div>
+      {shipping==null&&<p className="mt-3 text-xs text-[#896a71]">{lang==='ar'?'المبلغ لا يشمل التوصيل حتى اعتماد رسومه.':'Delivery is excluded until its charge is approved.'}</p>}
+      </aside></div>}
   </div>;
 }
 function WholesalePage({lang}:{lang:Lang}) {
@@ -389,7 +406,7 @@ function AdminConsole({lang,section,setSection}:{lang:Lang;section:'overview'|'p
     {section==='products'&&<AdminProducts lang={lang} products={adminProducts.data||[]} loading={adminProducts.isLoading} error={adminProducts.isError} retry={()=>adminProducts.refetch()}/>}
     {section==='inquiries'&&<AdminInquiries lang={lang} items={inquiries.data||[]} loading={inquiries.isLoading} error={inquiries.isError} retry={()=>inquiries.refetch()}/>}
     {section==='settings'&&<AdminSettings lang={lang}/>}
-    {section==='orders'&&<AdminOrders lang={lang} adminUrl={summary.data?.shopAdminUrl}/>}
+    {section==='orders'&&<div className="grid gap-10"><LocalOrdersAdmin lang={lang}/><details className="card-surface p-5"><summary className="cursor-pointer text-sm text-[#5B0D1E]">{lang==='ar'?'طلبات Shopify السابقة':'Previous Shopify orders'}</summary><div className="mt-5"><AdminOrders lang={lang} adminUrl={summary.data?.shopAdminUrl}/></div></details></div>}
     {section==='shopify'&&<ShopifyLinks lang={lang} url={summary.data?.shopAdminUrl}/>}
   </div>;
 }

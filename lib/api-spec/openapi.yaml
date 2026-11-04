@@ -86,6 +86,65 @@ paths:
                 required: [url]
                 properties:
                   url: { type: string }
+  /payments/availability:
+    get:
+      operationId: getPaymentAvailability
+      responses:
+        "200":
+          description: Live payment readiness and approved delivery charge
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentAvailability" }
+  /payments/order:
+    get:
+      operationId: getPaymentOrder
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: string } }
+        - { name: token, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Receipt protected by an unguessable order token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderStatus" }
+  /admin/local-orders:
+    get:
+      operationId: listLocalOrders
+      responses:
+        "200":
+          description: Locally managed orders, administrator only
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LocalOrder" }
+  /admin/local-orders/{id}:
+    patch:
+      operationId: updateLocalOrder
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrderFulfillmentInput" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResult" }
+  /admin/local-orders/{id}/reconcile:
+    post:
+      operationId: reconcileLocalOrder
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Payment rechecked with provider
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResult" }
   /wholesale:
     post:
       operationId: createInquiry
@@ -367,6 +426,8 @@ components:
     CheckoutInput:
       type: object
       properties:
+        requestKey: { type: string, format: uuid }
+        lang: { type: string, enum: [ar, en] }
         email: { type: string, format: email }
         phone: { type: string, maxLength: 30 }
         note: { type: string, maxLength: 2000 }
@@ -427,7 +488,7 @@ components:
         number: { type: string }
         stage:
           type: string
-          enum: [received, confirmed, preparing, partially_fulfilled, shipped, out_for_delivery, delivered, cancelled]
+          enum: [received, confirmed, preparing, partially_fulfilled, shipped, out_for_delivery, delivered, cancelled, review]
         financialStatus: { type: string }
         fulfillmentStatus: { type: string }
         createdAt: { type: string }
@@ -442,6 +503,39 @@ components:
             properties:
               title: { type: string }
               quantity: { type: integer }
+    PaymentAvailability:
+      type: object
+      required: [enabled, shippingFils, methods]
+      properties:
+        enabled: { type: boolean }
+        shippingFils: { type: [integer, "null"] }
+        methods:
+          type: array
+          items: { type: string }
+    OrderFulfillmentInput:
+      type: object
+      required: [stage]
+      properties:
+        stage: { type: string, enum: [preparing, out_for_delivery, delivered] }
+    OperationResult:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
+    LocalOrder:
+      allOf:
+        - { $ref: "#/components/schemas/OrderStatus" }
+        - type: object
+          required: [id, phone, address, note, subtotal, shipping, stockStatus, invoiceId]
+          properties:
+            id: { type: string }
+            phone: { type: string }
+            address: { $ref: "#/components/schemas/DeliveryAddressInput" }
+            note: { type: string }
+            subtotal: { type: string }
+            shipping: { type: string }
+            stockStatus: { type: string }
+            invoiceId: { type: string }
     OrderPage:
       type: object
       required: [orders, hasNextPage, endCursor, refreshedAt]

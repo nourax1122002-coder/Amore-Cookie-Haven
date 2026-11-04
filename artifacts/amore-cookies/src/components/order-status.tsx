@@ -3,7 +3,8 @@ import { useListAdminOrders, type OrderStatus } from "@workspace/api-client-reac
 
 const stages: Record<string, [string, string]> = {
   received: ["Received", "تم الاستلام"],
-  confirmed: ["Confirmed by Shopify", "مؤكد في Shopify"],
+  confirmed: ["Confirmed", "مؤكد"],
+  review: ["Administrator review required", "بانتظار مراجعة الإدارة"],
   preparing: ["Preparing", "قيد التجهيز"],
   partially_fulfilled: ["Partially shipped", "تم شحن جزء من الطلب"],
   shipped: ["Shipped", "تم الشحن"],

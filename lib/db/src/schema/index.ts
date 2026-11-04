@@ -20,3 +20,4 @@
 export * from "./store-settings";
 export * from "./inquiries";
 export * from "./security-counters";
+export * from "./customer-orders";

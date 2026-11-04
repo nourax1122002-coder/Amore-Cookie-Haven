@@ -14,6 +14,7 @@ import { readSettings, writeSettings } from "../lib/store-settings";
 import { readiness } from "../lib/cart";
 import { HttpError } from "../lib/errors";
 import { listOrders } from "../lib/orders";
+import { paymentConfiguration } from "../lib/myfatoorah";
 
 const router = Router();
 router.use("/admin", (_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
@@ -38,9 +39,9 @@ router.get("/admin/summary", async (_req, res): Promise<void> => {
     checkoutEnabled: ready.checkoutReady,
     notices: [
       ...(ready.launchMessage ? [ready.launchMessage] : []),
-      "Sales, orders, discount codes, delivery zones, shipping rates and payment providers are managed in Shopify. / تدار المبيعات والطلبات وأكواد الخصم ومناطق التوصيل ورسومه وطرق الدفع في Shopify.",
+      "New orders and verified MyFatoorah payments are managed in Amore Cookies. Shopify remains the catalog and stock source. / تُدار الطلبات الجديدة ومدفوعات ماي فاتورة المؤكدة داخل أموري؛ المنتجات والمخزون مرتبطان بـShopify.",
       "Stock starts at zero until approved quantities are entered. / يبدأ المخزون بصفر حتى إدخال الكميات الفعلية.",
-      "Order tracking reads live Shopify data. Order updates and cancellations remain in Shopify. / التتبع يقرأ بيانات Shopify الفعلية. تحديث الطلبات وإلغاؤها يتمان في Shopify.",
+      ...paymentConfiguration().missing.map(key => `Payment setup required: ${key}`),
     ],
   }));
 });
@@ -56,7 +57,7 @@ router.put("/admin/settings", async (req, res): Promise<void> => {
   }
   if (input.checkoutEnabled) {
     const ready = await readiness();
-    if (ready.shopCurrency !== "KWD") throw new HttpError(409, "Set the Shopify store currency to KWD before enabling checkout. / اضبطي عملة Shopify إلى الدينار الكويتي قبل تفعيل الشراء.");
+    if (!paymentConfiguration().ready) throw new HttpError(409, "Approve and configure the live MyFatoorah account, fees and delivery before enabling checkout. / يجب اعتماد وإعداد حساب ماي فاتورة الحقيقي والرسوم والتوصيل أولاً.");
   }
   res.json(SaveSettingsResponse.parse(await writeSettings(input)));
 });

@@ -10,3 +10,4 @@ Do not activate live transactions until the merchant account is approved and the
 **Why:** The user explicitly required these safeguards for the store.
 
 **How to apply:** Keep payment activation blocked until these conditions are met. Preserve the existing design, products, and branding. Never put payment credentials in chat, browser code, or project documentation.
+

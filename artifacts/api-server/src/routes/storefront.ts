@@ -9,7 +9,8 @@ import {
   CreateInquiryBody, CreateInquiryResponse, TrackOrderBody, TrackOrderResponse,
 } from "@workspace/api-zod";
 import { getCatalog, productByHandle } from "../lib/catalog";
-import { rawCart, cartId, presentCart, mutateCart, checkout, readiness } from "../lib/cart";
+import { rawCart, cartId, presentCart, mutateCart, readiness } from "../lib/cart";
+import { localCheckout, localTracking } from "../lib/local-orders";
 import { HttpError } from "../lib/errors";
 import { trackOrder } from "../lib/orders";
 import { createTrackingLimits, trackingStoreUnavailable } from "../lib/tracking-limits";
@@ -41,7 +42,7 @@ router.post("/cart", mutationLimit, async (req, res): Promise<void> => {
 });
 router.post("/checkout", mutationLimit, async (req, res): Promise<void> => {
   res.setHeader("Cache-Control", "no-store");
-  res.json(StartCheckoutResponse.parse(await checkout(req, StartCheckoutBody.parse(req.body))));
+  res.json(StartCheckoutResponse.parse(await localCheckout(req, StartCheckoutBody.parse(req.body))));
 });
 router.post("/wholesale", inquiryLimit, async (req, res): Promise<void> => {
   const input = CreateInquiryBody.parse(req.body);
@@ -60,6 +61,7 @@ router.post("/tracking", (_req: Request, res: Response, next: NextFunction) => {
   res.setHeader("Cache-Control", "no-store"); next();
 }, ...trackingLimits, trackingStoreUnavailable, async (req: Request, res: Response): Promise<void> => {
   const input = TrackOrderBody.parse(req.body);
-  res.json(TrackOrderResponse.parse(await trackOrder(input.orderNumber, input.phone)));
+  res.json(TrackOrderResponse.parse(await (/^#?AM-/i.test(input.orderNumber.trim())
+    ? localTracking(input.orderNumber.trim(), input.phone) : trackOrder(input.orderNumber, input.phone))));
 });
 export default router;

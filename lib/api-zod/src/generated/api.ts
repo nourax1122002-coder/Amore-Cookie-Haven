@@ -223,6 +223,8 @@ export const startCheckoutBodyAddressHouseMax = 100;
 
 
 export const StartCheckoutBody = zod.object({
+  "requestKey": zod.string().uuid().optional(),
+  "lang": zod.enum(['ar', 'en']).optional(),
   "email": zod.string().email().optional(),
   "phone": zod.string().max(startCheckoutBodyPhoneMax).optional(),
   "note": zod.string().max(startCheckoutBodyNoteMax).optional(),
@@ -236,6 +238,97 @@ export const StartCheckoutBody = zod.object({
 
 export const StartCheckoutResponse = zod.object({
   "url": zod.string()
+})
+
+
+export const GetPaymentAvailabilityResponse = zod.object({
+  "enabled": zod.boolean(),
+  "shippingFils": zod.number().int().nullable(),
+  "methods": zod.array(zod.string())
+})
+
+
+export const GetPaymentOrderQueryParams = zod.object({
+  "id": zod.coerce.string(),
+  "token": zod.coerce.string()
+})
+
+export const GetPaymentOrderResponse = zod.object({
+  "number": zod.string(),
+  "stage": zod.enum(['received', 'confirmed', 'preparing', 'partially_fulfilled', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'review']),
+  "financialStatus": zod.string(),
+  "fulfillmentStatus": zod.string(),
+  "createdAt": zod.string(),
+  "total": zod.string(),
+  "currency": zod.string(),
+  "hasMoreItems": zod.boolean(),
+  "items": zod.array(zod.object({
+  "title": zod.string(),
+  "quantity": zod.number().int()
+}))
+})
+
+
+export const listLocalOrdersResponseTwoAddressAreaMax = 100;
+
+export const listLocalOrdersResponseTwoAddressBlockMax = 100;
+
+export const listLocalOrdersResponseTwoAddressStreetMax = 100;
+
+export const listLocalOrdersResponseTwoAddressHouseMax = 100;
+
+
+
+export const ListLocalOrdersResponseItem = zod.object({
+  "number": zod.string(),
+  "stage": zod.enum(['received', 'confirmed', 'preparing', 'partially_fulfilled', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'review']),
+  "financialStatus": zod.string(),
+  "fulfillmentStatus": zod.string(),
+  "createdAt": zod.string(),
+  "total": zod.string(),
+  "currency": zod.string(),
+  "hasMoreItems": zod.boolean(),
+  "items": zod.array(zod.object({
+  "title": zod.string(),
+  "quantity": zod.number().int()
+}))
+}).and(zod.object({
+  "id": zod.string(),
+  "phone": zod.string(),
+  "address": zod.object({
+  "area": zod.string().min(1).max(listLocalOrdersResponseTwoAddressAreaMax),
+  "block": zod.string().min(1).max(listLocalOrdersResponseTwoAddressBlockMax),
+  "street": zod.string().min(1).max(listLocalOrdersResponseTwoAddressStreetMax),
+  "house": zod.string().min(1).max(listLocalOrdersResponseTwoAddressHouseMax)
+}),
+  "note": zod.string(),
+  "subtotal": zod.string(),
+  "shipping": zod.string(),
+  "stockStatus": zod.string(),
+  "invoiceId": zod.string()
+}))
+export const ListLocalOrdersResponse = zod.array(ListLocalOrdersResponseItem)
+
+
+export const UpdateLocalOrderParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateLocalOrderBody = zod.object({
+  "stage": zod.enum(['preparing', 'out_for_delivery', 'delivered'])
+})
+
+export const UpdateLocalOrderResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+export const ReconcileLocalOrderParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ReconcileLocalOrderResponse = zod.object({
+  "ok": zod.boolean()
 })
 
 
@@ -327,7 +420,7 @@ export const TrackOrderResponse = zod.object({
   "statusUrl": zod.string(),
   "order": zod.object({
   "number": zod.string(),
-  "stage": zod.enum(['received', 'confirmed', 'preparing', 'partially_fulfilled', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
+  "stage": zod.enum(['received', 'confirmed', 'preparing', 'partially_fulfilled', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'review']),
   "financialStatus": zod.string(),
   "fulfillmentStatus": zod.string(),
   "createdAt": zod.string(),
@@ -356,7 +449,7 @@ export const ListAdminOrdersQueryParams = zod.object({
 export const ListAdminOrdersResponse = zod.object({
   "orders": zod.array(zod.object({
   "number": zod.string(),
-  "stage": zod.enum(['received', 'confirmed', 'preparing', 'partially_fulfilled', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
+  "stage": zod.enum(['received', 'confirmed', 'preparing', 'partially_fulfilled', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'review']),
   "financialStatus": zod.string(),
   "fulfillmentStatus": zod.string(),
   "createdAt": zod.string(),

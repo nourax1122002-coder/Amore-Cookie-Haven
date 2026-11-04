@@ -1,3 +1,4 @@
 - [Shopify inventory API compatibility](shopify-inventory-api.md) — inspect the live schema for inventory write requirements; older examples do not match the connector API.
 - [Shopify order access](shopify-order-access.md) — inspect live grants rather than assuming catalog-only scopes; phone access needs separate protected-data approval.
 - [Live payment approval](live-payment-approval.md) — explain provider fees first; no live transactions or paid services without the owner's approval.
+- [Shopify cart markets](shopify-market-cart.md) — a forced, unconfigured Kuwait Market can silently zero cart quantities despite catalog stock.

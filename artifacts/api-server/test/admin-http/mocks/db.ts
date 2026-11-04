@@ -2,6 +2,7 @@
 import { inquiriesTable } from "../../../../../lib/db/src/schema/inquiries";
 import { storeSettingsTable } from "../../../../../lib/db/src/schema/store-settings";
 export { inquiriesTable, storeSettingsTable };
+export { customerOrdersTable } from "../../../../../lib/db/src/schema/customer-orders";
 
 const fixture = () => ({
   id: 17, cafeName: "Fictional cafe", contactName: "Test contact",

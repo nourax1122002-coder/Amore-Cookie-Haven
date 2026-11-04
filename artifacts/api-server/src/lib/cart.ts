@@ -4,8 +4,9 @@ import { shopifyStorefrontRequest } from "./shopifyStorefrontClient";
 import { getCatalog, getShopCurrency } from "./catalog";
 import { readSettings } from "./store-settings";
 import { HttpError } from "./errors";
+import { paymentConfiguration } from "./myfatoorah";
 
-const CART_FIELDS = `id checkoutUrl totalQuantity
+const CART_FIELDS = `id checkoutUrl totalQuantity buyerIdentity { countryCode }
   discountCodes { code applicable }
   cost { subtotalAmount { amount currencyCode } totalAmount { amount currencyCode } }
   lines(first:250) { nodes {
@@ -15,6 +16,7 @@ const CART_FIELDS = `id checkoutUrl totalQuantity
     } }
   } }`;
 type RawCart = {
+  buyerIdentity?: { countryCode?: string | null };
   id: string; checkoutUrl: string; totalQuantity: number;
   discountCodes: Array<{ code: string; applicable: boolean }>;
   cost: { subtotalAmount: { amount: string; currencyCode: string }; totalAmount: { amount: string; currencyCode: string } };
@@ -38,17 +40,27 @@ function rememberCart(req: Request, res: Response, id: string) {
 export async function rawCart(id?: string): Promise<RawCart | null> {
   if (!id) return null;
   const data = await shopifyStorefrontRequest<{ cart: RawCart | null }>(`query($id:ID!) { cart(id:$id) { ${CART_FIELDS} } }`, { id });
+  // Legacy carts forced a Kuwait Shopify Market, which is not enabled here
+  // and silently clamps quantities to zero. Direct-payment delivery stays
+  // local to Kuwait; Shopify's default catalog market is only for selection.
+  if (data.cart?.buyerIdentity?.countryCode === "KW") {
+    const market = await shopifyStorefrontRequest<{ localization: { country: { isoCode: string } } }>(`query { localization { country { isoCode } } }`);
+    const country = market.localization.country.isoCode;
+    if (country !== "KW") {
+      const changed = await shopifyStorefrontRequest<{ cartBuyerIdentityUpdate: { cart: RawCart | null; userErrors: Array<{ message: string }> } }>(
+        `mutation($id:ID!,$buyer:CartBuyerIdentityInput!) { cartBuyerIdentityUpdate(cartId:$id,buyerIdentity:$buyer) { cart { ${CART_FIELDS} } userErrors { message } } }`,
+        { id, buyer: { countryCode: country } });
+      assertCartErrors(changed.cartBuyerIdentityUpdate.userErrors);
+      return changed.cartBuyerIdentityUpdate.cart;
+    }
+  }
   return data.cart;
 }
 
 export async function readiness() {
   const [settings, shopCurrency] = await Promise.all([readSettings(), getShopCurrency()]);
-  const checkoutReady = settings.checkoutEnabled && shopCurrency === "KWD";
-  const launchMessage = shopCurrency !== "KWD"
-    ? "Catalog prices are approved in KD. Ordering is paused until the store currency is set to KWD. / الأسعار المعتمدة بالدينار الكويتي. الطلب متوقف حتى ضبط عملة المتجر."
-    : !settings.checkoutEnabled
-      ? "Ordering opens after official delivery and payment settings are approved. / سيتم فتح الطلب بعد اعتماد إعدادات التوصيل والدفع الرسمية."
-      : "";
+  const checkoutReady = settings.checkoutEnabled && paymentConfiguration().ready;
+  const launchMessage = checkoutReady ? "" : "Live payments await merchant approval, approved fees and delivery settings. / الدفع الحقيقي بانتظار اعتماد حساب التاجر والرسوم وإعدادات التوصيل.";
   return { settings, shopCurrency, checkoutReady, launchMessage };
 }
 
@@ -69,7 +81,7 @@ export async function presentCart(cart: RawCart | null) {
   const total = quoted ? subtotal : Number(cart?.cost.totalAmount.amount ?? 0);
   return GetCartResponse.parse({
     lines, subtotal, total, discount: Math.max(0, subtotal - total), currency: "KWD",
-    checkoutReady: ready.checkoutReady && !quoted,
+    checkoutReady: ready.checkoutReady,
     message: ready.launchMessage,
     discountCodes: cart?.discountCodes ?? [],
   });
@@ -90,7 +102,7 @@ export async function mutateCart(req: Request, res: Response, body: ReturnType<t
     if (!cart) {
       const data = await shopifyStorefrontRequest<{ cartCreate: { cart: RawCart | null; userErrors: Array<{ message: string }> } }>(
         `mutation($i:CartInput!) { cartCreate(input:$i) { cart { ${CART_FIELDS} } userErrors { field message } } }`,
-        { i: { buyerIdentity: { countryCode: "KW" }, lines: [{ merchandiseId: body.variantId, quantity: body.quantity }] } });
+        { i: { lines: [{ merchandiseId: body.variantId, quantity: body.quantity }] } });
       assertCartErrors(data.cartCreate.userErrors);
       cart = data.cartCreate.cart;
       if (!cart) throw new HttpError(502, "Shopify could not create your cart.");
@@ -101,6 +113,8 @@ export async function mutateCart(req: Request, res: Response, body: ReturnType<t
         { id: cart.id, lines: [{ merchandiseId: body.variantId, quantity: body.quantity }] });
       assertCartErrors(data.cartLinesAdd.userErrors); cart = data.cartLinesAdd.cart;
     }
+    const accepted = cart.lines.nodes.filter(l => l.merchandise.id === body.variantId).reduce((sum, line) => sum + line.quantity, 0);
+    if (accepted !== existing + body.quantity) throw new HttpError(409, "The catalog could not accept the selected quantity. Please review your bag before retrying. / تعذر تثبيت الكمية المختارة، راجعي السلة قبل إعادة المحاولة.");
   } else {
     if (!cart) throw new HttpError(409, "Your cart is empty or expired. / السلة فارغة أو انتهت صلاحيتها.");
     let query: string; let variables: Record<string, unknown>; let operation: string;
@@ -123,7 +137,7 @@ export async function mutateCart(req: Request, res: Response, body: ReturnType<t
         variables = { id: cart.id, lines: [body.lineId] }; break;
       }
       case "discount": {
-        if (await getShopCurrency() !== "KWD") throw new HttpError(409, "Discounts become available after KWD checkout is configured. / يتاح الخصم بعد ضبط الدفع بالدينار الكويتي.");
+        if (body.code?.trim()) throw new HttpError(409, "Discount codes are not enabled for direct MyFatoorah checkout. / أكواد الخصم غير مفعّلة للدفع المباشر عبر ماي فاتورة.");
         operation = "cartDiscountCodesUpdate";
         query = `mutation($id:ID!,$codes:[String!]!) { cartDiscountCodesUpdate(cartId:$id,discountCodes:$codes) { cart { ${CART_FIELDS} } userErrors { message } } }`;
         variables = { id: cart.id, codes: body.code?.trim() ? [body.code.trim()] : [] }; break;
@@ -138,6 +152,9 @@ export async function mutateCart(req: Request, res: Response, body: ReturnType<t
     const result = await shopifyStorefrontRequest<Record<string, { cart: RawCart; userErrors: Array<{ message: string }> }>>(query, variables);
     const updated = result[operation]!;
     assertCartErrors(updated.userErrors); cart = updated.cart;
+    if (body.action === "update" && cart.lines.nodes.find(line => line.id === body.lineId)?.quantity !== body.quantity) {
+      throw new HttpError(409, "The catalog could not accept the selected quantity. / تعذر تثبيت الكمية المختارة في السلة.");
+    }
   }
   return presentCart(cart);
 }
