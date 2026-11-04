@@ -195,6 +195,19 @@ export const CheckoutInputLang = {
   en: 'en',
 } as const;
 
+export interface DeliveryLocation {
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude: number;
+}
+
 export interface DeliveryAddressInput {
   /**
      * @minLength 1
@@ -216,7 +229,12 @@ export interface DeliveryAddressInput {
      * @maxLength 100
      */
   house: string;
+  location?: DeliveryLocation;
 }
+
+export type CheckoutAddressInput = DeliveryAddressInput & {
+  location: DeliveryLocation;
+};
 
 export interface CheckoutInput {
   requestKey?: string;
@@ -226,7 +244,7 @@ export interface CheckoutInput {
   phone?: string;
   /** @maxLength 2000 */
   note?: string;
-  address?: DeliveryAddressInput;
+  address?: CheckoutAddressInput;
 }
 
 export interface InquiryInput {

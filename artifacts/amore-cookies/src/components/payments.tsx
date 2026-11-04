@@ -53,6 +53,9 @@ function LocalOrderCard({ order, lang, refresh }: { order: LocalOrder; lang: Lan
     <OrderDetails order={order} lang={lang}/>
     <p className="text-xs" dir="ltr">{order.phone}</p>
     <p className="text-xs leading-6">{ar?'العنوان':'Address'}: {order.address.area} · {ar?'قطعة':'Block'} {order.address.block} · {ar?'شارع':'Street'} {order.address.street} · {ar?'منزل':'House'} {order.address.house}</p>
+    {order.address.location
+      ? <p className="text-xs text-[#795963]" data-testid="admin-delivery-location">{ar?'موقع التوصيل المؤكد':'Confirmed delivery point'}: <span dir="ltr">{order.address.location.latitude.toFixed(6)}, {order.address.location.longitude.toFixed(6)}</span></p>
+      : <p className="text-xs text-[#795963]">{ar?'طلب سابق بدون إحداثيات':'Historical order without coordinates'}</p>}
     {order.note&&<p className="text-xs">{order.note}</p>}
     <p className="text-xs text-[#795963]">{ar?'التوصيل':'Delivery'}: {order.shipping} KWD · {ar?'حالة المخزون':'Inventory'}: {order.stockStatus}</p>
     <div className="flex flex-wrap gap-3">

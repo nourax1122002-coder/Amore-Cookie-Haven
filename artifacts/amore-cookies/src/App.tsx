@@ -16,6 +16,8 @@ import {
 import type { Cart, Inquiry, Product, ProductInput, StoreSettings, TrackingResult } from '@workspace/api-client-react';
 import { AdminOrders, OrderDetails } from '@/components/order-status';
 import { PaymentResult, LocalOrdersAdmin } from '@/components/payments';
+import { DeliveryLocationPicker } from '@/components/delivery-location-picker';
+import type { DeliveryLocation } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -345,13 +347,16 @@ function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shop
   const c=copy[lang], cartQ=useGetCart({query:{queryKey:getGetCartQueryKey()}}), cart=cartQ.data;
   const start=useStartCheckout();const [phone,setPhone]=useState(''),[note,setNote]=useState('');
   const [address,setAddress]=useState({area:'',block:'',street:'',house:''});
+  const [deliveryLocation,setDeliveryLocation]=useState<DeliveryLocation|null>(null);
   const [requestKey]=useState(()=>crypto.randomUUID());
   const availability=useGetPaymentAvailability({query:{refetchInterval:60000}});
-  const ready=Boolean(store?.checkoutReady&&availability.data?.enabled&&cart?.checkoutReady&&cart.lines.length);
+  const paymentReady=Boolean(store?.checkoutReady&&availability.data?.enabled&&cart?.checkoutReady&&cart.lines.length);
+  const ready=paymentReady&&Boolean(deliveryLocation);
   const subtotal=cart?.lines.reduce((sum,line)=>sum+Math.round(line.price*1000)*line.quantity,0)??0;
   const shipping=availability.data?.shippingFils;
   return <div className="container-wide py-14 md:py-20"><span className="eyebrow">{c.checkout}</span><p className="mt-4 text-xs text-[#896a71] max-w-2xl">{lang==='ar'?'تتم معالجة الدفع بأمان عبر ماي فاتورة. لا نجمع بيانات بطاقتك في الموقع.':'Payments are processed securely by MyFatoorah. We never collect your card details.'}</p>
-    {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={e=>{e.preventDefault();if(!ready||Object.values(address).some(value=>!value.trim()))return;start.mutate({data:{requestKey,lang,address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim()},phone:phone.trim(),note:note||undefined}},{onSuccess:r=>{window.location.assign(r.url)}})}}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
+    {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={e=>{e.preventDefault();if(!ready||!deliveryLocation||Object.values(address).some(value=>!value.trim()))return;start.mutate({data:{requestKey,lang,address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim(),location:deliveryLocation},phone:phone.trim(),note:note||undefined}},{onSuccess:r=>{window.location.assign(r.url)}})}}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
+      <div inert={start.isPending}><DeliveryLocationPicker lang={lang} value={deliveryLocation} onChange={setDeliveryLocation}/></div>
       <fieldset className="grid sm:grid-cols-2 gap-5">
         <legend className="field-label mb-3">{lang==='ar'?'عنوان التوصيل':'Delivery address'}</legend>
         {([
@@ -364,7 +369,7 @@ function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shop
       <label><span className="field-label">{c.phone} *</span><input className="field" name="phone" type="tel" required minLength={8} maxLength={30} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)}/></label>
       <label><span className="field-label">{c.note}</span><textarea className="field min-h-28" maxLength={2000} value={note} onChange={e=>setNote(e.target.value)}/></label>
       <div className="rounded-xl bg-[#f8e8ec] p-4 text-xs leading-6 text-[#795963]">{lang==='ar'?'تظهر طرق الدفع المفعّلة لحساب المتجر في صفحة ماي فاتورة الآمنة.':'Available methods appear on MyFatoorah’s secure payment page.'}{availability.data?.methods.length?<p dir="ltr" className="mt-2">{availability.data.methods.join(' · ')}</p>:null}</div>
-      {!ready&&<p role="status" className="rounded-xl bg-[#fff1f3] p-4 text-xs leading-6 text-[#763246]">{lang==='ar'?'الدفع الحقيقي غير مفعّل بعد. بانتظار اعتماد حساب التاجر والرسوم وإعدادات التوصيل.':'Live payments are not enabled yet. Merchant approval, accepted fees and delivery configuration are required.'}</p>}
+      {!paymentReady&&<p role="status" className="rounded-xl bg-[#fff1f3] p-4 text-xs leading-6 text-[#763246]">{lang==='ar'?'الدفع الحقيقي غير مفعّل بعد. بانتظار اعتماد حساب التاجر والرسوم وإعدادات التوصيل.':'Live payments are not enabled yet. Merchant approval, accepted fees and delivery configuration are required.'}</p>}
       {start.isError&&<p role="alert" className="text-xs text-red-700">{start.error.message || (lang==='ar'?'تعذر بدء الدفع. لا تعيدي الدفع إذا كانت هناك عملية قيد التحقق.':'Checkout could not be started. Do not pay again while a payment is being verified.')}</p>}
       <button disabled={!ready||start.isPending} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:c.checkout}<ExternalLink size={14}/></button>
       </form><aside className="card-surface p-6 h-fit"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.bag}</h2>{cart.lines.map(line=><div key={line.id} className="flex justify-between gap-4 py-4 border-b border-[#efdee2] text-xs"><span>{line.title} × {line.quantity}</span><strong>{(line.price*line.quantity).toFixed(3)} KWD</strong></div>)}

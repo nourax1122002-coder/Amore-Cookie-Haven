@@ -212,13 +212,25 @@ export const startCheckoutBodyPhoneMax = 30;
 
 export const startCheckoutBodyNoteMax = 2000;
 
-export const startCheckoutBodyAddressAreaMax = 100;
+export const startCheckoutBodyAddressOneAreaMax = 100;
 
-export const startCheckoutBodyAddressBlockMax = 100;
+export const startCheckoutBodyAddressOneBlockMax = 100;
 
-export const startCheckoutBodyAddressStreetMax = 100;
+export const startCheckoutBodyAddressOneStreetMax = 100;
 
-export const startCheckoutBodyAddressHouseMax = 100;
+export const startCheckoutBodyAddressOneHouseMax = 100;
+
+export const startCheckoutBodyAddressOneLocationLatitudeMin = -90;
+export const startCheckoutBodyAddressOneLocationLatitudeMax = 90;
+
+export const startCheckoutBodyAddressOneLocationLongitudeMin = -180;
+export const startCheckoutBodyAddressOneLocationLongitudeMax = 180;
+
+export const startCheckoutBodyAddressTwoLocationLatitudeMin = -90;
+export const startCheckoutBodyAddressTwoLocationLatitudeMax = 90;
+
+export const startCheckoutBodyAddressTwoLocationLongitudeMin = -180;
+export const startCheckoutBodyAddressTwoLocationLongitudeMax = 180;
 
 
 
@@ -229,11 +241,20 @@ export const StartCheckoutBody = zod.object({
   "phone": zod.string().max(startCheckoutBodyPhoneMax).optional(),
   "note": zod.string().max(startCheckoutBodyNoteMax).optional(),
   "address": zod.object({
-  "area": zod.string().min(1).max(startCheckoutBodyAddressAreaMax),
-  "block": zod.string().min(1).max(startCheckoutBodyAddressBlockMax),
-  "street": zod.string().min(1).max(startCheckoutBodyAddressStreetMax),
-  "house": zod.string().min(1).max(startCheckoutBodyAddressHouseMax)
-}).optional()
+  "area": zod.string().min(1).max(startCheckoutBodyAddressOneAreaMax),
+  "block": zod.string().min(1).max(startCheckoutBodyAddressOneBlockMax),
+  "street": zod.string().min(1).max(startCheckoutBodyAddressOneStreetMax),
+  "house": zod.string().min(1).max(startCheckoutBodyAddressOneHouseMax),
+  "location": zod.object({
+  "latitude": zod.number().min(startCheckoutBodyAddressOneLocationLatitudeMin).max(startCheckoutBodyAddressOneLocationLatitudeMax),
+  "longitude": zod.number().min(startCheckoutBodyAddressOneLocationLongitudeMin).max(startCheckoutBodyAddressOneLocationLongitudeMax)
+})
+}).and(zod.object({
+  "location": zod.object({
+  "latitude": zod.number().min(startCheckoutBodyAddressTwoLocationLatitudeMin).max(startCheckoutBodyAddressTwoLocationLatitudeMax),
+  "longitude": zod.number().min(startCheckoutBodyAddressTwoLocationLongitudeMin).max(startCheckoutBodyAddressTwoLocationLongitudeMax)
+})
+})).optional()
 })
 
 export const StartCheckoutResponse = zod.object({
@@ -277,6 +298,12 @@ export const listLocalOrdersResponseTwoAddressStreetMax = 100;
 
 export const listLocalOrdersResponseTwoAddressHouseMax = 100;
 
+export const listLocalOrdersResponseTwoAddressLocationLatitudeMin = -90;
+export const listLocalOrdersResponseTwoAddressLocationLatitudeMax = 90;
+
+export const listLocalOrdersResponseTwoAddressLocationLongitudeMin = -180;
+export const listLocalOrdersResponseTwoAddressLocationLongitudeMax = 180;
+
 
 
 export const ListLocalOrdersResponseItem = zod.object({
@@ -299,7 +326,11 @@ export const ListLocalOrdersResponseItem = zod.object({
   "area": zod.string().min(1).max(listLocalOrdersResponseTwoAddressAreaMax),
   "block": zod.string().min(1).max(listLocalOrdersResponseTwoAddressBlockMax),
   "street": zod.string().min(1).max(listLocalOrdersResponseTwoAddressStreetMax),
-  "house": zod.string().min(1).max(listLocalOrdersResponseTwoAddressHouseMax)
+  "house": zod.string().min(1).max(listLocalOrdersResponseTwoAddressHouseMax),
+  "location": zod.object({
+  "latitude": zod.number().min(listLocalOrdersResponseTwoAddressLocationLatitudeMin).max(listLocalOrdersResponseTwoAddressLocationLatitudeMax),
+  "longitude": zod.number().min(listLocalOrdersResponseTwoAddressLocationLongitudeMin).max(listLocalOrdersResponseTwoAddressLocationLongitudeMax)
+}).optional()
 }),
   "note": zod.string(),
   "subtotal": zod.string(),

@@ -2,7 +2,11 @@ import { pgTable, text, integer, jsonb, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export type OrderItem = { variantId: string; title: string; quantity: number; unitFils: number };
-export type OrderAddress = { area: string; block: string; street: string; house: string };
+// Historical orders have no point; every new direct checkout requires one.
+export type OrderAddress = {
+  area: string; block: string; street: string; house: string;
+  location?: { latitude: number; longitude: number };
+};
 export type StockQuantity = { inventoryItemId: string; locationId: string; quantity: number; changeFromQuantity: number };
 export const customerOrdersTable = pgTable("customer_orders", {
   id: text("id").primaryKey(),

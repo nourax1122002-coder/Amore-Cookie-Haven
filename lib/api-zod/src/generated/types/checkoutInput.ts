@@ -5,8 +5,8 @@
  * Amore Cookies storefront and management API
  * OpenAPI spec version: 1.0.0
  */
+import type { CheckoutAddressInput } from './checkoutAddressInput';
 import type { CheckoutInputLang } from './checkoutInputLang';
-import type { DeliveryAddressInput } from './deliveryAddressInput';
 
 export interface CheckoutInput {
   requestKey?: string;
@@ -16,5 +16,5 @@ export interface CheckoutInput {
   phone?: string;
   /** @maxLength 2000 */
   note?: string;
-  address?: DeliveryAddressInput;
+  address?: CheckoutAddressInput;
 }

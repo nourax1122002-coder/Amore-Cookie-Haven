@@ -10,11 +10,13 @@ import {
   webhookSchema,
 } from "../../src/lib/myfatoorah";
 import {
-  localCheckout, verifyPayment, updateFulfillment, reconcileOrder, orderSummary,
+  localCheckout, verifyPayment, updateFulfillment, reconcileOrder, orderSummary, localOrderList,
 } from "../../src/lib/local-orders";
 import { fixture } from "./mocks";
+import { checkoutAddress } from "../../src/lib/delivery-address";
 
 const savedIds: string[] = [];
+const location = { latitude: 29.3759, longitude: 47.9774 };
 const details = (id: string, invoice: string, paymentId = "fixture-payment") => ({
   Invoice: { Id: invoice, Status: "PAID", ExternalIdentifier: id },
   Transaction: { Status: "SUCCESS", PaymentId: paymentId },
@@ -58,7 +60,7 @@ async function begin() {
   const cart = randomUUID();
   const req = { fixtureCart: cart } as unknown as Request;
   const body = StartCheckoutBody.parse({ requestKey: randomUUID(), phone: "50000000",
-    address: { area: "Fixture", block: "1", street: "2", house: "3" } });
+    address: { area: "Fixture", block: "1", street: "2", house: "3", location } });
   const result = await localCheckout(req, body);
   const id = new URL(result.url).pathname.split("/").at(-1)!;
   savedIds.push(id);
@@ -114,7 +116,7 @@ test("double-clicks/concurrent tabs share one invoice, one reservation and exact
 test("duplicate variant rows are aggregated before stock checks; no charge or reserve on excess", async () => {
   fixture.lines = [{ merchandise: { id: fixture.products[0]!.variantId }, quantity: 6 }, { merchandise: { id: fixture.products[0]!.variantId }, quantity: 6 }];
   await assert.rejects(localCheckout({ fixtureCart: randomUUID() } as unknown as Request, StartCheckoutBody.parse({
-    requestKey: randomUUID(), phone: "50000000", address: { area: "Fixture", block: "1", street: "2", house: "3" },
+    requestKey: randomUUID(), phone: "50000000", address: { area: "Fixture", block: "1", street: "2", house: "3", location },
   })));
   assert.equal(fixture.invoiceCalls, 0); assert.equal(fixture.reserves, 0);
 });
@@ -142,10 +144,35 @@ test("confirmed expired unpaid invoice releases once, never on a browser cancell
 test("ambiguous provider POST is never retried as another invoice; held stock stays visible for review", async () => {
   fixture.timeout = true;
   const req = { fixtureCart: randomUUID() } as unknown as Request;
-  const body = StartCheckoutBody.parse({ requestKey: randomUUID(), phone: "50000000", address: { area:"Fixture",block:"1",street:"2",house:"3" } });
+  const body = StartCheckoutBody.parse({ requestKey: randomUUID(), phone: "50000000", address: { area:"Fixture",block:"1",street:"2",house:"3",location } });
   await assert.rejects(localCheckout(req, body));
   const [row] = await db.select().from(customerOrdersTable).where(eq(customerOrdersTable.requestKey, body.requestKey!));
   assert.ok(row); savedIds.push(row.id);
   assert.equal(row.paymentStatus, "review"); assert.equal(row.stockStatus, "reserved");
   await assert.rejects(localCheckout(req, body)); assert.equal(fixture.invoiceCalls, 1);
+});
+test("new orders require finite, in-range numeric coordinates and retain all address fields", () => {
+  const address = { area: " Fixture ", block: "1", street: "2", house: "3", location };
+  assert.deepEqual(checkoutAddress(address), { ...address, area: "Fixture" });
+  for (const point of [undefined, null, {}, {latitude: 91,longitude: 48}, {latitude:29,longitude:181},
+    {latitude:NaN,longitude:48}, {latitude:Infinity,longitude:48}, {latitude:"29.3",longitude:48},
+    {latitude:"",longitude:48}, {latitude:29,longitude:null}]) {
+    assert.throws(() => checkoutAddress({ ...address, location: point }));
+  }
+  assert.throws(() => checkoutAddress({ ...address, area: " " }));
+  assert.deepEqual(checkoutAddress({...address, location:{latitude:0,longitude:0}}).location, {latitude:0,longitude:0});
+});
+test("coordinates persist, stay administrative-only, and are part of checkout idempotency", async () => {
+  const { order, req, body } = await begin();
+  assert.deepEqual(order.address.location, location);
+  const list = await localOrderList();
+  assert.deepEqual(list.find(row => row.id === order.id)?.address.location, location);
+  assert.equal("address" in orderSummary(order), false);
+  assert.equal(JSON.stringify(orderSummary(order)).includes("latitude"), false);
+  await assert.rejects(localCheckout(req, {...body, address:{...body.address!, location:{...location,latitude:29.4}}}));
+  assert.equal(fixture.invoiceCalls, 1);
+  // Historical JSON records remain readable without inventing a point.
+  const oldAddress = { area: "Fixture", block:"1", street:"2", house:"3" };
+  await db.update(customerOrdersTable).set({address:oldAddress}).where(eq(customerOrdersTable.id,order.id));
+  assert.equal((await localOrderList()).find(row => row.id===order.id)?.address.location, undefined);
 });

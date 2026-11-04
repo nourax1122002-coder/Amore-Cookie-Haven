@@ -5,6 +5,7 @@
  * Amore Cookies storefront and management API
  * OpenAPI spec version: 1.0.0
  */
+import type { DeliveryLocation } from './deliveryLocation';
 
 export interface DeliveryAddressInput {
   /**
@@ -27,4 +28,5 @@ export interface DeliveryAddressInput {
      * @maxLength 100
      */
   house: string;
+  location?: DeliveryLocation;
 }

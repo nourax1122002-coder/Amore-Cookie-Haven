@@ -8,6 +8,7 @@ import { cartId, rawCart } from "./cart";
 import { readSettings } from "./store-settings";
 import { normalizePhone, phoneMatches } from "./orders";
 import { HttpError } from "./errors";
+import { checkoutAddress } from "./delivery-address";
 import {
   moneyToFils, myfatoorahRequest, paymentConfiguration, paymentDetailsSchema,
   safePaymentUrl, verifyDetails,
@@ -67,8 +68,7 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
   if (!config.ready || !(await readSettings()).checkoutEnabled) throw new HttpError(503, "Live payments are awaiting merchant approval and configuration. / الدفع الحقيقي بانتظار اعتماد حساب التاجر وإكمال الإعدادات.");
   const phone = normalizePhone(body.phone ?? "");
   if (!phone || !phone.startsWith("965") || phone.length !== 11) throw new HttpError(400, "Enter a Kuwait phone number. / يرجى إدخال رقم هاتف كويتي صحيح.");
-  const address = body.address && Object.fromEntries(Object.entries(body.address).map(([k, v]) => [k, v.trim()])) as CustomerOrder["address"] | undefined;
-  if (!address || Object.values(address).some(v => !v)) throw new HttpError(400, "Complete the delivery address. / يرجى إكمال عنوان التوصيل.");
+  const address = checkoutAddress(body.address);
   if (!body.requestKey) throw new HttpError(400, "Checkout reference is missing. Refresh the page.");
   await enabledMethods(); // Never create a payable invoice with missing required methods.
   const id = cartId(req);
