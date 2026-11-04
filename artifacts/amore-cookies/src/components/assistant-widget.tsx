@@ -104,10 +104,6 @@ function AssistantPanel({ onClose }: { onClose: () => void }) {
       <button type="button" onClick={clear} disabled={!turns.length && !failure} aria-label="مسح المحادثة" title="مسح المحادثة" className="h-9 w-9 rounded-full grid place-items-center hover:bg-white/10 disabled:opacity-40" data-testid="button-assistant-clear"><Trash2 size={16}/></button>
       <button type="button" onClick={onClose} aria-label="إغلاق المساعد" className="h-9 w-9 rounded-full grid place-items-center hover:bg-white/10" data-testid="button-assistant-close"><X size={18}/></button>
     </header>
-    <p className="px-5 py-2.5 text-[10px] leading-[1.7] text-[#76525c] bg-[#FFD6E5]/50 border-b border-[#f0e1e4]">
-      تُرسل رسائلك إلى OpenRouter ومزودي النماذج لمعالجتها. لا تكتبي بيانات شخصية أو عنوان أو رقم هاتف أو موقع أو بيانات دفع.
-      {status.data && <> الحد: {status.data.perMinuteLimit > 0 ? '٣ رسائل في الدقيقة و١٠ يومياً لكل زائر' : ''}، و{status.data.dailyLimit} للمتجر يومياً.</>}
-    </p>
     <div ref={logRef} className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-3" aria-live="polite" aria-busy={pending}>
       {status.isLoading && <div className="space-y-2 animate-pulse"><div className="h-4 w-2/3 rounded-full bg-[#f3e4e8]"/><div className="h-4 w-1/2 rounded-full bg-[#f3e4e8]"/></div>}
       {status.isError && <div role="alert" className="card-surface p-4 text-[12px] text-[#5B0D1E]">تعذر التحقق من حالة المساعد.
