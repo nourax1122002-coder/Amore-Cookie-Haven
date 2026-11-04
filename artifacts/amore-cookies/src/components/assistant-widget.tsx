@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type FormEvent, type KeyboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getGetAssistantStatusQueryKey, sendAssistantMessage, useGetAssistantStatus } from '@workspace/api-client-react';
-import { MessageCircleQuestion, RefreshCw, Send, Square, Trash2, X } from 'lucide-react';
+import { MessageCircleQuestion, RefreshCw, Send, Square, X } from 'lucide-react';
 import { buildPayload, formatWait, MAX_MESSAGE, readAssistantError, type ChatTurn } from './assistant-utils';
 
 type Lang = 'en' | 'ar';
@@ -78,7 +78,6 @@ function AssistantPanel({ onClose }: { onClose: () => void }) {
     const question = turns.at(-1)?.role === 'user' ? turns.at(-1)!.content : '';
     setFailure({ message: '', retryAfter: 0, question, until: 0 });
   };
-  const clear = () => { reqId.current++; ctrl.current?.abort(); ctrl.current = null; setPending(false); setTurns([]); setFailure(null); setNote(''); setDraft(''); inputRef.current?.focus(); };
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
@@ -102,7 +101,6 @@ function AssistantPanel({ onClose }: { onClose: () => void }) {
           <h2 id="amore-assistant-title" className="text-[15px] font-semibold">مساعد أموري</h2>
           <p className="text-[10.5px] leading-5 text-[#f0cdd5]">أسئلة عن الكوكيز او الخبز او طريقة الحفظ. </p>
         </div>
-        <button type="button" onClick={clear} disabled={!turns.length && !failure} aria-label="مسح المحادثة" title="مسح المحادثة" className="h-9 w-9 rounded-full grid place-items-center hover:bg-white/10 disabled:opacity-40" data-testid="button-assistant-clear"><Trash2 size={16}/></button>
         <button type="button" onClick={onClose} aria-label="إغلاق المساعد" className="h-9 w-9 rounded-full grid place-items-center hover:bg-white/10" data-testid="button-assistant-close"><X size={18}/></button>
       </header>
       <div ref={logRef} className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-3" aria-live="polite" aria-busy={pending}>
