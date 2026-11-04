@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Check, Crosshair, MapPin, RefreshCw } from 'lucide-react';
-import { parseCoordinate } from './delivery-coordinates';
 export { parseCoordinate } from './delivery-coordinates';
 
 export type DeliveryCoordinates = { latitude: number; longitude: number };
@@ -43,12 +42,12 @@ const T = {
     apply: 'عرض الإحداثيات على الخريطة', confirm: 'تأكيد هذا الموقع', confirmed: 'تم تأكيد الموقع', change: 'تغيير الموقع',
     clear: 'مسح', none: 'لم يتم اختيار موقع بعد.', pending: 'موقع مختار وغير مؤكد بعد. أكّديه للمتابعة.',
     badLat: 'أدخلي خط عرض صحيحاً بين -90 و 90.', badLng: 'أدخلي خط طول صحيحاً بين -180 و 180.',
-    unsupported: 'المتصفح لا يدعم تحديد الموقع. اختاري موقعك على الخريطة أو أدخلي الإحداثيات يدوياً.',
-    insecure: 'تحديد الموقع يتطلب اتصالاً آمناً (HTTPS). اختاري موقعك على الخريطة أو أدخلي الإحداثيات.',
+    unsupported: 'المتصفح لا يدعم تحديد الموقع. اختاري موقعك على الخريطة.',
+    insecure: 'تحديد الموقع يتطلب اتصالاً آمناً (HTTPS). اختاري موقعك على الخريطة.',
     denied: 'تم رفض إذن الموقع، أو أن الصفحة معروضة داخل إطار لا يسمح بذلك. اختاري موقعك على الخريطة يدوياً.',
-    unavailable: 'تعذر تحديد موقعك حالياً. اختاري موقعك على الخريطة أو أدخلي الإحداثيات.',
+    unavailable: 'تعذر تحديد موقعك حالياً. اختاري موقعك على الخريطة.',
     timeout: 'انتهت مهلة تحديد الموقع. حاولي مجدداً أو اختاري الموقع يدوياً.',
-    tiles: 'تعذر تحميل بعض أجزاء الخريطة. يمكنك إعادة المحاولة أو إدخال الإحداثيات يدوياً.', retry: 'إعادة تحميل الخريطة',
+    tiles: 'تعذر تحميل بعض أجزاء الخريطة. يمكنك إعادة المحاولة.', retry: 'إعادة تحميل الخريطة',
     privacy: 'تُحمّل الخريطة من OpenStreetMap، فيرى مزودها المنطقة المعروضة واتصال متصفحك. لا نرسل عنوانك أو هاتفك إليه.',
     report: 'الإبلاغ عن خطأ في الخريطة', mapLabel: 'خريطة لاختيار موقع التوصيل',
   },
@@ -58,12 +57,12 @@ const T = {
     apply: 'Show coordinates on map', confirm: 'Confirm this location', confirmed: 'Location confirmed', change: 'Change location',
     clear: 'Clear', none: 'No location selected yet.', pending: 'Location selected but not confirmed. Confirm it to continue.',
     badLat: 'Enter a valid latitude between -90 and 90.', badLng: 'Enter a valid longitude between -180 and 180.',
-    unsupported: 'This browser does not support location. Pick your spot on the map or enter coordinates.',
-    insecure: 'Location needs a secure (HTTPS) connection. Pick your spot on the map or enter coordinates.',
+    unsupported: 'This browser does not support location. Pick your spot on the map.',
+    insecure: 'Location needs a secure (HTTPS) connection. Pick your spot on the map.',
     denied: 'Location permission was denied, or this page is embedded where location is blocked. Pick your spot on the map.',
-    unavailable: 'Your location could not be determined. Pick your spot on the map or enter coordinates.',
+    unavailable: 'Your location could not be determined. Pick your spot on the map.',
     timeout: 'Finding your location timed out. Try again or pick it manually.',
-    tiles: 'Some map tiles failed to load. Retry, or enter coordinates manually.', retry: 'Reload map',
+    tiles: 'Some map tiles failed to load. Please retry.', retry: 'Reload map',
     privacy: 'Map tiles load from OpenStreetMap, which sees the area viewed and your browser connection. Your address and phone are never sent to it.',
     report: 'Report a map issue', mapLabel: 'Map for choosing the delivery location',
   },
@@ -83,9 +82,6 @@ export function DeliveryLocationPicker({ lang, value, onChange }: {
   const valueRef = useRef(value); valueRef.current = value;
 
   const [candidate, setCandidate] = useState<DeliveryCoordinates | null>(value);
-  const [latText, setLatText] = useState(value ? fmt(value.latitude) : '');
-  const [lngText, setLngText] = useState(value ? fmt(value.longitude) : '');
-  const [inputError, setInputError] = useState<string | null>(null);
   const [geoMsg, setGeoMsg] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [tileError, setTileError] = useState(false);
@@ -98,9 +94,6 @@ export function DeliveryLocationPicker({ lang, value, onChange }: {
     geoRequestRef.current++;
     setLocating(false);
     setCandidate(c);
-    setLatText(c ? fmt(c.latitude) : '');
-    setLngText(c ? fmt(c.longitude) : '');
-    setInputError(null);
     if (valueRef.current) onChangeRef.current(null);
     if (pan && c && mapRef.current) mapRef.current.setView([c.latitude, c.longitude], Math.max(mapRef.current.getZoom(), 16));
   }, []);
@@ -109,7 +102,7 @@ export function DeliveryLocationPicker({ lang, value, onChange }: {
   // External value sync (controlled prop).
   useEffect(() => {
     if (value && (!candidate || candidate.latitude !== value.latitude || candidate.longitude !== value.longitude)) {
-      setCandidate(value); setLatText(fmt(value.latitude)); setLngText(fmt(value.longitude));
+      setCandidate(value);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value?.latitude, value?.longitude]);
@@ -151,7 +144,7 @@ export function DeliveryLocationPicker({ lang, value, onChange }: {
       mapRef.current = null; tileRef.current = null; markerRef.current = null;
     };
     } catch {
-      // A map failure must never remove the checkout or manual fallback.
+      // A map failure must never remove the checkout.
       initializingMap?.remove();
       mapRef.current = null; tileRef.current = null; markerRef.current = null;
       setTileError(true);
@@ -174,13 +167,6 @@ export function DeliveryLocationPicker({ lang, value, onChange }: {
       markerRef.current = m;
     } else markerRef.current.setLatLng(ll);
   }, [candidate, t.title, mapAttempt]);
-
-  const applyInputs = () => {
-    const la = parseCoordinate(latText, 'lat'), ln = parseCoordinate(lngText, 'lng');
-    if (la === null) return setInputError(t.badLat);
-    if (ln === null) return setInputError(t.badLng);
-    setNewCandidate({ latitude: la, longitude: ln }, true);
-  };
 
   const useMyLocation = () => {
     setGeoMsg(null);
@@ -211,22 +197,11 @@ export function DeliveryLocationPicker({ lang, value, onChange }: {
       setLocating(false); setGeoMsg(t.denied);
     }
   };
-  const editCoordinate = (kind: 'lat' | 'lng', text: string) => {
-    geoRequestRef.current++;
-    setLocating(false);
-    if (valueRef.current) onChangeRef.current(null);
-    setCandidate(null);
-    setInputError(null);
-    if (kind === 'lat') setLatText(text); else setLngText(text);
-  };
-
   const retryTiles = () => {
     setTileError(false);
     if (!mapRef.current) { setMapAttempt(attempt => attempt + 1); return; }
     tileRef.current?.redraw(); mapRef.current.invalidateSize();
   };
-
-  const inputCls = 'w-full rounded-xl border border-[#ead5da] bg-[#fffdfa] px-3 py-2.5 text-sm text-[#45101d] focus:outline-none focus:ring-2 focus:ring-[#FFD6E5]';
 
   return (
     <section className="card-surface p-4 sm:p-5" dir={lang === 'ar' ? 'rtl' : 'ltr'} aria-labelledby="delivery-location-title" data-testid="delivery-location-picker">
@@ -250,21 +225,6 @@ export function DeliveryLocationPicker({ lang, value, onChange }: {
           </div>
         )}
       </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-        <label className="text-xs font-semibold text-[#5B0D1E]">{t.lat}
-          <input dir="ltr" type="text" inputMode="decimal" value={latText} onChange={(e) => editCoordinate('lat', e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyInputs(); } }}
-            className={`${inputCls} mt-1 text-left font-mono`} placeholder="29.3759" aria-invalid={inputError === t.badLat} data-testid="input-latitude" />
-        </label>
-        <label className="text-xs font-semibold text-[#5B0D1E]">{t.lng}
-          <input dir="ltr" type="text" inputMode="decimal" value={lngText} onChange={(e) => editCoordinate('lng', e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyInputs(); } }}
-            className={`${inputCls} mt-1 text-left font-mono`} placeholder="47.9774" aria-invalid={inputError === t.badLng} data-testid="input-longitude" />
-        </label>
-        <button type="button" onClick={applyInputs} className="btn-outline !py-2.5" data-testid="button-apply-coordinates">{t.apply}</button>
-      </div>
-      {inputError && <p role="alert" className="mt-2 text-xs text-[#b4233b]" data-testid="text-coordinate-error">{inputError}</p>}
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#fbf1f3] px-3 py-3" aria-live="polite">
         <p className="text-xs text-[#5B0D1E]" data-testid="status-location">
