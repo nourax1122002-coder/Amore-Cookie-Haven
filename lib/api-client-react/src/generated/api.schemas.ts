@@ -28,7 +28,16 @@ export interface AssistantMessage {
   content: string;
 }
 
+export type AssistantInputLanguage = typeof AssistantInputLanguage[keyof typeof AssistantInputLanguage];
+
+
+export const AssistantInputLanguage = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
 export interface AssistantInput {
+  language?: AssistantInputLanguage;
   /**
      * @minItems 1
      * @maxItems 8

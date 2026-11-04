@@ -354,6 +354,7 @@ components:
       type: object
       required: [messages]
       properties:
+        language: { type: string, enum: [ar, en], default: ar }
         messages:
           type: array
           minItems: 1

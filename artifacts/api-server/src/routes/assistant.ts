@@ -57,7 +57,7 @@ router.post("/assistant/chat", async (req, res) => {
     messages.forEach(m => validatePrivateInput(m.content));
     release = await quota.acquire(req.ip ?? "unknown");
     const context = await publicContext(controller.signal);
-    const result = await gateway.chat(process.env.OPENROUTER_API_KEY, messages, context, controller.signal);
+    const result = await gateway.chat(process.env.OPENROUTER_API_KEY, messages, context, controller.signal, parsed.data.language);
     if (!controller.signal.aborted) res.json(SendAssistantMessageResponse.parse(result));
   } catch (error) {
     let failure = error instanceof AssistantError ? error : new AssistantError("network");

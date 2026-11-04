@@ -5,9 +5,11 @@
  * Amore Cookies storefront and management API
  * OpenAPI spec version: 1.0.0
  */
+import type { AssistantInputLanguage } from './assistantInputLanguage';
 import type { AssistantMessage } from './assistantMessage';
 
 export interface AssistantInput {
+  language?: AssistantInputLanguage;
   /**
      * @minItems 1
      * @maxItems 8

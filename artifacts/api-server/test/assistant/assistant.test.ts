@@ -61,6 +61,19 @@ test("account exhaustion and no eligible model make no generation request", asyn
   await expectFailure(() => createOpenRouter(paid.fn).chat("fixture-secret", messages, "", AbortSignal.timeout(1000)), "unavailable");
   assert.equal(paid.calls.length, 2);
 });
+test("English selection reaches the system instruction and accepts a zero-cost English response", async () => {
+  assert.equal(SendAssistantMessageBody.safeParse({ messages, language: "en" }).success, true);
+  assert.equal(SendAssistantMessageBody.safeParse({ messages, language: "fr" }).success, false);
+  const mock = mockFetch(() => Response.json({
+    model: model.id, choices: [{ message: { content: "Please follow the baking instructions on the store page." } }], usage: { cost: 0 },
+  }));
+  const reply = await createOpenRouter(mock.fn).chat("fixture-secret", messages, "", AbortSignal.timeout(1000), "en");
+  assert.match(reply.reply, /^Please/);
+  assert.equal(reply.zeroCostVerified, true);
+  const body = JSON.parse(String(mock.calls.at(-1)?.options?.body));
+  assert.match(body.messages[0].content, /Answer in English/);
+  assert.deepEqual(body.provider, FREE_ROUTING);
+});
 test("canonical provider aliases are accepted only with explicit zero cost, never a different paid model", async () => {
   const mock = mockFetch(() => Response.json({ model: model.id.replace(":free", ""), choices: [{ message: { content: "أهلاً بك في أموري." } }], usage: { cost: 0 } }));
   assert.equal((await createOpenRouter(mock.fn).chat("fixture-secret", messages, "", AbortSignal.timeout(1000))).zeroCostVerified, true);

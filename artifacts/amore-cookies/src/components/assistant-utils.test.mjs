@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPayload, readAssistantError, formatWait } from './assistant-utils.ts';
+import { assistantText } from './assistant-translations.ts';
+test('English interface, validation, countdown and errors match the selected language', () => {
+  assert.deepEqual(Object.keys(assistantText.en).sort(), Object.keys(assistantText.ar).sort());
+  assert.equal(assistantText.en.title, 'Amore Assistant');
+  assert.match(buildPayload([], '', 'en').error, /Please/);
+  assert.equal(formatWait(90, 'en'), '2 min');
+  assert.equal(formatWait(5, 'en'), '5 sec');
+  const error = readAssistantError({ status: 429, data: { code: 'rate_limit', error: 'مشغول', retryAfterSeconds: 30 } }, 'en');
+  assert.match(error.message, /Please wait/);
+  assert.doesNotMatch(error.message, /[\u0600-\u06ff]/);
+  assert.equal(error.retryAfter, 30);
+});
 test('history is bounded, alternating and contains no unanswered duplicate on retry', () => {
   const history = Array.from({ length: 5 }, (_, i) => [
     { id: `q${i}`, role: 'user', content: `سؤال${i}` },

@@ -15,6 +15,7 @@ export const GetAssistantStatusResponse = zod.object({
 })
 
 
+export const sendAssistantMessageBodyLanguageDefault = `ar`;
 export const sendAssistantMessageBodyMessagesItemContentMax = 1200;
 
 export const sendAssistantMessageBodyMessagesMax = 8;
@@ -22,6 +23,7 @@ export const sendAssistantMessageBodyMessagesMax = 8;
 
 
 export const SendAssistantMessageBody = zod.object({
+  "language": zod.enum(['ar', 'en']).default(sendAssistantMessageBodyLanguageDefault),
   "messages": zod.array(zod.object({
   "role": zod.enum(['user', 'assistant']),
   "content": zod.string().min(1).max(sendAssistantMessageBodyMessagesItemContentMax)
