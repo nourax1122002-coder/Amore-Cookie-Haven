@@ -6,6 +6,7 @@ import * as schema from "./schema";
 const { Pool } = pg;
 const database = resolveDatabaseConnection(process.env);
 export const databaseTarget = database.target;
+export const databaseConfigurationIssue = database.configurationIssue;
 export const pool = new Pool({
   connectionString: database.connectionString,
   max: 5,
