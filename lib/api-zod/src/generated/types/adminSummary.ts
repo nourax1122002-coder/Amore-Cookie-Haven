@@ -11,7 +11,6 @@ export interface AdminSummary {
   inquiryCount: number;
   newInquiryCount: number;
   lowStock: Product[];
-  shopAdminUrl: string;
   shopCurrency: string;
   checkoutEnabled: boolean;
   notices: string[];

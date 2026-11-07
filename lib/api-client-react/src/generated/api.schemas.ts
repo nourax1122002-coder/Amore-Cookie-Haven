@@ -494,13 +494,6 @@ export type LocalOrder = OrderStatus & {
   invoiceId: string;
 };
 
-export interface OrderPage {
-  orders: OrderStatus[];
-  hasNextPage: boolean;
-  endCursor: string;
-  refreshedAt: string;
-}
-
 export type AuthUserRole = typeof AuthUserRole[keyof typeof AuthUserRole];
 
 
@@ -552,7 +545,6 @@ export interface AdminSummary {
   inquiryCount: number;
   newInquiryCount: number;
   lowStock: Product[];
-  shopAdminUrl: string;
   shopCurrency: string;
   checkoutEnabled: boolean;
   notices: string[];

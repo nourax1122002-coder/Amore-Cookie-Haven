@@ -48,7 +48,6 @@ export * from './localOrder';
 export * from './operationResult';
 export * from './orderFulfillmentInput';
 export * from './orderFulfillmentInputStage';
-export * from './orderPage';
 export * from './orderStatus';
 export * from './orderStatusItemsItem';
 export * from './orderStatusStage';

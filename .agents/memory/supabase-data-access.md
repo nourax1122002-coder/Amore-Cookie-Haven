@@ -7,6 +7,8 @@ For Amore runtime database access, use server-side `@supabase/supabase-js` with 
 
 The owner has since confirmed that Supabase should replace Clerk and Shopify for store accounts, administrator access, product catalog, prices, images, inventory, and order records. Preserve both administrator authorization and guest checkout.
 
+Keep Auth operations on isolated Supabase clients rather than the shared privileged database client. A shared client can retain or apply a user session across concurrent server requests, which risks mixing user-authenticated and service-role access.
+
 **Why:** The owner asked to connect through Supabase MCP and the framework rather than a raw server link, then explicitly chose Supabase as the sole store backend and asked to remove Clerk.
 
 **How to apply:** Follow this boundary for order, inquiry, settings, quota, product, inventory, cart, and account persistence. Verify schema/RLS through MCP and exercise RPCs without exposing customer data or credentials.

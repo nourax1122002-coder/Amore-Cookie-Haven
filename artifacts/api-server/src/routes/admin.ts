@@ -25,7 +25,7 @@ router.get("/admin/summary", async (_req, res): Promise<void> => {
   res.json(GetAdminSummaryResponse.parse({
     inquiryCount: inquiries.total, newInquiryCount: inquiries.fresh,
     lowStock: products.filter(p => p.stock <= p.lowStockThreshold),
-    shopAdminUrl: "", shopCurrency: ready.shopCurrency,
+    shopCurrency: ready.shopCurrency,
     checkoutEnabled: ready.checkoutReady,
     notices: [
       ...(ready.launchMessage ? [ready.launchMessage] : []),

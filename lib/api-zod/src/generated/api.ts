@@ -628,7 +628,6 @@ export const GetAdminSummaryResponse = zod.object({
   "ingredients": zod.string(),
   "ingredientsAr": zod.string()
 })),
-  "shopAdminUrl": zod.string(),
   "shopCurrency": zod.string(),
   "checkoutEnabled": zod.boolean(),
   "notices": zod.array(zod.string())

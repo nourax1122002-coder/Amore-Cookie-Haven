@@ -77,6 +77,32 @@ async function request(target: Target, options: Options = {}) {
   });
 }
 
+async function requestProductImage(user?: string) {
+  return new Promise<{ status: number; body: any }>((resolve, reject) => {
+    const req = http.request({
+      host: "127.0.0.1", port, method: "POST", path: "/api/admin/product-images",
+      headers: {
+        Host: "store.example.invalid",
+        Origin: "https://store.example.invalid",
+        "Content-Type": "image/png",
+        ...(user ? { "X-Test-User": user } : {}),
+      },
+    }, res => {
+      let text = "";
+      res.setEncoding("utf8");
+      res.on("data", chunk => { text += chunk; });
+      res.on("error", reject);
+      res.on("end", () => {
+        try { resolve({ status: res.statusCode!, body: JSON.parse(text) }); }
+        catch (error) { reject(error); }
+      });
+    });
+    req.setTimeout(5000, () => req.destroy(new Error("Test HTTP request timed out")));
+    req.on("error", reject);
+    req.end(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  });
+}
+
 async function rejected(target: Target, status: number, options: Options) {
   const previous = structuredClone({ settings: state.settings, inquiry: state.inquiry, products: state.products });
   const response = await request(target, options);
@@ -149,4 +175,13 @@ test("empty admin allowlist denies a verified owner before writes", async () => 
     process.env.ADMIN_EMAILS = "";
     for (const target of targets) await rejected(target, 403, { user: "owner" });
   } finally { process.env.ADMIN_EMAILS = original; }
+});
+
+test("product image upload accepts only an approved administrator and returns Supabase Storage URL", async () => {
+  assert.equal((await requestProductImage()).status, 401);
+  assert.equal((await requestProductImage("visitor")).status, 403);
+  const response = await requestProductImage("owner");
+  assert.equal(response.status, 201);
+  assert.match(response.body.imageUrl, /^https:\/\/amore-project\.supabase\.co\/storage\/v1\/object\/public\/amore-products\//);
+  assert.ok(state.calls.includes("uploadImage"));
 });

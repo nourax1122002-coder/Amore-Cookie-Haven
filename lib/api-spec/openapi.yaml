@@ -72,7 +72,7 @@ paths:
       operationId: listProducts
       responses:
         "200":
-          description: Shopify products
+          description: Active products from Supabase.
           content:
             application/json:
               schema:
@@ -123,7 +123,7 @@ paths:
       operationId: getCart
       responses:
         "200":
-          description: Current Shopify cart
+          description: Current guest or signed-in cart stored in Supabase.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Cart" }
@@ -150,7 +150,7 @@ paths:
             schema: { $ref: "#/components/schemas/CheckoutInput" }
       responses:
         "200":
-          description: Real Shopify checkout URL, only when enabled and KWD configured
+          description: Secure MyFatoorah payment URL, only when merchant setup and checkout are approved.
           content:
             application/json:
               schema:
@@ -743,16 +743,6 @@ components:
             shipping: { type: string }
             stockStatus: { type: string }
             invoiceId: { type: string }
-    OrderPage:
-      type: object
-      required: [orders, hasNextPage, endCursor, refreshedAt]
-      properties:
-        orders:
-          type: array
-          items: { $ref: "#/components/schemas/OrderStatus" }
-        hasNextPage: { type: boolean }
-        endCursor: { type: string }
-        refreshedAt: { type: string }
     AuthUser:
       type: object
       required: [id, email, displayName, emailVerified, role]
@@ -794,14 +784,13 @@ components:
         password: { type: string, minLength: 1, maxLength: 128 }
     AdminSummary:
       type: object
-      required: [inquiryCount, newInquiryCount, lowStock, shopAdminUrl, shopCurrency, checkoutEnabled, notices]
+      required: [inquiryCount, newInquiryCount, lowStock, shopCurrency, checkoutEnabled, notices]
       properties:
         inquiryCount: { type: integer }
         newInquiryCount: { type: integer }
         lowStock:
           type: array
           items: { $ref: "#/components/schemas/Product" }
-        shopAdminUrl: { type: string }
         shopCurrency: { type: string }
         checkoutEnabled: { type: boolean }
         notices:
