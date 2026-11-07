@@ -141,7 +141,7 @@ function AppShell() {
         <nav className="hidden lg:flex items-center gap-7">{nav.map(([href,label],i)=><Link key={`${href}-${i}`} href={href} className={`text-[10px] tracking-[.11em] uppercase font-semibold transition-colors hover:text-[#a35168] ${path===href?'text-[#5B0D1E]':'text-[#795963]'}`}>{label}</Link>)}</nav>
         <div className="flex items-center gap-3">
           <button className="text-[10px] tracking-widest font-bold text-[#5B0D1E] px-2 py-2" onClick={toggleLang} data-testid="button-toggle-language">{rtl?'EN':'عربي'}</button>
-           <Link href={user?'/user-portal':'/sign-in'} className="text-[10px] font-semibold text-[#5B0D1E] hidden sm:inline max-w-36 truncate" data-testid="link-account">{user?accountName:(rtl?'دخول':'Sign in')}</Link>
+           <Link href={user?'/user-portal':'/sign-in'} className="text-[9px] sm:text-[10px] font-semibold text-[#5B0D1E] max-w-[92px] sm:max-w-36 truncate" data-testid="link-account">{user?accountName:(rtl?'دخول':'Sign in')}</Link>
            {user&&<button type="button" onClick={()=>void handleSignOut()} className="hidden lg:inline-flex items-center gap-1 text-[10px] font-semibold text-[#795963] hover:text-[#5B0D1E]" data-testid="button-navbar-sign-out"><LogOut size={13}/>{c.logout}</button>}
           <Link href="/cart" className="relative inline-flex items-center gap-2 rounded-full border border-[#e9d2d8] px-4 py-2.5 text-[10px] font-bold text-[#5B0D1E]" data-testid="link-cart"><ShoppingBag size={15}/><span className="hidden sm:inline">{c.bag}</span></Link>
           <button className="lg:hidden p-2 text-[#5B0D1E]" onClick={()=>setMobileOpen(!mobileOpen)} aria-label="Toggle navigation">{mobileOpen?<X/>:<Menu/>}</button>
