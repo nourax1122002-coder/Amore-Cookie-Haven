@@ -142,7 +142,7 @@ test("confirmed expired unpaid invoice releases once, never on a browser cancell
   const { order } = await begin();
   fixture.invoices.set(order.invoiceId!, { Invoice: { Id: order.invoiceId, Status: "PENDING", ExternalIdentifier: order.id, ExpirationDate: new Date(Date.now()-3600000).toISOString() }, Transactions: [{ PaymentId: "failed", Status: "FAILED" }] });
   await reconcileOrder(order.id); await reconcileOrder(order.id);
-  assert.equal(fixture.available, 11); assert.equal(fixture.reserves, 2);
+  assert.equal(fixture.available, 11); assert.equal(fixture.reserves, 1);
 });
 test("ambiguous provider POST is never retried as another invoice; held stock stays visible for review", async () => {
   fixture.timeout = true;

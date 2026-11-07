@@ -1,6 +1,147 @@
 import type { CustomerOrder, InquiryRecord, StoreSettingsRecord } from "./schema";
 import { fromDatabaseRow, supabase, toDatabaseRow, unwrap } from "./supabase";
 
+export type ProductRecord = {
+  id: string;
+  handle: string;
+  title: string;
+  titleAr: string;
+  description: string;
+  descriptionAr: string;
+  price: string | number;
+  currency: string;
+  pieces: number;
+  imageUrl: string;
+  stock: number;
+  lowStockThreshold: number;
+  ingredients: string;
+  ingredientsAr: string;
+  isActive: boolean;
+};
+
+export type UserProfileRecord = {
+  userId: string;
+  email: string;
+  displayName: string;
+  role: "customer" | "administrator";
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CartItemRecord = {
+  id: string;
+  cartId: string;
+  productId: string;
+  quantity: number;
+};
+
+export async function listProductRows(includeInactive = false) {
+  let request = supabase.from("products").select("*").order("created_at", { ascending: true });
+  if (!includeInactive) request = request.eq("is_active", true);
+  const rows = unwrap(await request, "product list") as Record<string, unknown>[];
+  return rows.map(row => fromDatabaseRow<ProductRecord>(row));
+}
+
+export async function getProductRowByHandle(handle: string) {
+  const row = unwrap(await supabase.from("products").select("*").eq("handle", handle).eq("is_active", true).maybeSingle(), "product lookup");
+  return row ? fromDatabaseRow<ProductRecord>(row as Record<string, unknown>) : undefined;
+}
+
+export async function getProductRowById(id: string) {
+  const row = unwrap(await supabase.from("products").select("*").eq("id", id).maybeSingle(), "product lookup");
+  return row ? fromDatabaseRow<ProductRecord>(row as Record<string, unknown>) : undefined;
+}
+
+export async function saveProductRow(product: Partial<ProductRecord> & Omit<ProductRecord, "id" | "isActive"> & { id?: string; isActive?: boolean }) {
+  const row = toDatabaseRow({
+    ...product,
+    isActive: product.isActive ?? true,
+    updatedAt: new Date().toISOString(),
+  } as unknown as Record<string, unknown>);
+  const request = product.id
+    ? supabase.from("products").update(row).eq("id", product.id)
+    : supabase.from("products").insert(row);
+  const saved = unwrap(await request.select("*").single(), "product save");
+  return fromDatabaseRow<ProductRecord>(saved as unknown as Record<string, unknown>);
+}
+
+export async function createCartRow(id: string, userId?: string) {
+  const row = unwrap(await supabase.from("carts").insert({ id, ...(userId ? { user_id: userId } : {}) }).select("*").single(), "cart create");
+  return fromDatabaseRow<{ id: string; userId: string | null; note: string; expiresAt: Date }>(row as unknown as Record<string, unknown>);
+}
+
+export async function getCartRow(id: string) {
+  const row = unwrap(await supabase.from("carts").select("*").eq("id", id).gt("expires_at", new Date().toISOString()).maybeSingle(), "cart read");
+  return row ? fromDatabaseRow<{ id: string; userId: string | null; note: string; expiresAt: Date }>(row as Record<string, unknown>) : undefined;
+}
+
+export async function listCartItemRows(cartId: string) {
+  const rows = unwrap(await supabase.from("cart_items").select("*").eq("cart_id", cartId).order("created_at"), "cart item list") as Record<string, unknown>[];
+  return rows.map(row => fromDatabaseRow<CartItemRecord>(row));
+}
+
+export async function upsertCartItemRow(cartId: string, productId: string, quantity: number) {
+  const row = unwrap(await supabase.from("cart_items")
+    .upsert({ cart_id: cartId, product_id: productId, quantity, updated_at: new Date().toISOString() }, { onConflict: "cart_id,product_id" })
+    .select("*").single(), "cart item save");
+  return fromDatabaseRow<CartItemRecord>(row as unknown as Record<string, unknown>);
+}
+
+export async function updateCartItemRow(cartId: string, itemId: string, quantity: number) {
+  const row = unwrap(await supabase.from("cart_items").update({ quantity, updated_at: new Date().toISOString() })
+    .eq("cart_id", cartId).eq("id", itemId).select("*").maybeSingle(), "cart item update");
+  return row ? fromDatabaseRow<CartItemRecord>(row as Record<string, unknown>) : undefined;
+}
+
+export async function deleteCartItemRow(cartId: string, itemId: string) {
+  unwrap(await supabase.from("cart_items").delete().eq("cart_id", cartId).eq("id", itemId), "cart item remove");
+}
+
+export async function updateCartNoteRow(cartId: string, note: string) {
+  unwrap(await supabase.from("carts").update({ note, updated_at: new Date().toISOString() }).eq("id", cartId), "cart note update");
+}
+
+export async function attachCartToUser(cartId: string, userId: string) {
+  unwrap(await supabase.from("carts").update({ user_id: userId, updated_at: new Date().toISOString() })
+    .eq("id", cartId).or(`user_id.is.null,user_id.eq.${userId}`), "cart account link");
+}
+
+export async function getUserProfile(userId: string) {
+  const row = unwrap(await supabase.from("user_profiles").select("*").eq("user_id", userId).maybeSingle(), "profile read");
+  return row ? fromDatabaseRow<UserProfileRecord>(row as Record<string, unknown>) : undefined;
+}
+
+export async function saveUserProfile(input: Pick<UserProfileRecord, "userId" | "email" | "displayName" | "role">) {
+  const row = unwrap(await supabase.from("user_profiles").upsert({
+    user_id: input.userId, email: input.email, display_name: input.displayName, role: input.role,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id" }).select("*").single(), "profile save");
+  return fromDatabaseRow<UserProfileRecord>(row as unknown as Record<string, unknown>);
+}
+
+export async function reserveOrderProductStock(orderId: string) {
+  unwrap(await supabase.rpc("reserve_order_stock", { p_order_id: orderId }), "product stock reservation");
+}
+
+export async function releaseOrderProductStock(orderId: string) {
+  unwrap(await supabase.rpc("release_order_stock", { p_order_id: orderId }), "product stock release");
+}
+
+export async function uploadProductImage(name: string, bytes: Buffer, contentType: string) {
+  if (!/^[a-f0-9-]{36}\.(?:jpg|png|webp)$/.test(name) ||
+    !["image/jpeg", "image/png", "image/webp"].includes(contentType) || bytes.length > 5 * 1024 * 1024) {
+    throw new Error("Invalid product image.");
+  }
+  const storage = supabase.storage.from("amore-products");
+  const uploaded = await storage.upload(name, bytes, { contentType, cacheControl: "31536000", upsert: true });
+  if (uploaded.error) {
+    const error = new Error("Supabase product image upload failed.");
+    Object.assign(error, { code: uploaded.error.name });
+    throw error;
+  }
+  return storage.getPublicUrl(name).data.publicUrl;
+}
+
 function mapOrder(value: Record<string, unknown>) {
   return fromDatabaseRow<CustomerOrder>(value);
 }

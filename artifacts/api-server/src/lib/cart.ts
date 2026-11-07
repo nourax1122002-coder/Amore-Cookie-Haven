@@ -1,34 +1,40 @@
+import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
-import { GetCartResponse, UpdateCartBody, StartCheckoutBody } from "@workspace/api-zod";
-import { shopifyStorefrontRequest } from "./shopifyStorefrontClient";
-import { getCatalog, getShopCurrency } from "./catalog";
+import {
+  createCartRow, deleteCartItemRow, getCartRow, getProductRowById, listCartItemRows,
+  listProductRows, updateCartItemRow, updateCartNoteRow, upsertCartItemRow,
+} from "@workspace/db";
+import { GetCartResponse, UpdateCartBody } from "@workspace/api-zod";
 import { readSettings } from "./store-settings";
 import { HttpError } from "./errors";
 import { paymentConfiguration } from "./myfatoorah";
 
-const CART_FIELDS = `id checkoutUrl totalQuantity buyerIdentity { countryCode }
-  discountCodes { code applicable }
-  cost { subtotalAmount { amount currencyCode } totalAmount { amount currencyCode } }
-  lines(first:250) { nodes {
-    id quantity cost { totalAmount { amount currencyCode } }
-    merchandise { ... on ProductVariant {
-      id price { amount currencyCode } product { handle title featuredImage { url } }
-    } }
-  } }`;
-type RawCart = {
-  buyerIdentity?: { countryCode?: string | null };
-  id: string; checkoutUrl: string; totalQuantity: number;
-  discountCodes: Array<{ code: string; applicable: boolean }>;
-  cost: { subtotalAmount: { amount: string; currencyCode: string }; totalAmount: { amount: string; currencyCode: string } };
-  lines: { nodes: Array<{ id: string; quantity: number; cost: { totalAmount: { amount: string; currencyCode: string } }; merchandise: {
-    id: string; price: { amount: string; currencyCode: string }; product: { handle: string; title: string; featuredImage: { url: string } | null };
-  } }> };
+type RawLine = {
+  id: string;
+  quantity: number;
+  cost: { totalAmount: { amount: string; currencyCode: "KWD" } };
+  merchandise: {
+    id: string;
+    price: { amount: string; currencyCode: "KWD" };
+    product: { handle: string; title: string; featuredImage: { url: string } };
+  };
 };
+type RawCart = {
+  id: string;
+  totalQuantity: number;
+  discountCodes: Array<{ code: string; applicable: boolean }>;
+  cost: { subtotalAmount: { amount: string; currencyCode: "KWD" }; totalAmount: { amount: string; currencyCode: "KWD" } };
+  lines: { nodes: RawLine[] };
+};
+
 const cookieName = "amore_cart";
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export function cartId(req: Request): string | undefined {
   const value = req.signedCookies?.[cookieName];
-  return typeof value === "string" && value.startsWith("gid://shopify/Cart/") ? value : undefined;
+  return typeof value === "string" && uuidPattern.test(value) ? value : undefined;
 }
+
 function rememberCart(req: Request, res: Response, id: string) {
   res.cookie(cookieName, id, {
     httpOnly: true, signed: true, sameSite: "lax",
@@ -38,175 +44,121 @@ function rememberCart(req: Request, res: Response, id: string) {
 }
 
 export async function rawCart(id?: string): Promise<RawCart | null> {
-  if (!id) return null;
-  const data = await shopifyStorefrontRequest<{ cart: RawCart | null }>(`query($id:ID!) { cart(id:$id) { ${CART_FIELDS} } }`, { id });
-  // Legacy carts forced a Kuwait Shopify Market, which is not enabled here
-  // and silently clamps quantities to zero. Direct-payment delivery stays
-  // local to Kuwait; Shopify's default catalog market is only for selection.
-  if (data.cart?.buyerIdentity?.countryCode === "KW") {
-    const market = await shopifyStorefrontRequest<{ localization: { country: { isoCode: string } } }>(`query { localization { country { isoCode } } }`);
-    const country = market.localization.country.isoCode;
-    if (country !== "KW") {
-      const changed = await shopifyStorefrontRequest<{ cartBuyerIdentityUpdate: { cart: RawCart | null; userErrors: Array<{ message: string }> } }>(
-        `mutation($id:ID!,$buyer:CartBuyerIdentityInput!) { cartBuyerIdentityUpdate(cartId:$id,buyerIdentity:$buyer) { cart { ${CART_FIELDS} } userErrors { message } } }`,
-        { id, buyer: { countryCode: country } });
-      assertCartErrors(changed.cartBuyerIdentityUpdate.userErrors);
-      return changed.cartBuyerIdentityUpdate.cart;
-    }
-  }
-  return data.cart;
+  if (!id || !uuidPattern.test(id)) return null;
+  const cart = await getCartRow(id);
+  if (!cart) return null;
+  const items = await listCartItemRows(id);
+  if (!items.length) return { id, totalQuantity: 0, discountCodes: [], cost: {
+    subtotalAmount: { amount: "0.000", currencyCode: "KWD" }, totalAmount: { amount: "0.000", currencyCode: "KWD" },
+  }, lines: { nodes: [] } };
+  const products = await listProductRows(true);
+  const byId = new Map(products.map(product => [product.id, product]));
+  const lines = items.flatMap(item => {
+    const product = byId.get(item.productId);
+    if (!product) return [];
+    const amount = (Math.round(Number(product.price) * 1000) / 1000).toFixed(3);
+    return [{
+      id: item.id,
+      quantity: item.quantity,
+      cost: { totalAmount: { amount: (Number(amount) * item.quantity).toFixed(3), currencyCode: "KWD" as const } },
+      merchandise: {
+        id: product.id,
+        price: { amount, currencyCode: "KWD" as const },
+        product: { handle: product.handle, title: product.title, featuredImage: { url: product.imageUrl } },
+      },
+    }];
+  });
+  const subtotalFils = lines.reduce((sum, line) => sum + Math.round(Number(line.merchandise.price.amount) * 1000) * line.quantity, 0);
+  const subtotal = (subtotalFils / 1000).toFixed(3);
+  return {
+    id,
+    totalQuantity: lines.reduce((sum, line) => sum + line.quantity, 0),
+    discountCodes: [],
+    cost: { subtotalAmount: { amount: subtotal, currencyCode: "KWD" }, totalAmount: { amount: subtotal, currencyCode: "KWD" } },
+    lines: { nodes: lines },
+  };
 }
 
 export async function readiness() {
-  const [settings, shopCurrency] = await Promise.all([readSettings(), getShopCurrency()]);
+  const settings = await readSettings();
   const checkoutReady = settings.checkoutEnabled && paymentConfiguration().ready;
   const launchMessage = checkoutReady ? "" : "Live payments await merchant approval, approved fees and delivery settings. / الدفع الحقيقي بانتظار اعتماد حساب التاجر والرسوم وإعدادات التوصيل.";
-  return { settings, shopCurrency, checkoutReady, launchMessage };
+  return { settings, shopCurrency: "KWD", checkoutReady, launchMessage };
 }
 
 export async function presentCart(cart: RawCart | null) {
-  const [ready, products] = await Promise.all([readiness(), cart ? getCatalog() : Promise.resolve([])]);
-  const lines = cart?.lines.nodes.map(l => {
-    const product = products.find(p => p.variantId === l.merchandise.id);
-    return { id: l.id, variantId: l.merchandise.id, handle: l.merchandise.product.handle,
-      title: product?.title ?? l.merchandise.product.title, quantity: l.quantity,
-      price: product?.price ?? Number(l.merchandise.price.amount),
-      imageUrl: product?.imageUrl ?? l.merchandise.product.featuredImage?.url ?? "" };
-  }) ?? [];
-  const rawCurrency = cart?.cost.totalAmount.currencyCode ?? ready.shopCurrency;
-  // A KWD catalog quote is never a payable USD total. Checkout stays blocked.
-  const quoted = rawCurrency !== "KWD";
-  const subtotal = quoted ? lines.reduce((sum, l) => sum + Math.round(l.price * 1000) * l.quantity, 0) / 1000
-    : Number(cart?.cost.subtotalAmount.amount ?? 0);
-  const total = quoted ? subtotal : Number(cart?.cost.totalAmount.amount ?? 0);
+  const ready = await readiness();
+  const lines = cart?.lines.nodes.map(line => ({
+    id: line.id,
+    variantId: line.merchandise.id,
+    handle: line.merchandise.product.handle,
+    title: line.merchandise.product.title,
+    quantity: line.quantity,
+    price: Number(line.merchandise.price.amount),
+    imageUrl: line.merchandise.product.featuredImage.url,
+  })) ?? [];
+  const subtotalFils = lines.reduce((sum, line) => sum + Math.round(line.price * 1000) * line.quantity, 0);
+  const subtotal = subtotalFils / 1000;
   return GetCartResponse.parse({
-    lines, subtotal, total, discount: Math.max(0, subtotal - total), currency: "KWD",
-    checkoutReady: ready.checkoutReady,
-    message: ready.launchMessage,
-    discountCodes: cart?.discountCodes ?? [],
+    lines, subtotal, total: subtotal, discount: 0, currency: "KWD",
+    checkoutReady: ready.checkoutReady, message: ready.launchMessage, discountCodes: [],
   });
 }
 
-function assertCartErrors(errors: Array<{ message: string }>) {
-  if (errors.length) throw new HttpError(400, errors.map(e => e.message).join(" "));
+function assertAvailable(product: Awaited<ReturnType<typeof getProductRowById>>, requested: number) {
+  if (!product?.isActive || !Number.isInteger(requested) || requested < 1 || requested > product.stock) {
+    throw new HttpError(409, "Requested quantity is not available. / الكمية المطلوبة غير متوفرة.");
+  }
+}
+
+async function ensureCart(req: Request, res: Response) {
+  const existingId = cartId(req);
+  if (existingId && await getCartRow(existingId)) return existingId;
+  const id = randomUUID();
+  await createCartRow(id);
+  rememberCart(req, res, id);
+  return id;
 }
 
 export async function mutateCart(req: Request, res: Response, body: ReturnType<typeof UpdateCartBody.parse>) {
-  let cart = await rawCart(cartId(req));
+  let id = cartId(req);
+  let cart = id ? await rawCart(id) : null;
   if (body.action === "add") {
     if (!body.variantId || !body.quantity) throw new HttpError(400, "Select a product and quantity.");
-    const products = await getCatalog(true);
-    const product = products.find(p => p.variantId === body.variantId);
-    const existing = cart?.lines.nodes.filter(l => l.merchandise.id === body.variantId).reduce((n, l) => n + l.quantity, 0) ?? 0;
-    if (!product?.available || body.quantity + existing > product.stock) throw new HttpError(409, "Requested quantity is not available. / الكمية المطلوبة غير متوفرة.");
-    if (!cart) {
-      const data = await shopifyStorefrontRequest<{ cartCreate: { cart: RawCart | null; userErrors: Array<{ message: string }> } }>(
-        `mutation($i:CartInput!) { cartCreate(input:$i) { cart { ${CART_FIELDS} } userErrors { field message } } }`,
-        { i: { lines: [{ merchandiseId: body.variantId, quantity: body.quantity }] } });
-      assertCartErrors(data.cartCreate.userErrors);
-      cart = data.cartCreate.cart;
-      if (!cart) throw new HttpError(502, "Shopify could not create your cart.");
-      rememberCart(req, res, cart.id);
-    } else {
-      const data = await shopifyStorefrontRequest<{ cartLinesAdd: { cart: RawCart; userErrors: Array<{ message: string }> } }>(
-        `mutation($id:ID!,$lines:[CartLineInput!]!) { cartLinesAdd(cartId:$id,lines:$lines) { cart { ${CART_FIELDS} } userErrors { field message } } }`,
-        { id: cart.id, lines: [{ merchandiseId: body.variantId, quantity: body.quantity }] });
-      assertCartErrors(data.cartLinesAdd.userErrors); cart = data.cartLinesAdd.cart;
-    }
-    const accepted = cart.lines.nodes.filter(l => l.merchandise.id === body.variantId).reduce((sum, line) => sum + line.quantity, 0);
-    if (accepted !== existing + body.quantity) throw new HttpError(409, "The catalog could not accept the selected quantity. Please review your bag before retrying. / تعذر تثبيت الكمية المختارة، راجعي السلة قبل إعادة المحاولة.");
+    const product = await getProductRowById(body.variantId);
+    if (!product?.isActive) throw new HttpError(404, "Product not found. / المنتج غير موجود.");
+    const existing = cart?.lines.nodes.filter(line => line.merchandise.id === product.id).reduce((sum, line) => sum + line.quantity, 0) ?? 0;
+    assertAvailable(product, existing + body.quantity);
+    id = await ensureCart(req, res);
+    await upsertCartItemRow(id, product.id, existing + body.quantity);
   } else {
-    if (!cart) throw new HttpError(409, "Your cart is empty or expired. / السلة فارغة أو انتهت صلاحيتها.");
-    let query: string; let variables: Record<string, unknown>; let operation: string;
+    if (!id || !cart) throw new HttpError(409, "Your cart is empty or expired. / السلة فارغة أو انتهت صلاحيتها.");
     switch (body.action) {
       case "update": {
-        const line = cart.lines.nodes.find(l => l.id === body.lineId);
+        const line = cart.lines.nodes.find(item => item.id === body.lineId);
         if (!line || !body.quantity) throw new HttpError(400, "Choose a valid cart item and quantity.");
-        const products = await getCatalog(true);
-        const product = products.find(p => p.variantId === line.merchandise.id);
-        const otherQuantity = cart.lines.nodes.filter(l => l.id !== line.id && l.merchandise.id === line.merchandise.id).reduce((sum, l) => sum + l.quantity, 0);
-        if (!product?.available || body.quantity + otherQuantity > product.stock) throw new HttpError(409, "Requested quantity is not available. / الكمية المطلوبة غير متوفرة.");
-        operation = "cartLinesUpdate";
-        query = `mutation($id:ID!,$lines:[CartLineUpdateInput!]!) { cartLinesUpdate(cartId:$id,lines:$lines) { cart { ${CART_FIELDS} } userErrors { message } } }`;
-        variables = { id: cart.id, lines: [{ id: line.id, quantity: body.quantity }] }; break;
+        const product = await getProductRowById(line.merchandise.id);
+        const otherQuantity = cart.lines.nodes.filter(item => item.id !== line.id && item.merchandise.id === line.merchandise.id)
+          .reduce((sum, item) => sum + item.quantity, 0);
+        assertAvailable(product, otherQuantity + body.quantity);
+        if (!await updateCartItemRow(id, line.id, body.quantity)) throw new HttpError(404, "Cart item not found.");
+        break;
       }
       case "remove": {
-        if (!cart.lines.nodes.some(l => l.id === body.lineId)) throw new HttpError(400, "Cart item not found.");
-        operation = "cartLinesRemove";
-        query = `mutation($id:ID!,$lines:[ID!]!) { cartLinesRemove(cartId:$id,lineIds:$lines) { cart { ${CART_FIELDS} } userErrors { message } } }`;
-        variables = { id: cart.id, lines: [body.lineId] }; break;
+        if (!cart.lines.nodes.some(item => item.id === body.lineId)) throw new HttpError(404, "Cart item not found.");
+        await deleteCartItemRow(id, body.lineId!);
+        break;
       }
-      case "discount": {
+      case "discount":
         if (body.code?.trim()) throw new HttpError(409, "Discount codes are not enabled for direct MyFatoorah checkout. / أكواد الخصم غير مفعّلة للدفع المباشر عبر ماي فاتورة.");
-        operation = "cartDiscountCodesUpdate";
-        query = `mutation($id:ID!,$codes:[String!]!) { cartDiscountCodesUpdate(cartId:$id,discountCodes:$codes) { cart { ${CART_FIELDS} } userErrors { message } } }`;
-        variables = { id: cart.id, codes: body.code?.trim() ? [body.code.trim()] : [] }; break;
-      }
-      case "note": {
-        operation = "cartNoteUpdate";
-        query = `mutation($id:ID!,$note:String!) { cartNoteUpdate(cartId:$id,note:$note) { cart { ${CART_FIELDS} } userErrors { message } } }`;
-        variables = { id: cart.id, note: body.note ?? "" }; break;
-      }
-      default: throw new HttpError(400, "Invalid cart operation.");
-    }
-    const result = await shopifyStorefrontRequest<Record<string, { cart: RawCart; userErrors: Array<{ message: string }> }>>(query, variables);
-    const updated = result[operation]!;
-    assertCartErrors(updated.userErrors); cart = updated.cart;
-    if (body.action === "update" && cart.lines.nodes.find(line => line.id === body.lineId)?.quantity !== body.quantity) {
-      throw new HttpError(409, "The catalog could not accept the selected quantity. / تعذر تثبيت الكمية المختارة في السلة.");
+        break;
+      case "note":
+        await updateCartNoteRow(id, body.note ?? "");
+        break;
+      default:
+        throw new HttpError(400, "Invalid cart operation.");
     }
   }
+  cart = await rawCart(id);
   return presentCart(cart);
-}
-
-export async function checkout(req: Request, body: ReturnType<typeof StartCheckoutBody.parse>) {
-  const address = body.address && {
-    area: body.address.area.trim(), block: body.address.block.trim(),
-    street: body.address.street.trim(), house: body.address.house.trim(),
-  };
-  if (address && Object.values(address).some(value => !value)) {
-    throw new HttpError(400, "Complete all address fields. / يرجى تعبئة جميع خانات العنوان.");
-  }
-  const ready = await readiness();
-  if (!ready.checkoutReady) throw new HttpError(409, ready.launchMessage);
-  const cart = await rawCart(cartId(req));
-  if (!cart || !cart.lines.nodes.length) throw new HttpError(409, "Your cart is empty. / السلة فارغة.");
-  if (cart.cost.totalAmount.currencyCode !== "KWD") throw new HttpError(409, "Recreate your cart after the currency change. / يرجى إعادة إنشاء السلة بعد تغيير العملة.");
-  const products = await getCatalog(true);
-  for (const line of cart.lines.nodes) {
-    const p = products.find(p => p.variantId === line.merchandise.id);
-    if (!p?.available || line.quantity > p.stock) throw new HttpError(409, "An item is no longer available. Please review your cart. / يرجى مراجعة الكميات في السلة.");
-  }
-  const buyer = await shopifyStorefrontRequest<{ cartBuyerIdentityUpdate: { userErrors: Array<{ message: string }> } }>(
-    `mutation($id:ID!,$b:CartBuyerIdentityInput!) { cartBuyerIdentityUpdate(cartId:$id,buyerIdentity:$b) { userErrors { message } } }`,
-    { id: cart.id, b: { countryCode: "KW", ...(body.email ? { email: body.email } : {}), ...(body.phone ? { phone: body.phone } : {}) } });
-  assertCartErrors(buyer.cartBuyerIdentityUpdate.userErrors);
-  if (address) {
-    const delivery = await shopifyStorefrontRequest<{ cartDeliveryAddressesReplace: { userErrors: Array<{ message: string }> } }>(
-      `mutation($id:ID!,$addresses:[CartSelectableAddressInput!]!) {
-        cartDeliveryAddressesReplace(cartId:$id,addresses:$addresses) { userErrors { message } }
-      }`,
-      { id: cart.id, addresses: [{
-        selected: true, oneTimeUse: true,
-        address: { deliveryAddress: {
-          countryCode: "KW", city: address.area,
-          address1: `Block / قطعة ${address.block}, Street / شارع ${address.street}`,
-          address2: `House / منزل ${address.house}`,
-          ...(body.phone ? { phone: body.phone } : {}),
-        } },
-      }] });
-    assertCartErrors(delivery.cartDeliveryAddressesReplace.userErrors);
-  }
-  if (body.note !== undefined) {
-    const noted = await shopifyStorefrontRequest<{ cartNoteUpdate: { userErrors: Array<{ message: string }> } }>(
-      `mutation($id:ID!,$note:String!) { cartNoteUpdate(cartId:$id,note:$note) { userErrors { message } } }`, { id: cart.id, note: body.note });
-    assertCartErrors(noted.cartNoteUpdate.userErrors);
-  }
-  const current = await rawCart(cart.id);
-  if (!current?.checkoutUrl) throw new HttpError(502, "Checkout could not be created.");
-  const url = new URL(current.checkoutUrl);
-  if (url.protocol !== "https:") throw new HttpError(502, "Invalid checkout URL.");
-  // Development-store password preview is explicit, never enabled for production.
-  if (process.env.SHOPIFY_DEV_CHECKOUT_PREVIEW === "true" && process.env.NODE_ENV !== "production") url.searchParams.set("channel", "online_store");
-  return { url: url.toString() };
 }

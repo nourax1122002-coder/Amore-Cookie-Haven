@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import type { Request } from "express";
+import type { Request, Response } from "express";
 import {
   getCustomerOrder, getCustomerOrderByNumber, getLatestOrderForCart, insertCustomerOrder,
   listCustomerOrders, listOrdersForReconciliation, updateCustomerOrder,
@@ -9,7 +9,7 @@ import { StartCheckoutBody } from "@workspace/api-zod";
 import { getCatalog } from "./catalog";
 import { cartId, rawCart } from "./cart";
 import { readSettings } from "./store-settings";
-import { normalizePhone, phoneMatches } from "./orders";
+import { normalizePhone, phoneMatches } from "./phone";
 import { HttpError } from "./errors";
 import { checkoutAddress } from "./delivery-address";
 import {
@@ -17,6 +17,7 @@ import {
   safePaymentUrl, verifyDetails,
 } from "./myfatoorah";
 import { reserveStock, releaseStock, stockLock } from "./order-stock";
+import { getAuthenticatedUser } from "./auth";
 
 export const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 function receiptToken(id: string) {
@@ -66,7 +67,7 @@ function resultUrl(order: CustomerOrder) {
     : order.paymentStatus === "cancelled" ? "cancelled" : "pending";
   return `${paymentConfiguration().origin}/payment/${state}?order=${order.id}&token=${receiptToken(order.id)}`;
 }
-export async function localCheckout(req: Request, body: ReturnType<typeof StartCheckoutBody.parse>) {
+export async function localCheckout(req: Request, body: ReturnType<typeof StartCheckoutBody.parse>, res?: Response) {
   const config = paymentConfiguration();
   if (!config.ready || !(await readSettings()).checkoutEnabled) throw new HttpError(503, "Live payments are awaiting merchant approval and configuration. / الدفع الحقيقي بانتظار اعتماد حساب التاجر وإكمال الإعدادات.");
   const phone = normalizePhone(body.phone ?? "");
@@ -77,6 +78,7 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
   const id = cartId(req);
   const cart = await rawCart(id);
   if (!id || !cart?.lines.nodes.length) throw new HttpError(409, "Your bag is empty. / السلة فارغة.");
+  const account = res ? await getAuthenticatedUser(req, res) : null;
   if (cart.discountCodes.some(c => c.applicable)) throw new HttpError(409, "Discount codes must be removed before direct payment. / يرجى إزالة رمز الخصم قبل الدفع المباشر.");
   const catalog = await getCatalog(true);
   const aggregate = new Map<string, number>();
@@ -112,6 +114,7 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
       id: orderId, number: `AM-${randomUUID().replaceAll("-", "").slice(0, 16).toUpperCase()}`,
       cartHash, requestKey: body.requestKey!, requestHash, tokenHash: digest(receiptToken(orderId)),
       phone, address, note: body.note ?? "", items, subtotalFils, shippingFils: config.shippingFils!, totalFils,
+      userId: account?.id ?? null,
       expiresAt: new Date(Date.now() + 30 * 60_000),
     });
     if (!order) throw new HttpError(503, "Order could not be saved.");
@@ -169,9 +172,9 @@ export async function callbackResult(id: string, token: string, paymentId: strin
 }
 export async function localTracking(number: string, phone: string) {
   const order = await getCustomerOrderByNumber(number.replace(/^#/, "").toUpperCase());
-  const matched = order && phoneMatches(phone, { phone: order.phone } as Parameters<typeof phoneMatches>[1]);
+  const matched = order && phoneMatches(phone, order.phone);
   return matched ? { available: true, statusUrl: "", message: "Order status from Amore Cookies. / حالة الطلب من أموري كوكيز.", order: orderSummary(order) }
-    : { available: false, statusUrl: "", message: "We could not verify these details. / تعذر التحقق من بيانات الطلب." };
+    : { available: false, statusUrl: "", message: "We could not verify these Amore order details. / تعذر التحقق من بيانات طلب أموري." };
 }
 export async function localOrderList() {
   const rows = await listCustomerOrders(100);

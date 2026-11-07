@@ -41,5 +41,22 @@ export async function writeSettingsRow(content: Record<string, unknown>) { retur
 export async function getInquiryCounts() { return { total: 1, fresh: 1 }; }
 export async function listInquiries() { return []; }
 export async function updateInquiry() { return undefined; }
+export async function getProductRowByHandle() { return undefined; }
+export async function getProductRowById() { return undefined; }
+export async function listProductRows() { return []; }
+export async function saveProductRow() { throw new Error("Unexpected product write in orders boundary test."); }
+export async function createCartRow() { throw new Error("Unexpected cart write in orders boundary test."); }
+export async function getCartRow() { return undefined; }
+export async function listCartItemRows() { return []; }
+export async function upsertCartItemRow() { throw new Error("Unexpected cart write in orders boundary test."); }
+export async function updateCartItemRow() { return undefined; }
+export async function deleteCartItemRow() {}
+export async function updateCartNoteRow() {}
+export async function attachCartToUser() {}
+export async function saveUserProfile() { throw new Error("Unexpected profile write in orders boundary test."); }
+export async function createSupabaseAuthClient() { throw new Error("Unexpected Auth network request in orders boundary test."); }
+export async function reserveOrderProductStock() { throw new Error("Unexpected stock reservation in orders boundary test."); }
+export async function releaseOrderProductStock() { throw new Error("Unexpected stock release in orders boundary test."); }
+export async function uploadProductImage() { throw new Error("Unexpected product image upload in orders boundary test."); }
 
 export { customerOrdersTable } from "../../../../../lib/db/src/schema/customer-orders";

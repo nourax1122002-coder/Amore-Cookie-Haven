@@ -10,15 +10,17 @@ try {
   const outfile = join(temp, "payments.test.cjs");
   await build({
     absWorkingDir: root, entryPoints: ["test/payments/payments.test.ts"], outfile, bundle: true, platform: "node", format: "cjs", logLevel: "warning",
+    alias: {
+      "@workspace/db": join(root, "test/payments/mocks.ts"),
+    },
     plugins: [{ name: "isolate-payment-providers", setup(b) {
-      b.onResolve({ filter: /\/(catalog|cart|store-settings|shopify-admin-api)$/ }, () => ({ path: join(root, "test/payments/mocks.ts") }));
+      b.onResolve({ filter: /\/(catalog|cart|store-settings)$/ }, () => ({ path: join(root, "test/payments/mocks.ts") }));
     } }],
   });
   const child = spawn(process.execPath, ["--test", outfile], {
     stdio: "inherit", env: {
       PATH: process.env.PATH,
-      SUPABASE_URL: process.env.SUPABASE_URL,
-      SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
+      ADMIN_EMAILS: "owner@example.invalid",
     },
   });
   process.exitCode = await new Promise((resolve, reject) => { child.once("error", reject); child.once("exit", code=>resolve(code??1)); });

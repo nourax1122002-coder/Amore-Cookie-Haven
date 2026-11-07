@@ -493,7 +493,7 @@ export const CreateInquiryResponse = zod.object({
 
 
 /**
- * Exact order number and checkout phone verification. Returns minimal Shopify data only; no customer addresses or privileged status links.
+ * Exact Amore order number and checkout phone verification. Returns a minimal status without customer addresses or receipt tokens.
  */
 export const trackOrderBodyOrderNumberMax = 100;
 
@@ -528,35 +528,75 @@ export const TrackOrderResponse = zod.object({
 })
 
 
-/**
- * Administrator-only live Shopify orders, newest first. Updates and cancellations are handled in Shopify.
- */
-export const listAdminOrdersQueryAfterMax = 1000;
-
-
-
-export const ListAdminOrdersQueryParams = zod.object({
-  "after": zod.coerce.string().max(listAdminOrdersQueryAfterMax).optional()
+export const GetAuthSessionResponse = zod.object({
+  "user": zod.union([zod.object({
+  "id": zod.string().uuid(),
+  "email": zod.string().email(),
+  "displayName": zod.string(),
+  "emailVerified": zod.boolean(),
+  "role": zod.enum(['customer', 'administrator'])
+}),zod.null()])
 })
 
-export const ListAdminOrdersResponse = zod.object({
-  "orders": zod.array(zod.object({
-  "number": zod.string(),
-  "stage": zod.enum(['received', 'confirmed', 'preparing', 'partially_fulfilled', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'review']),
-  "financialStatus": zod.string(),
-  "fulfillmentStatus": zod.string(),
-  "createdAt": zod.string(),
-  "total": zod.string(),
-  "currency": zod.string(),
-  "hasMoreItems": zod.boolean(),
-  "items": zod.array(zod.object({
-  "title": zod.string(),
-  "quantity": zod.number().int()
-}))
-})),
-  "hasNextPage": zod.boolean(),
-  "endCursor": zod.string(),
-  "refreshedAt": zod.string()
+
+export const createAuthAccountBodyEmailMax = 254;
+
+export const createAuthAccountBodyPasswordMin = 8;
+export const createAuthAccountBodyPasswordMax = 128;
+
+export const createAuthAccountBodyDisplayNameMax = 120;
+
+
+
+export const CreateAuthAccountBody = zod.object({
+  "email": zod.string().email().max(createAuthAccountBodyEmailMax),
+  "password": zod.string().min(createAuthAccountBodyPasswordMin).max(createAuthAccountBodyPasswordMax),
+  "displayName": zod.string().max(createAuthAccountBodyDisplayNameMax).optional()
+})
+
+export const CreateAuthAccountResponse = zod.object({
+  "user": zod.union([zod.object({
+  "id": zod.string().uuid(),
+  "email": zod.string().email(),
+  "displayName": zod.string(),
+  "emailVerified": zod.boolean(),
+  "role": zod.enum(['customer', 'administrator'])
+}),zod.null()]),
+  "requiresEmailConfirmation": zod.boolean()
+})
+
+
+export const signInToAuthAccountBodyEmailMax = 254;
+
+export const signInToAuthAccountBodyPasswordMax = 128;
+
+
+
+export const SignInToAuthAccountBody = zod.object({
+  "email": zod.string().email().max(signInToAuthAccountBodyEmailMax),
+  "password": zod.string().min(1).max(signInToAuthAccountBodyPasswordMax)
+})
+
+export const SignInToAuthAccountResponse = zod.object({
+  "user": zod.union([zod.object({
+  "id": zod.string().uuid(),
+  "email": zod.string().email(),
+  "displayName": zod.string(),
+  "emailVerified": zod.boolean(),
+  "role": zod.enum(['customer', 'administrator'])
+}),zod.null()]),
+  "requiresEmailConfirmation": zod.boolean()
+})
+
+
+export const SignOutAuthAccountResponse = zod.object({
+  "user": zod.union([zod.object({
+  "id": zod.string().uuid(),
+  "email": zod.string().email(),
+  "displayName": zod.string(),
+  "emailVerified": zod.boolean(),
+  "role": zod.enum(['customer', 'administrator'])
+}),zod.null()])
 })
 
 
@@ -997,6 +1037,11 @@ export const SaveProductResponse = zod.object({
   "lowStockThreshold": zod.number().int(),
   "ingredients": zod.string(),
   "ingredientsAr": zod.string()
+})
+
+
+export const UploadAdminProductImageResponse = zod.object({
+  "imageUrl": zod.string().url()
 })
 
 

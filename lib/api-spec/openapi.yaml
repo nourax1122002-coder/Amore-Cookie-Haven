@@ -234,7 +234,7 @@ paths:
   /tracking:
     post:
       operationId: trackOrder
-      description: Exact order number and checkout phone verification. Returns minimal Shopify data only; no customer addresses or privileged status links.
+      description: Exact Amore order number and checkout phone verification. Returns a minimal status without customer addresses or receipt tokens.
       requestBody:
         required: true
         content:
@@ -242,32 +242,65 @@ paths:
             schema: { $ref: "#/components/schemas/TrackingInput" }
       responses:
         "200":
-          description: Verified Shopify status or identical response for every unsuccessful match
+          description: Verified Amore order status or identical response for every unsuccessful match
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TrackingResult" }
         "429":
           description: Too many attempts; retry after the Retry-After header
         "503":
-          description: Shopify tracking temporarily unavailable
-  /admin/orders:
+          description: Amore order tracking temporarily unavailable
+  /auth/session:
     get:
-      operationId: listAdminOrders
-      description: Administrator-only live Shopify orders, newest first. Updates and cancellations are handled in Shopify.
-      parameters:
-        - in: query
-          name: after
-          schema: { type: string, maxLength: 1000 }
+      operationId: getAuthSession
       responses:
         "200":
-          description: A live page of Shopify orders
+          description: Current account or a guest session; tokens remain in HttpOnly cookies.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/OrderPage" }
-        "401":
-          description: Sign in required
-        "403":
-          description: Approved administrator required
+              schema: { $ref: "#/components/schemas/AuthSessionResponse" }
+  /auth/sign-up:
+    post:
+      operationId: createAuthAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SignUpInput" }
+      responses:
+        "201":
+          description: Account created and signed in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResult" }
+        "202":
+          description: Account created; email confirmation is required.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResult" }
+  /auth/sign-in:
+    post:
+      operationId: signInToAuthAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SignInInput" }
+      responses:
+        "200":
+          description: Authenticated account; tokens remain in HttpOnly cookies.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResult" }
+  /auth/sign-out:
+    post:
+      operationId: signOutAuthAccount
+      responses:
+        "200":
+          description: Current browser session cleared.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthSessionResponse" }
   /admin/me:
     get:
       operationId: getAdminSession
@@ -287,7 +320,7 @@ paths:
       operationId: getAdminSummary
       responses:
         "200":
-          description: Actual inquiries and inventory; Shopify management destinations
+          description: Supabase-backed inquiries and inventory.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdminSummary" }
@@ -360,10 +393,36 @@ paths:
             schema: { $ref: "#/components/schemas/ProductInput" }
       responses:
         "200":
-          description: Saved Shopify product
+          description: Saved Supabase product
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Product" }
+  /admin/product-images:
+    post:
+      operationId: uploadAdminProductImage
+      requestBody:
+        required: true
+        content:
+          image/jpeg:
+            schema: { type: string, format: binary }
+          image/png:
+            schema: { type: string, format: binary }
+          image/webp:
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: Public URL of an administrator-uploaded Supabase Storage image.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [imageUrl]
+                properties:
+                  imageUrl: { type: string, format: uri }
+        "401":
+          description: Sign in required
+        "403":
+          description: Approved administrator required
 components:
   schemas:
     AssistantStatus:
@@ -694,6 +753,45 @@ components:
         hasNextPage: { type: boolean }
         endCursor: { type: string }
         refreshedAt: { type: string }
+    AuthUser:
+      type: object
+      required: [id, email, displayName, emailVerified, role]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        emailVerified: { type: boolean }
+        role: { type: string, enum: [customer, administrator] }
+    AuthSessionResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          anyOf:
+            - { $ref: "#/components/schemas/AuthUser" }
+            - { type: "null" }
+    AuthResult:
+      type: object
+      required: [user, requiresEmailConfirmation]
+      properties:
+        user:
+          anyOf:
+            - { $ref: "#/components/schemas/AuthUser" }
+            - { type: "null" }
+        requiresEmailConfirmation: { type: boolean }
+    SignUpInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        displayName: { type: string, maxLength: 120 }
+    SignInInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 1, maxLength: 128 }
     AdminSummary:
       type: object
       required: [inquiryCount, newInquiryCount, lowStock, shopAdminUrl, shopCurrency, checkoutEnabled, notices]

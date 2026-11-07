@@ -5,10 +5,11 @@ import { state, resetDatabase } from "./mocks/db";
 import { defaultSettings } from "../../src/lib/store-settings";
 import { invalidateCatalog } from "../../src/lib/catalog";
 
-const productId = "gid://shopify/Product/101";
+const productId = "00000000-0000-4000-8000-000000000101";
 const productInput = {
   title: "Fictional cookie", titleAr: "اختبار", description: "Test only",
-  descriptionAr: "اختبار", price: 10, pieces: 12, imageUrl: "/images/test.png",
+  descriptionAr: "اختبار", price: 10, pieces: 12,
+  imageUrl: "https://amore-project.supabase.co/storage/v1/object/public/amore-products/test.png",
   stock: 3, lowStockThreshold: 1, ingredients: "Test", ingredientsAr: "اختبار",
 };
 const targets = [
@@ -21,58 +22,14 @@ const targets = [
 type Target = typeof targets[number];
 let server: Server;
 let port: number;
-let calls: { query: string; variables: Record<string, any> }[] = [];
 let fetchCalls = 0;
-let product: Record<string, any> | null = null;
 const realFetch = globalThis.fetch;
 
 before(async () => {
-  // No request can leave this process. Unexpected URLs/operations fail closed.
-  globalThis.fetch = async (url, options) => {
+  // No request can leave this process. Supabase operations use isolated mocks.
+  globalThis.fetch = async () => {
     fetchCalls++;
-    const endpoint = String(url);
-    if (endpoint.startsWith("https://shopify.example.invalid/api/v2/connection?")) {
-      return Response.json({ items: [{ settings: {
-        shop_domain: "store.example.invalid", storefront_access_token: "fictional-token",
-      } }] });
-    }
-    assert.ok([
-      "https://shopify.example.invalid/api/v2/proxy/admin/api/2026-04/graphql.json",
-      "https://store.example.invalid/api/2026-04/graphql.json",
-    ].includes(endpoint), `Unexpected network URL: ${endpoint}`);
-    const request = JSON.parse(String(options?.body));
-    calls.push(request);
-    const { query, variables } = request;
-    let data: Record<string, unknown>;
-    if (/product(Create|Update)\(/.test(query)) {
-      product = { ...variables.p };
-      data = { [/productCreate\(/.test(query) ? "productCreate" : "productUpdate"]: {
-        product: { id: productId }, userErrors: [],
-      } };
-    } else if (/locations\(first:1\)/.test(query)) {
-      data = {
-        product: { id: productId, handle: "fictional-cookie", variants: { nodes: [{
-          id: "gid://shopify/ProductVariant/102", inventoryItem: { id: "gid://shopify/InventoryItem/103" },
-        }] } },
-        locations: { nodes: [{ id: "gid://shopify/Location/104" }] },
-        publications: { nodes: [{ id: "gid://shopify/Publication/105", name: "Replit" }] },
-      };
-    } else if (/inventoryItem\(id:/.test(query)) {
-      data = { inventoryItem: { inventoryLevel: { id: "level", quantities: [{ quantity: 0 }] } } };
-    } else if (/product\(handle:/.test(query)) {
-      assert.ok(product, "Product must be saved before reading it back");
-      data = { product: {
-        id: productId, handle: "fictional-cookie", title: product.title,
-        description: productInput.description, featuredImage: null, metafields: product.metafields,
-        variants: { nodes: [{ id: "gid://shopify/ProductVariant/102", availableForSale: true,
-          quantityAvailable: productInput.stock, price: { amount: "10", currencyCode: "KWD" } }] },
-      } };
-    } else {
-      const operation = query.match(/\b(productVariantsBulkUpdate|inventoryItemUpdate|inventorySetQuantities|publishablePublish)\(/)?.[1];
-      assert.ok(operation, `Unexpected Shopify query: ${query}`);
-      data = { [operation]: { userErrors: [] } };
-    }
-    return Response.json({ data });
+    throw new Error("Unexpected network request in isolated admin tests.");
   };
   const { default: app } = await import("../../src/app");
   server = app.listen(0, "127.0.0.1");
@@ -85,7 +42,7 @@ before(async () => {
 beforeEach(() => {
   resetDatabase();
   invalidateCatalog();
-  calls = []; fetchCalls = 0; product = null;
+  fetchCalls = 0;
 });
 after(async () => {
   globalThis.fetch = realFetch;
@@ -121,15 +78,14 @@ async function request(target: Target, options: Options = {}) {
 }
 
 async function rejected(target: Target, status: number, options: Options) {
-  const previous = structuredClone({ settings: state.settings, inquiry: state.inquiry, product });
+  const previous = structuredClone({ settings: state.settings, inquiry: state.inquiry, products: state.products });
   const response = await request(target, options);
   assert.equal(response.status, status);
   assert.deepEqual(Object.keys(response.body), ["error"]);
   assert.equal(typeof response.body.error, "string");
   assert.deepEqual(state.calls, [], "Rejected requests must not even access the database");
-  assert.equal(fetchCalls, 0, "Rejected requests must not reach Shopify or its connector");
-  assert.deepEqual(calls, []);
-  assert.deepEqual({ settings: state.settings, inquiry: state.inquiry, product }, previous);
+  assert.equal(fetchCalls, 0, "Rejected requests must not reach external services");
+  assert.deepEqual({ settings: state.settings, inquiry: state.inquiry, products: state.products }, previous);
 }
 
 for (const target of targets) {
@@ -175,13 +131,13 @@ for (const target of targets) {
         assert.equal(response.body.status, "contacted");
         assert.equal(fetchCalls, 0);
       } else {
-        assert.deepEqual(state.calls, []);
-        assert.ok(product);
-        assert.equal(product.title, productInput.title);
-        assert.equal(response.body.id, productId);
+        assert.ok(state.calls.includes("saveProduct"));
+        const savedProduct = state.products.find(item => item.id === response.body.id);
+        assert.ok(savedProduct);
+        assert.equal(savedProduct.title, productInput.title);
         assert.equal(response.body.stock, productInput.stock);
-        assert.ok(calls.some(c => c.query.includes("id" in target.body ? "productUpdate(" : "productCreate(")));
-        assert.ok(calls.some(c => c.query.includes("inventorySetQuantities(")));
+        assert.equal(response.body.currency, "KWD");
+        assert.equal(fetchCalls, 0);
       }
     });
   }

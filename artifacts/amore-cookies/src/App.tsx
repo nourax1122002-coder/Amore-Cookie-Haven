@@ -1,9 +1,5 @@
-import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { ClerkProvider, SignIn, SignUp, useClerk, useUser } from '@clerk/react';
-import { publishableKeyFromHost } from '@clerk/react/internal';
-import { shadcn } from '@clerk/themes';
-import { arSA } from '@clerk/localizations';
+import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   getGetAdminSessionQueryKey, getGetAdminSummaryQueryKey, getGetAdminSettingsQueryKey,
   getGetCartQueryKey, getGetProductQueryKey, getGetStoreQueryKey, getListAdminProductsQueryKey,
@@ -14,10 +10,12 @@ import {
   useGetPaymentAvailability, useGetCurrencyConversion,
 } from '@workspace/api-client-react';
 import type { Cart, Inquiry, Product, ProductInput, StoreSettings, TrackingResult, GetCurrencyConversionParams } from '@workspace/api-client-react';
-import { AdminOrders, OrderDetails } from '@/components/order-status';
+import { OrderDetails } from '@/components/order-status';
 import { PaymentResult, LocalOrdersAdmin } from '@/components/payments';
 import { DeliveryLocationPicker } from '@/components/delivery-location-picker';
 import { SafeAssistantWidget } from '@/components/assistant-widget';
+import { AccountPage, AuthPage } from '@/components/auth-pages';
+import { AuthProvider, useAuth } from '@/lib/auth-context';
 import type { DeliveryLocation } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -28,13 +26,10 @@ import {
   ExternalLink, Flame, Menu, Minus, Plus, RefreshCw,
   ShoppingBag, Snowflake, Sparkles, X,
 } from 'lucide-react';
-import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
+import { Link, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } } });
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const clerkPubKey = publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
-const logoPath = `${basePath}/images/amore-logo.png`;
 const images = {
   logo: `${basePath}/images/amore-logo.png`,
   mascot: `${basePath}/images/amore-baker.png`,
@@ -61,14 +56,13 @@ const copy: Record<Lang, Record<string, string>> = {
     cafeName:'Café name', contact:'Contact name', area:'Area', requested:'Products & quantities', notes:'Notes', send:'Send inquiry',
     saved:'Inquiry received', reference:'Reference number', required:'Please complete the required fields.', loading:'Gathering the good things…', retry:'Try again',
     admin:'Shop management', access:'Sign in to manage Amore', pending:'Admin access is pending. The shop owner must configure the owner email before management access is available.',
-    overview:'Overview', inventory:'Products & inventory', inquiries:'Café inquiries', settings:'Store content & settings', shopify:'Shopify management',
+    overview:'Overview', inventory:'Products & inventory', inquiries:'Café inquiries', settings:'Store content & settings',
     new:'New', contacted:'Contacted', closed:'Closed', markContacted:'Mark contacted', markClosed:'Close inquiry', edit:'Edit', create:'Add product', save:'Save changes',
     stock:'Stock', threshold:'Low-stock alert at', price:'Catalog price (KWD)', title:'Product title', titleAr:'Arabic title', description:'Description',
     descriptionAr:'Arabic description', piecesLabel:'Pieces per bag', image:'Image URL', ingredientsAr:'Ingredients (Arabic)', ingredientsEn:'Ingredients (English)',
     heroTitle:'Hero title', heroTextLabel:'Hero text', aboutLabel:'About', storageLabel:'Storage guidance', policyLabel:'Policies (approved copy only)',
     hours:'Hours', whatsapp:'WhatsApp (approved number)', contactEmail:'Email', contactPhone:'Phone', checkoutEnabled:'Enable checkout', bakingSteps:'Baking steps',
-    saveSettings:'Save store settings', noSales:'Sales data is managed in Shopify.', ordersLink:'Orders', salesLink:'Sales', discountsLink:'Discounts',
-    shippingLink:'Shipping settings', paymentLink:'Payment settings', shopProducts:'Shopify products', unknownStock:'Inventory unavailable', reviewBefore:'Review before continuing',
+    saveSettings:'Save store settings', noSales:'No sales reports yet.', ordersLink:'Orders', unknownStock:'Inventory unavailable', reviewBefore:'Review before continuing',
     trackingUnavailable:'Order tracking is not available right now. Please try again later.', noProducts:'The collection is being prepared.',
     launch:'A little patience. Something lovely is coming.', checkoutDisabled:'Pre-launch · Checkout disabled', awaitingApproval:'Awaiting approved ingredients',
     displayCurrency:'Display price in', conversionLoading:'Loading an indicative conversion…', conversionError:'Currency conversion is temporarily unavailable. The KWD price remains unchanged.',
@@ -91,14 +85,13 @@ const copy: Record<Lang, Record<string, string>> = {
     trackingHelp:'أدخلي رقم الطلب ورقم الهاتف المستخدم في الطلب.', cafeName:'اسم المقهى', contact:'اسم المسؤول', area:'المنطقة', requested:'المنتجات والكميات',
     notes:'ملاحظات', send:'إرسال الاستفسار', saved:'تم استلام الاستفسار', reference:'رقم المرجع', required:'يرجى إكمال الحقول المطلوبة.',
     admin:'إدارة المتجر', access:'سجّلي الدخول لإدارة أموري', pending:'صلاحية الإدارة بانتظار الإعداد. يجب على مالك المتجر ضبط بريده الإلكتروني قبل إتاحة الوصول.',
-    overview:'نظرة عامة', inventory:'المنتجات والمخزون', inquiries:'استفسارات المقاهي', settings:'محتوى المتجر وإعداداته', shopify:'إدارة Shopify',
+    overview:'نظرة عامة', inventory:'المنتجات والمخزون', inquiries:'استفسارات المقاهي', settings:'محتوى المتجر وإعداداته',
     new:'جديد', contacted:'تم التواصل', closed:'مغلق', markContacted:'تحديد تم التواصل', markClosed:'إغلاق الاستفسار', edit:'تعديل', create:'إضافة منتج', save:'حفظ التغييرات',
     stock:'المخزون', threshold:'تنبيه انخفاض المخزون عند', price:'سعر الكتالوج (د.ك)', title:'اسم المنتج', titleAr:'الاسم بالعربية', description:'الوصف',
     descriptionAr:'الوصف بالعربية', piecesLabel:'عدد القطع في الكيس', image:'رابط الصورة', ingredientsAr:'المكونات (عربي)', ingredientsEn:'المكونات (إنجليزي)',
     heroTitle:'عنوان الواجهة', heroTextLabel:'نص الواجهة', aboutLabel:'من نحن', storageLabel:'إرشادات الحفظ', policyLabel:'السياسات (النص المعتمد فقط)',
     hours:'ساعات العمل', whatsapp:'واتساب (رقم معتمد)', contactEmail:'البريد الإلكتروني', contactPhone:'الهاتف', checkoutEnabled:'تفعيل الدفع', bakingSteps:'خطوات الخبز',
-    saveSettings:'حفظ إعدادات المتجر', noSales:'تُدار بيانات المبيعات في Shopify.', ordersLink:'الطلبات', salesLink:'المبيعات', discountsLink:'الخصومات',
-    shippingLink:'إعدادات الشحن', paymentLink:'إعدادات الدفع', shopProducts:'منتجات Shopify', unknownStock:'المخزون غير متاح', reviewBefore:'مراجعة قبل المتابعة',
+    saveSettings:'حفظ إعدادات المتجر', noSales:'لا توجد تقارير مبيعات بعد.', ordersLink:'الطلبات', unknownStock:'المخزون غير متاح', reviewBefore:'مراجعة قبل المتابعة',
     trackingUnavailable:'تتبع الطلب غير متاح حالياً. يرجى المحاولة لاحقاً.', noProducts:'المجموعة قيد التحضير.',
     launch:'قليل من الصبر. شيء جميل قادم.', checkoutDisabled:'قبل الإطلاق · الدفع معطل', awaitingApproval:'بانتظار اعتماد المكونات', piece:'قطعة',
     displayCurrency:'عرض السعر بعملة', conversionLoading:'جارٍ تحميل السعر التقريبي…', conversionError:'تحويل العملة غير متاح مؤقتاً. يبقى سعر الدينار الكويتي دون تغيير.',
@@ -106,29 +99,12 @@ const copy: Record<Lang, Record<string, string>> = {
   },
 } as const;
 
-function ClerkCacheReset() {
-  const { addListener } = useClerk();
-  const qc = useQueryClient();
-  const previous = useRef<string | null | undefined>(undefined);
-  useEffect(() => addListener(({ user }) => {
-    const id = user?.id ?? null;
-    if (previous.current !== undefined && previous.current !== id) qc.clear();
-    previous.current = id;
-  }), [addListener, qc]);
-  return null;
-}
-function stripBase(path: string) { return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path; }
-const appearance = {
-  theme: shadcn, cssLayerName: 'clerk',
-  options: { logoPlacement: 'inside' as const, logoLinkUrl: basePath || '/', logoImageUrl: `${window.location.origin}${logoPath}` },
-  variables: { colorPrimary:'#5B0D1E', colorForeground:'#45101d', colorMutedForeground:'#8b6870', colorDanger:'#b4233b', colorBackground:'#fffaf8', colorInput:'#fffdfa', colorInputForeground:'#45101d', colorNeutral:'#ead5da', fontFamily:'Montserrat, sans-serif', borderRadius:'1rem' },
-  elements: { rootBox:'w-full flex justify-center', cardBox:'bg-[#fffaf8] rounded-2xl w-[440px] max-w-full overflow-hidden', card:'!shadow-none !border-0 !bg-transparent !rounded-none', footer:'!shadow-none !border-0 !bg-transparent !rounded-none', headerTitle:'text-[#5B0D1E]', headerSubtitle:'text-[#75545b]', socialButtonsBlockButtonText:'text-[#45101d]', formFieldLabel:'text-[#45101d]', footerActionLink:'text-[#5B0D1E]', footerActionText:'text-[#75545b]', dividerText:'text-[#75545b]', identityPreviewEditButton:'text-[#5B0D1E]', formFieldSuccessText:'text-[#5B0D1E]', alertText:'text-[#45101d]', logoBox:'mx-auto', logoImage:'max-h-20', socialButtonsBlockButton:'border-[#ead5da] rounded-xl', formButtonPrimary:'bg-[#5B0D1E] hover:bg-[#761a31] text-white rounded-full', formFieldInput:'bg-[#fffdfa] border-[#ead5da] text-[#45101d] rounded-xl', footerAction:'text-[#45101d]', dividerLine:'bg-[#ead5da]', alert:'bg-[#fff0f3] border-[#ead5da]', otpCodeFieldInput:'border-[#ead5da] text-[#45101d]', formFieldRow:'gap-2', main:'gap-4' },
-};
 
 function AppShell() {
   const [lang,setLang] = useState<Lang>(() => localStorage.getItem('amore-lang') === 'ar' ? 'ar' : 'en');
   const [mobileOpen,setMobileOpen] = useState(false);
   const [path] = useLocation();
+  const {user}=useAuth();
   const storeQuery = useGetStore({ query:{ queryKey:getGetStoreQueryKey(), refetchInterval:60000 } });
   const store = storeQuery.data;
   const c = copy[lang];
@@ -156,6 +132,7 @@ function AppShell() {
         <nav className="hidden lg:flex items-center gap-7">{nav.map(([href,label],i)=><Link key={`${href}-${i}`} href={href} className={`text-[10px] tracking-[.11em] uppercase font-semibold transition-colors hover:text-[#a35168] ${path===href?'text-[#5B0D1E]':'text-[#795963]'}`}>{label}</Link>)}</nav>
         <div className="flex items-center gap-3">
           <button className="text-[10px] tracking-widest font-bold text-[#5B0D1E] px-2 py-2" onClick={toggleLang} data-testid="button-toggle-language">{rtl?'EN':'عربي'}</button>
+           <Link href={user?'/user-portal':'/sign-in'} className="text-[10px] font-semibold text-[#5B0D1E] hidden sm:inline" data-testid="link-account">{user?(rtl?'حسابي':'Account'):(rtl?'دخول':'Sign in')}</Link>
           <Link href="/cart" className="relative inline-flex items-center gap-2 rounded-full border border-[#e9d2d8] px-4 py-2.5 text-[10px] font-bold text-[#5B0D1E]" data-testid="link-cart"><ShoppingBag size={15}/><span className="hidden sm:inline">{c.bag}</span></Link>
           <button className="lg:hidden p-2 text-[#5B0D1E]" onClick={()=>setMobileOpen(!mobileOpen)} aria-label="Toggle navigation">{mobileOpen?<X/>:<Menu/>}</button>
         </div>
@@ -176,7 +153,7 @@ function AppShell() {
         <Route path="/tracking"><TrackingPage lang={lang}/></Route>
         <Route path="/policies"><PoliciesPage lang={lang} settings={settings}/></Route>
         <Route path="/admin"><AdminPage lang={lang}/></Route>
-        <Route path="/user-portal"><Redirect to="/admin"/></Route>
+        <Route path="/user-portal"><AccountPage lang={lang}/></Route>
         <Route component={NotFound}/>
       </Switch>
     </main>
@@ -418,47 +395,46 @@ function WholesalePage({lang}:{lang:Lang}) {
 }
 function TrackingPage({lang}:{lang:Lang}) {
   const c=copy[lang], track=useTrackOrder(), [result,setResult]=useState<TrackingResult|null>(null),[error,setError]=useState('');
-  const submit=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const f=new FormData(e.currentTarget);setError('');setResult(null);track.mutate({data:{orderNumber:String(f.get('orderNumber')||''),phone:String(f.get('phone')||'')}},{onSuccess:setResult,onError:err=>setError((err as {status?:number}).status===429?(lang==='ar'?'محاولات كثيرة. يرجى الانتظار قبل إعادة المحاولة أو استخدام رابط تأكيد Shopify.':'Too many attempts. Please wait before retrying or use your Shopify confirmation link.'):c.trackingUnavailable)});};
-  return <PageIntro eyebrow={c.tracking} title={c.trackingHelp}><form className="card-surface max-w-xl p-6 md:p-8 grid gap-5" onSubmit={submit} onChange={()=>{setResult(null);setError('');}}><p className="text-xs leading-6 text-[#795963]">{lang==='ar'?'تُقرأ الحالة من Shopify بعد مطابقة هاتف الشراء. يمكنك أيضاً استخدام رابط المتابعة في رسالة تأكيد الطلب.':'Status is read from Shopify after verifying the checkout phone. You can also use the tracking link in your order confirmation.'}</p><fieldset disabled={track.isPending} className="grid gap-5"><label><span className="field-label">{c.orderNumber}</span><input name="orderNumber" className="field" autoComplete="off" required maxLength={100}/></label><label><span className="field-label">{c.phone}</span><input name="phone" className="field" type="tel" autoComplete="off" required minLength={8} maxLength={30}/></label></fieldset>{error&&<p className="text-xs text-red-700" role="alert">{error}</p>}{result&&<div className="grid gap-4" role="status"><p className="text-xs leading-6">{result.message}</p>{result.available&&result.order&&<OrderDetails order={result.order} lang={lang}/>}</div>}<button disabled={track.isPending} className="btn-primary">{track.isPending?c.loading:c.track}<ArrowRight size={14}/></button></form></PageIntro>;
+  const submit=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const f=new FormData(e.currentTarget);setError('');setResult(null);track.mutate({data:{orderNumber:String(f.get('orderNumber')||''),phone:String(f.get('phone')||'')}},{onSuccess:setResult,onError:err=>setError((err as {status?:number}).status===429?(lang==='ar'?'محاولات كثيرة. يرجى الانتظار قبل إعادة المحاولة.':'Too many attempts. Please wait before retrying.'):c.trackingUnavailable)});};
+  return <PageIntro eyebrow={c.tracking} title={c.trackingHelp}><form className="card-surface max-w-xl p-6 md:p-8 grid gap-5" onSubmit={submit} onChange={()=>{setResult(null);setError('');}}><p className="text-xs leading-6 text-[#795963]">{lang==='ar'?'تظهر حالة الطلبات التي أُنشئت عبر متجر أموري بعد مطابقة رقم الطلب وهاتف الشراء.':'This page looks up Amore website orders after matching the order number and checkout phone.'}</p><fieldset disabled={track.isPending} className="grid gap-5"><label><span className="field-label">{c.orderNumber}</span><input name="orderNumber" className="field" autoComplete="off" required maxLength={100}/></label><label><span className="field-label">{c.phone}</span><input name="phone" className="field" type="tel" autoComplete="off" required minLength={8} maxLength={30}/></label></fieldset>{error&&<p className="text-xs text-red-700" role="alert">{error}</p>}{result&&<div className="grid gap-4" role="status"><p className="text-xs leading-6">{result.message}</p>{result.available&&result.order&&<OrderDetails order={result.order} lang={lang}/>}</div>}<button disabled={track.isPending} className="btn-primary">{track.isPending?c.loading:c.track}<ArrowRight size={14}/></button></form></PageIntro>;
 }
 function PoliciesPage({lang,settings}:{lang:Lang;settings?:StoreSettings}) {const text=lang==='ar'?settings?.policiesAr:settings?.policiesEn;return <PageIntro eyebrow={copy[lang].policies} title={copy[lang].policies}><div className="prose prose-sm max-w-3xl whitespace-pre-wrap leading-8 text-[#795963]">{text?.trim()|| (lang==='ar'?'لا توجد سياسة معتمدة منشورة حالياً.':'No approved policy copy has been published yet.')}</div></PageIntro>}
 
 function AdminPage({lang}:{lang:Lang}) {
-  const c=copy[lang], {isSignedIn,isLoaded}=useUser(),[section,setSection]=useState<'overview'|'products'|'orders'|'inquiries'|'settings'|'shopify'>('overview');
-  const session=useGetAdminSession({query:{queryKey:getGetAdminSessionQueryKey(),enabled:isLoaded&&!!isSignedIn}});
-  if(!isLoaded||session.isLoading)return <LoadingBlock lang={lang}/>;
-  if(!isSignedIn)return <div className="container-wide py-24 text-center"><img src={images.logo} className="w-24 h-24 object-contain mx-auto rounded-full" alt="Amore Cookies"/><h1 className="serif text-4xl text-[#5B0D1E] mt-5">{c.access}</h1><Link href="/sign-in" className="btn-primary mt-6">{lang==='ar'?'تسجيل الدخول':'Sign in'}</Link><p className="text-xs text-[#896a71] mt-4">{lang==='ar'?'إنشاء حساب لا يمنح صلاحية الإدارة.':'Signing up does not grant management access.'}</p></div>;
+  const c=copy[lang], {user,loading:authLoading,error:authError}=useAuth(),[section,setSection]=useState<'overview'|'products'|'orders'|'inquiries'|'settings'>('overview');
+  const session=useGetAdminSession({query:{queryKey:getGetAdminSessionQueryKey(),enabled:!authLoading&&!!user}});
+  if(authLoading||user&&session.isLoading)return <LoadingBlock lang={lang}/>;
+  if(!user)return <div className="container-wide py-24 text-center"><img src={images.logo} className="w-24 h-24 object-contain mx-auto rounded-full" alt="Amore Cookies"/><h1 className="serif text-4xl text-[#5B0D1E] mt-5">{c.access}</h1>{authError&&<p className="mt-4 text-sm text-red-700" role="alert">{authError}</p>}<Link href="/sign-in" className="btn-primary mt-6">{lang==='ar'?'تسجيل الدخول':'Sign in'}</Link><p className="text-xs text-[#896a71] mt-4">{lang==='ar'?'إنشاء حساب لا يمنح صلاحية الإدارة.':'Signing up does not grant management access.'}</p></div>;
   if(session.isError)return <div className="container-wide py-20"><ErrorNotice lang={lang} onRetry={()=>session.refetch()}/></div>;
   if(session.data?.setupRequired||!session.data?.isAdmin)return <div className="container-wide py-24 max-w-2xl text-center"><div className="w-16 h-16 bg-[#FFD6E5] rounded-full grid place-items-center mx-auto text-[#5B0D1E]"><CircleHelp/></div><h1 className="serif text-4xl text-[#5B0D1E] mt-5">{c.admin}</h1><p className="mt-4 text-sm leading-7 text-[#795963]">{session.data?.setupRequired?c.pending:(lang==='ar'?'هذا الحساب لا يملك صلاحية إدارة المتجر.':'This account does not have permission to manage the shop.')}</p><Link href="/" className="btn-outline mt-6">{c.home}</Link></div>;
   return <AdminConsole lang={lang} section={section} setSection={setSection}/>;
 }
-function AdminConsole({lang,section,setSection}:{lang:Lang;section:'overview'|'products'|'orders'|'inquiries'|'settings'|'shopify';setSection:(s:'overview'|'products'|'orders'|'inquiries'|'settings'|'shopify')=>void}) {
+function AdminConsole({lang,section,setSection}:{lang:Lang;section:'overview'|'products'|'orders'|'inquiries'|'settings';setSection:(s:'overview'|'products'|'orders'|'inquiries'|'settings')=>void}) {
   const c=copy[lang],summary=useGetAdminSummary({query:{queryKey:getGetAdminSummaryQueryKey(),refetchInterval:45000}}),adminProducts=useListAdminProducts({query:{queryKey:getListAdminProductsQueryKey(),refetchInterval:45000}}),inquiries=useListInquiries({query:{queryKey:getListInquiriesQueryKey(),refetchInterval:45000}});
-  const {signOut}=useClerk();
-  const tabs:[typeof section,string][]=[['overview',c.overview],['products',c.inventory],['orders',c.ordersLink],['inquiries',c.inquiries],['settings',c.settings],['shopify',c.shopify]];
-  return <div className="container-wide py-8 md:py-12"><div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8"><div><span className="eyebrow">{c.admin}</span><h1 className="serif text-4xl md:text-5xl text-[#5B0D1E] mt-2">{tabs.find(t=>t[0]===section)?.[1]}</h1></div><button className="btn-outline self-start" onClick={()=>signOut({redirectUrl:basePath||'/'})}>{lang==='ar'?'تسجيل الخروج':'Sign out'}</button></div>
+  const {signOut}=useAuth();
+  const tabs:[typeof section,string][]=[['overview',c.overview],['products',c.inventory],['orders',c.ordersLink],['inquiries',c.inquiries],['settings',c.settings]];
+  return <div className="container-wide py-8 md:py-12"><div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8"><div><span className="eyebrow">{c.admin}</span><h1 className="serif text-4xl md:text-5xl text-[#5B0D1E] mt-2">{tabs.find(t=>t[0]===section)?.[1]}</h1></div><button className="btn-outline self-start" onClick={()=>void signOut()}>{lang==='ar'?'تسجيل الخروج':'Sign out'}</button></div>
     <div className="flex overflow-x-auto gap-2 border-b border-[#ead5da] mb-8 pb-2">{tabs.map(([key,label])=><button key={key} onClick={()=>setSection(key)} className={`whitespace-nowrap px-4 py-2 rounded-full text-[11px] font-semibold ${section===key?'bg-[#5B0D1E] text-white':'text-[#76525c] hover:bg-[#f8e8ec]'}`}>{label}</button>)}</div>
     {section==='overview'&&<AdminOverview lang={lang} data={summary.data} loading={summary.isLoading} error={summary.isError} retry={()=>summary.refetch()} onNavigate={setSection}/>}
     {section==='products'&&<AdminProducts lang={lang} products={adminProducts.data||[]} loading={adminProducts.isLoading} error={adminProducts.isError} retry={()=>adminProducts.refetch()}/>}
     {section==='inquiries'&&<AdminInquiries lang={lang} items={inquiries.data||[]} loading={inquiries.isLoading} error={inquiries.isError} retry={()=>inquiries.refetch()}/>}
     {section==='settings'&&<AdminSettings lang={lang}/>}
-    {section==='orders'&&<div className="grid gap-10"><LocalOrdersAdmin lang={lang}/><details className="card-surface p-5"><summary className="cursor-pointer text-sm text-[#5B0D1E]">{lang==='ar'?'طلبات Shopify السابقة':'Previous Shopify orders'}</summary><div className="mt-5"><AdminOrders lang={lang} adminUrl={summary.data?.shopAdminUrl}/></div></details></div>}
-    {section==='shopify'&&<ShopifyLinks lang={lang} url={summary.data?.shopAdminUrl}/>}
+    {section==='orders'&&<LocalOrdersAdmin lang={lang}/>}
   </div>;
 }
-function AdminOverview({lang,data,loading,error,retry,onNavigate}:{lang:Lang;data?:{inquiryCount:number;newInquiryCount:number;lowStock:Product[];shopAdminUrl:string;shopCurrency:string;checkoutEnabled:boolean;notices:string[]};loading:boolean;error:boolean;retry:()=>void;onNavigate:(s:'overview'|'products'|'inquiries'|'settings'|'shopify')=>void}) {
+function AdminOverview({lang,data,loading,error,retry,onNavigate}:{lang:Lang;data?:{inquiryCount:number;newInquiryCount:number;lowStock:Product[];shopAdminUrl:string;shopCurrency:string;checkoutEnabled:boolean;notices:string[]};loading:boolean;error:boolean;retry:()=>void;onNavigate:(s:'overview'|'products'|'orders'|'inquiries'|'settings')=>void}) {
   const c=copy[lang];if(loading)return <LoadingBlock lang={lang}/>;if(error)return <ErrorNotice lang={lang} onRetry={retry}/>;
-  return <div className="grid lg:grid-cols-[1fr_.85fr] gap-6"><div className="grid sm:grid-cols-2 gap-4"><div className="card-surface p-6"><span className="eyebrow">{c.inquiries}</span><strong className="block font-display text-5xl text-[#5B0D1E] mt-4">{data?.inquiryCount??'—'}</strong><p className="text-xs text-[#896a71] mt-2">{c.new}: {data?.newInquiryCount??'—'}</p></div><div className="card-surface p-6"><span className="eyebrow">{lang==='ar'?'العملة':'Shop currency'}</span><strong className="block font-display text-4xl text-[#5B0D1E] mt-4">{data?.shopCurrency||'—'}</strong><p className="text-xs text-[#896a71] mt-2">{c.noSales}</p></div><div className="sm:col-span-2 card-surface p-6"><div className="flex justify-between items-center"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.inventory}</h2><button onClick={()=>onNavigate('products')} className="text-xs underline text-[#8b5363]">{c.edit}</button></div>{data?.lowStock?.length?data.lowStock.map(p=><div key={p.id} className="flex justify-between py-3 border-b border-[#f0e1e4] text-xs"><span>{p.title}</span><span>{p.stock} · {c.stock}</span></div>):<p className="text-xs text-[#896a71] mt-4">{lang==='ar'?'لا توجد تنبيهات مخزون مقدمة.':'No low-stock alerts are currently reported.'}</p>}</div></div><div className="grid gap-4 content-start"><div className="card-surface p-6"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.shopify}</h2><p className="text-xs text-[#896a71] mt-2">{c.noSales}</p><button onClick={()=>onNavigate('shopify')} className="btn-outline mt-5">{c.shopify}<ArrowUpRight size={14}/></button></div><div className="card-surface p-6"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.inquiries}</h2><p className="text-xs text-[#896a71] mt-2">{data?.newInquiryCount??0} {c.new}</p><button onClick={()=>onNavigate('inquiries')} className="btn-primary mt-5">{c.inquiries}<ArrowRight size={14}/></button></div>{Boolean(data?.notices?.length)&&<div className="rounded-2xl bg-[#fff1f3] p-5 text-xs leading-6 text-[#763246]">{data?.notices?.map((n,i)=><p key={i}>{n}</p>)}</div>}</div></div>;
+  return <div className="grid lg:grid-cols-[1fr_.85fr] gap-6"><div className="grid sm:grid-cols-2 gap-4"><div className="card-surface p-6"><span className="eyebrow">{c.inquiries}</span><strong className="block font-display text-5xl text-[#5B0D1E] mt-4">{data?.inquiryCount??'—'}</strong><p className="text-xs text-[#896a71] mt-2">{c.new}: {data?.newInquiryCount??'—'}</p></div><div className="card-surface p-6"><span className="eyebrow">{lang==='ar'?'العملة':'Catalog currency'}</span><strong className="block font-display text-4xl text-[#5B0D1E] mt-4">{data?.shopCurrency||'KWD'}</strong><p className="text-xs text-[#896a71] mt-2">{c.noSales}</p></div><div className="sm:col-span-2 card-surface p-6"><div className="flex justify-between items-center"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.inventory}</h2><button onClick={()=>onNavigate('products')} className="text-xs underline text-[#8b5363]">{c.edit}</button></div>{data?.lowStock?.length?data.lowStock.map(p=><div key={p.id} className="flex justify-between py-3 border-b border-[#f0e1e4] text-xs"><span>{p.title}</span><span>{p.stock} · {c.stock}</span></div>):<p className="text-xs text-[#896a71] mt-4">{lang==='ar'?'لا توجد تنبيهات مخزون مقدمة.':'No low-stock alerts are currently reported.'}</p>}</div></div><div className="grid gap-4 content-start"><div className="card-surface p-6"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.ordersLink}</h2><p className="text-xs text-[#896a71] mt-2">{data?.checkoutEnabled? (lang==='ar'?'الطلبات محفوظة في قاعدة بيانات Supabase.':'Orders are stored in Supabase.') : (lang==='ar'?'الدفع الحقيقي غير مفعّل حالياً.':'Live checkout is currently disabled.')}</p><button onClick={()=>onNavigate('orders')} className="btn-outline mt-5">{c.ordersLink}<ArrowUpRight size={14}/></button></div><div className="card-surface p-6"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.inquiries}</h2><p className="text-xs text-[#896a71] mt-2">{data?.newInquiryCount??0} {c.new}</p><button onClick={()=>onNavigate('inquiries')} className="btn-primary mt-5">{c.inquiries}<ArrowRight size={14}/></button></div>{Boolean(data?.notices?.length)&&<div className="rounded-2xl bg-[#fff1f3] p-5 text-xs leading-6 text-[#763246]">{data?.notices?.map((n,i)=><p key={i}>{n}</p>)}</div>}</div></div>;
 }
 function AdminProducts({lang,products,loading,error,retry}:{lang:Lang;products:Product[];loading:boolean;error:boolean;retry:()=>void}) {
-  const c=copy[lang],save=useSaveProduct(),[editing,setEditing]=useState<Product|null>(null),[open,setOpen]=useState(false),[message,setMessage]=useState('');
+  const c=copy[lang],save=useSaveProduct(),[editing,setEditing]=useState<Product|null>(null),[open,setOpen]=useState(false),[message,setMessage]=useState(''),[uploadingImage,setUploadingImage]=useState(false),[imageError,setImageError]=useState('');
   const empty:ProductInput={title:'',titleAr:'',description:'',descriptionAr:'',price:0,pieces:12,imageUrl:'',stock:0,lowStockThreshold:0,ingredients:'',ingredientsAr:''};
   const [form,setForm]=useState<ProductInput>(empty);
   const startEdit=(product?:Product)=>{setEditing(product||null);setForm(product?{id:product.id,title:product.title,titleAr:product.titleAr,description:product.description,descriptionAr:product.descriptionAr,price:product.price,pieces:product.pieces,imageUrl:product.imageUrl,stock:product.stock,lowStockThreshold:product.lowStockThreshold,ingredients:product.ingredients,ingredientsAr:product.ingredientsAr}:{...empty});setOpen(true);setMessage('');};
   const field=(key:keyof ProductInput,label:string,type='text')=><label key={key}><span className="field-label">{label}</span><input className="field" type={type} value={String(form[key]??'')} onChange={e=>setForm({...form,[key]:type==='number'?Number(e.target.value):e.target.value})}/></label>;
   if(loading)return <LoadingBlock lang={lang}/>;if(error)return <ErrorNotice lang={lang} onRetry={retry}/>;
-  return <div><div className="flex justify-between items-center mb-5"><p className="text-xs text-[#896a71]">{lang==='ar'?'تُدار عمليات الحذف من Shopify.':'Product removal is managed in Shopify.'}</p><button onClick={()=>startEdit()} className="btn-primary"><Plus size={15}/>{c.create}</button></div>
-    {open&&<form className="card-surface p-5 md:p-7 mb-6 grid md:grid-cols-2 gap-4" onSubmit={e=>{e.preventDefault();save.mutate({data:form},{onSuccess:()=>{queryClient.invalidateQueries({queryKey:getListAdminProductsQueryKey()});queryClient.invalidateQueries({queryKey:getListProductsQueryKey()});queryClient.invalidateQueries({queryKey:getGetAdminSummaryQueryKey()});setMessage(lang==='ar'?'تم حفظ المنتج':'Product saved');setOpen(false);}})}}><div className="md:col-span-2 flex justify-between"><h2 className="font-display text-2xl text-[#5B0D1E]">{editing?c.edit:c.create}</h2><button type="button" onClick={()=>setOpen(false)}><X size={18}/></button></div>{field('title',c.title)}{field('titleAr',c.titleAr)}{field('price',c.price,'number')}{field('pieces',c.piecesLabel,'number')}{field('stock',c.stock,'number')}{field('lowStockThreshold',c.threshold,'number')}{field('imageUrl',c.image)}{field('ingredients',c.ingredientsEn)}{field('ingredientsAr',c.ingredientsAr)}<label className="md:col-span-2"><span className="field-label">{c.description}</span><textarea className="field min-h-20" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label className="md:col-span-2"><span className="field-label">{c.descriptionAr}</span><textarea className="field min-h-20" value={form.descriptionAr} onChange={e=>setForm({...form,descriptionAr:e.target.value})}/></label><div className="md:col-span-2 flex gap-3 items-center"><button disabled={save.isPending} className="btn-primary">{save.isPending?c.loading:c.save}</button><button type="button" onClick={()=>setOpen(false)} className="btn-outline">{lang==='ar'?'إلغاء':'Cancel'}</button>{save.isError&&<span className="text-xs text-red-700">{lang==='ar'?'تعذر الحفظ':'Save failed'}</span>}</div></form>}
+  return <div><div className="flex justify-between items-center mb-5"><p className="text-xs text-[#896a71]">{lang==='ar'?'المنتجات والأسعار والمخزون محفوظة في Supabase.':'Products, prices, and inventory are stored in Supabase.'}</p><button onClick={()=>startEdit()} className="btn-primary"><Plus size={15}/>{c.create}</button></div>
+     {open&&<form className="card-surface p-5 md:p-7 mb-6 grid md:grid-cols-2 gap-4" onSubmit={e=>{e.preventDefault();save.mutate({data:form},{onSuccess:()=>{queryClient.invalidateQueries({queryKey:getListAdminProductsQueryKey()});queryClient.invalidateQueries({queryKey:getListProductsQueryKey()});queryClient.invalidateQueries({queryKey:getGetAdminSummaryQueryKey()});setMessage(lang==='ar'?'تم حفظ المنتج':'Product saved');setOpen(false);}})}}><div className="md:col-span-2 flex justify-between"><h2 className="font-display text-2xl text-[#5B0D1E]">{editing?c.edit:c.create}</h2><button type="button" onClick={()=>setOpen(false)}><X size={18}/></button></div>{field('title',c.title)}{field('titleAr',c.titleAr)}{field('price',c.price,'number')}{field('pieces',c.piecesLabel,'number')}{field('stock',c.stock,'number')}{field('lowStockThreshold',c.threshold,'number')}{field('imageUrl',c.image)}<label><span className="field-label">{lang==='ar'?'رفع صورة المنتج':'Upload product image'}</span><input type="file" accept="image/jpeg,image/png,image/webp" className="field" disabled={uploadingImage} onChange={async e=>{const file=e.currentTarget.files?.[0];if(!file)return;setImageError('');if(file.size>5*1024*1024){setImageError(lang==='ar'?'الحد الأقصى لحجم الصورة ٥ ميغابايت.':'Image must be 5 MB or smaller.');return;}setUploadingImage(true);try{const response=await fetch('/api/admin/product-images',{method:'POST',credentials:'same-origin',headers:{'Content-Type':file.type},body:file});const result=await response.json();if(!response.ok||typeof result.imageUrl!=='string')throw new Error(result.error||'Upload failed');setForm(current=>({...current,imageUrl:result.imageUrl}));}catch(cause){setImageError(cause instanceof Error?cause.message:(lang==='ar'?'تعذر رفع الصورة.':'Image upload failed.'));}finally{setUploadingImage(false);e.currentTarget.value='';}}}/>{uploadingImage&&<span className="text-[11px] text-[#795963]">{lang==='ar'?'جارٍ رفع الصورة…':'Uploading image…'}</span>}{imageError&&<span className="block text-[11px] text-red-700" role="alert">{imageError}</span>}</label>{field('ingredients',c.ingredientsEn)}{field('ingredientsAr',c.ingredientsAr)}<label className="md:col-span-2"><span className="field-label">{c.description}</span><textarea className="field min-h-20" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label className="md:col-span-2"><span className="field-label">{c.descriptionAr}</span><textarea className="field min-h-20" value={form.descriptionAr} onChange={e=>setForm({...form,descriptionAr:e.target.value})}/></label><div className="md:col-span-2 flex gap-3 items-center"><button disabled={save.isPending||uploadingImage} className="btn-primary">{save.isPending?c.loading:c.save}</button><button type="button" onClick={()=>setOpen(false)} className="btn-outline">{lang==='ar'?'إلغاء':'Cancel'}</button>{save.isError&&<span className="text-xs text-red-700">{lang==='ar'?'تعذر الحفظ':'Save failed'}</span>}</div></form>}
     {message&&<p className="mb-4 text-xs text-[#5B0D1E]" role="status">{message}</p>}
     <div className="grid gap-3">{products.map(p=><div key={p.id} className="card-surface p-4 flex gap-4 items-center"><Picture src={p.imageUrl||images.cookie} alt={p.title} className="w-16 h-16 rounded-xl object-cover"/><div className="flex-1 min-w-0"><h3 className="font-semibold text-sm text-[#5B0D1E] truncate">{p.title}</h3><p className="text-[10px] text-[#896a71] mt-1">{p.price.toFixed(3)} KWD · {p.stock} {c.stock} · {p.available?'Available':c.sold}</p></div><button className="btn-outline px-4 py-2" onClick={()=>startEdit(p)}>{c.edit}</button></div>)}</div>{products.length===0&&<EmptyState text={c.noProducts}/>}
   </div>;
@@ -482,34 +458,17 @@ function AdminSettings({lang}:{lang:Lang}) {
     <div className="mt-7 flex flex-wrap gap-3 items-center"><button disabled={save.isPending} className="btn-primary">{save.isPending?c.loading:c.saveSettings}<Check size={15}/></button>{message&&<span role="status" className="text-xs text-[#5B0D1E]">{message}</span>}{save.isError&&<span className="text-xs text-red-700">{lang==='ar'?'تعذر الحفظ':'Settings could not be saved. Retry.'}</span>}</div>
   </form>;
 }
-function ShopifyLinks({lang,url}:{lang:Lang;url?:string}) {
-  const c=copy[lang];
-  if(!url)return <div className="card-surface p-8 max-w-2xl"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.shopify}</h2><p className="text-sm leading-7 text-[#795963] mt-3">{lang==='ar'?'رابط إدارة Shopify غير متاح بعد.':'Shopify management link is not available yet.'}</p></div>;
-  let base=url;try{const parsed=new URL(url);base=`${parsed.origin}${parsed.pathname.replace(/\/$/,'')}`}catch{/* retain the supplied management URL */}
-  const links:[[string,string],... [string,string][]]=[[c.shopProducts,`${base}/products`],[c.ordersLink,`${base}/orders`],[c.salesLink,`${base}/analytics`],[c.discountsLink,`${base}/discounts`],[c.shippingLink,`${base}/settings/shipping`],[c.paymentLink,`${base}/settings/payments`]];
-  return <div className="grid sm:grid-cols-2 gap-4">{links.map(([label,href])=><a key={label} href={href} target="_blank" rel="noreferrer" className="card-surface p-6 flex items-center justify-between hover:bg-[#fff4f6] transition-colors"><div><h2 className="font-display text-2xl text-[#5B0D1E]">{label}</h2><p className="text-xs text-[#896a71] mt-2">{c.shopify}</p></div><ExternalLink className="text-[#a35168]"/></a>)}</div>;
-}
-
 function AuthRoutes() {
-  const [,setLocation]=useLocation();
   const [authLang,setAuthLang]=useState<Lang>(()=>(localStorage.getItem('amore-lang') as Lang)||'en');
   const toggleAuthLang=()=>setAuthLang(current=>{const next=current==='en'?'ar':'en';localStorage.setItem('amore-lang',next);document.documentElement.lang=next;document.documentElement.dir=next==='ar'?'rtl':'ltr';return next;});
-  function HomeRedirect() {const {isSignedIn,isLoaded}=useUser();return isLoaded&&isSignedIn?<Redirect to="/user-portal"/>:<AppShell/>;}
-  function AuthControls() {return <div className="w-full max-w-[440px] flex justify-between items-center mb-4"><Link href="/" className="text-xs text-[#5B0D1E] underline">{authLang==='ar'?'العودة للمتجر':'Back to the shop'}</Link><button type="button" onClick={toggleAuthLang} className="text-xs font-bold text-[#5B0D1E]" data-testid="button-auth-language">{authLang==='ar'?'English':'عربي'}</button></div>}
-  function SignInPage() {return <div dir={authLang==='ar'?'rtl':'ltr'} className="min-h-[100dvh] bg-[#f8e8ec] px-4 py-10 flex flex-col items-center justify-center"><AuthControls/><Link href="/" className="mb-6"><img src={images.logo} className="w-24 h-24 rounded-full" alt="Amore Cookies"/></Link><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`}/></div>}
-  function SignUpPage() {return <div dir={authLang==='ar'?'rtl':'ltr'} className="min-h-[100dvh] bg-[#f8e8ec] px-4 py-10 flex flex-col items-center justify-center"><AuthControls/><Link href="/" className="mb-6"><img src={images.logo} className="w-24 h-24 rounded-full" alt="Amore Cookies"/></Link><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`}/></div>}
-  return <ClerkProvider publishableKey={clerkPubKey} proxyUrl={clerkProxyUrl} appearance={appearance} signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} localization={authLang==='ar'?arSA:{signIn:{start:{title:'Welcome back to Amore',subtitle:'Sign in to manage the bakery'}},signUp:{start:{title:'Create your account',subtitle:'A little sweetness starts here'}}}} routerPush={(to:string)=>setLocation(stripBase(to))} routerReplace={(to:string)=>setLocation(stripBase(to),{replace:true})}>
-    <ClerkCacheReset/>
-    <Switch>
-      <Route path="/" component={HomeRedirect}/>
-      <Route path="/sign-in/*?" component={SignInPage}/>
-      <Route path="/sign-up/*?" component={SignUpPage}/>
-      <Route><AppShell/></Route>
-    </Switch>
-  </ClerkProvider>;
+  return <Switch>
+    <Route path="/sign-in/*?"><AuthPage mode="sign-in" lang={authLang} onToggleLanguage={toggleAuthLang}/></Route>
+    <Route path="/sign-up/*?"><AuthPage mode="sign-up" lang={authLang} onToggleLanguage={toggleAuthLang}/></Route>
+    <Route path="/user-portal"><AccountPage lang={authLang}/></Route>
+    <Route><AppShell/></Route>
+  </Switch>;
 }
 function App() {
-  if(!clerkPubKey) console.warn('Missing VITE_CLERK_PUBLISHABLE_KEY; auth pages require Clerk configuration.');
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={basePath}><ErrorBoundary><AuthRoutes/></ErrorBoundary></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={basePath}><AuthProvider><ErrorBoundary><AuthRoutes/></ErrorBoundary></AuthProvider></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;
 }
 export default App;

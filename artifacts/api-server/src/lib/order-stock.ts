@@ -1,12 +1,16 @@
-import type { CustomerOrder, StockQuantity } from "@workspace/db";
-import { acquireNamedLock, releaseNamedLock, renewNamedLock, updateCustomerOrder } from "@workspace/db";
+import type { CustomerOrder } from "@workspace/db";
+import {
+  acquireNamedLock, releaseNamedLock, renewNamedLock,
+  reserveOrderProductStock, releaseOrderProductStock,
+} from "@workspace/db";
 import { randomUUID } from "node:crypto";
-import { shopifyAdminRequest } from "./shopify-admin-api";
+import { invalidateCatalog } from "./catalog";
 import { HttpError } from "./errors";
 
-// A short-lived database lease serializes Shopify stock changes across API workers.
+// Database leases serialize invoice creation; stock mutations themselves are
+// atomic PostgreSQL functions that lock and update the affected product rows.
 export async function stockLock<T>(work: () => Promise<T>) {
-  const name = "amore-shopify-stock";
+  const name = "amore-supabase-checkout";
   const owner = randomUUID();
   const leaseMs = 5 * 60_000;
   const deadline = Date.now() + 30_000;
@@ -17,9 +21,7 @@ export async function stockLock<T>(work: () => Promise<T>) {
   }
   if (!acquired) throw new HttpError(503, "Inventory is busy. Please retry shortly. / المخزون مشغول، يرجى إعادة المحاولة قريباً.");
   const heartbeat = setInterval(() => {
-    void renewNamedLock(name, owner, leaseMs).catch(() => {
-      // The lease remains protected until expiry; never release another worker's lock.
-    });
+    void renewNamedLock(name, owner, leaseMs).catch(() => {});
   }, 60_000);
   heartbeat.unref();
   try {
@@ -29,49 +31,30 @@ export async function stockLock<T>(work: () => Promise<T>) {
     await releaseNamedLock(name, owner).catch(() => {});
   }
 }
-async function quantities(order: CustomerOrder, release: boolean): Promise<StockQuantity[]> {
-  const result: StockQuantity[] = [];
-  for (const item of order.items) {
-    const data = await shopifyAdminRequest<{ productVariant: { inventoryItem: { id: string; tracked: boolean; inventoryLevels: { nodes: { location: { id: string }; quantities: { name: string; quantity: number }[] }[] } } } | null }>(
-      `query($id:ID!) { productVariant(id:$id) { inventoryItem { id tracked inventoryLevels(first:50) { nodes {
-        location { id } quantities(names:["available"]) { name quantity }
-      } } } } }`, { id: item.variantId });
-    const inventory = data.productVariant?.inventoryItem;
-    // Split-stock locations need a separate fulfillment policy; never guess.
-    if (!inventory?.tracked || inventory.inventoryLevels.nodes.length !== 1) throw new HttpError(409, "Inventory needs administrator review. / المخزون يحتاج مراجعة الإدارة.");
-    const level = inventory.inventoryLevels.nodes[0]!;
-    const available = level.quantities.find(q => q.name === "available")?.quantity;
-    if (available === undefined || (!release && available < item.quantity)) throw new HttpError(409, "Insufficient stock. / الكمية المطلوبة غير متوفرة.");
-    result.push({ inventoryItemId: inventory.id, locationId: level.location.id,
-      changeFromQuantity: available, quantity: available + (release ? item.quantity : -item.quantity) });
-  }
-  return result;
-}
-async function apply(orderId: string, plan: StockQuantity[], release: boolean) {
-  await shopifyAdminRequest(`mutation($input:InventorySetQuantitiesInput!,$key:String!) {
-    inventorySetQuantities(input:$input) @idempotent(key:$key) {
-      inventoryAdjustmentGroup { id } userErrors { field message }
-    }
-  }`, { key: `amore:${orderId}:${release ? "release" : "reserve"}`, input: {
-    name: "available", reason: "correction", quantities: plan,
-    referenceDocumentUri: `amore://orders/${orderId}`,
-  } });
-}
+
 export async function reserveStock(order: CustomerOrder) {
   if (order.stockStatus === "reserved") return;
-  if (!["unreserved", "reserving"].includes(order.stockStatus)) throw new HttpError(409, "Order inventory needs review.");
-  const plan = order.stockPlan ?? await quantities(order, false);
-  // Persist the exact request BEFORE the external write. Retry with the same
-  // idempotency key and quantities after any timeout; never decrement twice.
-  await updateCustomerOrder(order.id, { stockPlan: plan, stockStatus: "reserving" });
-  await apply(order.id, plan, false);
-  await updateCustomerOrder(order.id, { stockStatus: "reserved" });
+  try {
+    await reserveOrderProductStock(order.id);
+    invalidateCatalog();
+  } catch (error) {
+    if ((error as { code?: string })?.code === "P0001" || (error as { code?: string })?.code === "P0002") {
+      throw new HttpError(409, "Requested stock is not available. / الكمية المطلوبة غير متوفرة.");
+    }
+    throw error;
+  }
 }
+
 export async function releaseStock(order: CustomerOrder) {
   if (order.stockStatus === "released") return;
-  if (!["reserved", "releasing"].includes(order.stockStatus) || order.paymentStatus === "paid") throw new HttpError(409, "Inventory cannot be released.");
-  const plan = order.releasePlan ?? await quantities(order, true);
-  await updateCustomerOrder(order.id, { releasePlan: plan, stockStatus: "releasing" });
-  await apply(order.id, plan, true);
-  await updateCustomerOrder(order.id, { stockStatus: "released" });
+  if (order.paymentStatus === "paid") throw new HttpError(409, "Inventory cannot be released.");
+  try {
+    await releaseOrderProductStock(order.id);
+    invalidateCatalog();
+  } catch (error) {
+    if ((error as { code?: string })?.code === "P0001" || (error as { code?: string })?.code === "P0002") {
+      throw new HttpError(409, "Inventory cannot be released.");
+    }
+    throw error;
+  }
 }

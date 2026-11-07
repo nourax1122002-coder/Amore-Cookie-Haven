@@ -5,10 +5,9 @@
  * Amore Cookies storefront and management API
  * OpenAPI spec version: 1.0.0
  */
+import type { AuthUser } from './authUser';
 
-export type ListAdminOrdersParams = {
-/**
- * @maxLength 1000
- */
-after?: string;
-};
+export interface AuthResult {
+  user: AuthUser | null;
+  requiresEmailConfirmation: boolean;
+}

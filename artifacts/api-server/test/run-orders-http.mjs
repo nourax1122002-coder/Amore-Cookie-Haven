@@ -20,21 +20,19 @@ try {
     format: "cjs",
     logLevel: "warning",
     alias: {
-      "@clerk/express": join(root, "test/orders-http/mocks/clerk.ts"),
-      "@clerk/shared/keys": join(root, "test/orders-http/mocks/clerk-keys.ts"),
       "@workspace/db": join(root, `test/${suite}/mocks/db.ts`),
     },
     plugins: [{
-      name: "isolate-clerk-proxy",
+      name: "isolate-auth",
       setup(builder) {
-        builder.onResolve({ filter: /\/clerkProxyMiddleware$/ }, () => ({
-          path: join(root, "test/orders-http/mocks/clerk-proxy.ts"),
+        builder.onResolve({ filter: /^\.\.\/lib\/auth$/ }, () => ({
+          path: join(root, "test/orders-http/mocks/auth.ts"),
         }));
       },
     }],
   });
-  // Whitelist rather than inherit: real secrets, accounts and DB URLs never
-  // enter the test process. All Shopify fetches are intercepted by each suite.
+  // Whitelist only fictional identity values. No real account or database
+  // credentials enter the test process; unexpected network access fails tests.
   const child = spawn(process.execPath, ["--test", outfile], {
     stdio: "inherit",
     env: {
@@ -43,8 +41,7 @@ try {
       LOG_LEVEL: "info",
       ADMIN_EMAILS: "owner@example.invalid",
       SESSION_SECRET: "fictional-test-session-secret",
-      REPLIT_CONNECTORS_HOSTNAME: "shopify.example.invalid",
-      REPL_IDENTITY: "fictional-test-identity",
+      SUPABASE_URL: "https://amore-project.supabase.co",
     },
   });
   process.exitCode = await new Promise((resolve, reject) => {

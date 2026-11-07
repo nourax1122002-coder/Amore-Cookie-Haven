@@ -501,6 +501,53 @@ export interface OrderPage {
   refreshedAt: string;
 }
 
+export type AuthUserRole = typeof AuthUserRole[keyof typeof AuthUserRole];
+
+
+export const AuthUserRole = {
+  customer: 'customer',
+  administrator: 'administrator',
+} as const;
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  displayName: string;
+  emailVerified: boolean;
+  role: AuthUserRole;
+}
+
+export interface AuthSessionResponse {
+  user: AuthUser | null;
+}
+
+export interface AuthResult {
+  user: AuthUser | null;
+  requiresEmailConfirmation: boolean;
+}
+
+export interface SignUpInput {
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * @minLength 8
+     * @maxLength 128
+     */
+  password: string;
+  /** @maxLength 120 */
+  displayName?: string;
+}
+
+export interface SignInInput {
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  password: string;
+}
+
 export interface AdminSummary {
   inquiryCount: number;
   newInquiryCount: number;
@@ -539,15 +586,12 @@ id: string;
 token: string;
 };
 
-export type ListAdminOrdersParams = {
-/**
- * @maxLength 1000
- */
-after?: string;
-};
-
 export type GetAdminSession200 = {
   isAdmin: boolean;
   setupRequired: boolean;
+};
+
+export type UploadAdminProductImage201 = {
+  imageUrl: string;
 };
 

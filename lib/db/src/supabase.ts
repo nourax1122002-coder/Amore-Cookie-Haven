@@ -2,8 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 let client: SupabaseClient | undefined;
-function getClient() {
-  if (client) return client;
+function supabaseCredentials() {
   const url = process.env.SUPABASE_URL?.trim();
   const key = process.env.SUPABASE_SECRET_KEY?.trim();
   if (!url || !/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)) {
@@ -12,16 +11,27 @@ function getClient() {
   if (!key?.startsWith("sb_secret_")) {
     throw new Error("SUPABASE_SECRET_KEY must be a Supabase secret API key.");
   }
-  client = createClient(url, key, {
+  return { url, key };
+}
+function makeClient() {
+  const { url, key } = supabaseCredentials();
+  return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     db: { schema: "public" },
   });
+}
+function getClient() {
+  if (client) return client;
+  client = makeClient();
   return client;
 }
 
 // This client is server-only. Never import it from browser bundles or expose
 // the secret key through Vite environment variables.
 export function assertSupabaseConfiguration() { void getClient(); }
+// Auth requests use an isolated client so one user's session cannot affect
+// the service client's headers or another concurrent auth operation.
+export function createSupabaseAuthClient() { return makeClient(); }
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, property) {
     const value = Reflect.get(getClient(), property);

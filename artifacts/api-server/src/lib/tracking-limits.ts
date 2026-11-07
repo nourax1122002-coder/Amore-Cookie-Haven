@@ -4,7 +4,7 @@ import rateLimit, { type Options, type Store } from "express-rate-limit";
 import {
   deleteSecurityCounter, incrementSecurityCounter, pruneSecurityCounters as pruneSupabaseCounters,
 } from "@workspace/db";
-import { normalizeOrderNumber } from "./orders";
+import { normalizeOrderNumber } from "./phone";
 
 export type CounterBackend = {
   increment(scope: string, keyHash: string, windowMs: number, cap: number): Promise<{ totalHits: number; resetTime: Date }>;
@@ -81,7 +81,7 @@ export function createTrackingLimits(backend: CounterBackend = supabaseCounters,
 }
 
 export const trackingStoreUnavailable: ErrorRequestHandler = (_err, req, res, _next) => {
-  // This handler sits immediately after the limiters, before Shopify work.
+  // This handler sits immediately after the limiters, before database lookups.
   // Do not log DB errors: drivers can include SQL parameters in their messages.
   req.log.error({ errorType: "TrackingSecurityStoreUnavailable" }, "Tracking temporarily unavailable");
   res.setHeader("Cache-Control", "no-store");

@@ -4,12 +4,14 @@ import storefrontRouter from "./storefront";
 import adminRouter from "./admin";
 import paymentsRouter from "./payments";
 import assistantRouter from "./assistant";
+import authRouter from "./auth";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(paymentsRouter);
 router.use(assistantRouter);
+router.use(authRouter);
 router.use(storefrontRouter);
 router.use(adminRouter);
 

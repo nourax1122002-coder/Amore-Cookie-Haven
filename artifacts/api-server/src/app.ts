@@ -1,8 +1,5 @@
 import express, { type Express, type ErrorRequestHandler } from "express";
 import cookieParser from "cookie-parser";
-import { clerkMiddleware } from "@clerk/express";
-import { publishableKeyFromHost } from "@clerk/shared/keys";
-import { CLERK_PROXY_PATH, clerkProxyMiddleware, getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
 import { sameOrigin } from "./middlewares/security";
 import { HttpError } from "./lib/errors";
 import pinoHttp from "pino-http";
@@ -32,12 +29,8 @@ app.use(
     },
   }),
 );
-app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 app.use(express.json({ limit: "100kb" }));
 app.use(cookieParser(process.env.SESSION_SECRET));
-app.use(clerkMiddleware((req) => ({
-  publishableKey: publishableKeyFromHost(getClerkProxyHost(req) ?? "", process.env.CLERK_PUBLISHABLE_KEY),
-})));
 app.use("/api", sameOrigin);
 app.use("/api", (_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -52,7 +45,7 @@ const errors: ErrorRequestHandler = (err, req, res, _next) => {
   if (err?.name === "ZodError" || err instanceof SyntaxError) {
     res.status(400).json({ error: "Please check the submitted fields. / يرجى التحقق من البيانات المدخلة." }); return;
   }
-  // Do not log request bodies, Shopify response payloads, customer PII or secrets.
+  // Do not log request bodies, upstream payloads, customer PII or secrets.
   req.log.error({ errorType: err?.name ?? "Error" }, "API request failed");
   res.status(503).json({ error: "The store service is temporarily unavailable. Please try again. / خدمة المتجر غير متاحة مؤقتاً. يرجى المحاولة مجدداً." });
 };

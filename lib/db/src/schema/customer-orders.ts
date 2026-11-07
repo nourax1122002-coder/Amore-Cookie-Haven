@@ -1,13 +1,14 @@
-import { pgTable, text, integer, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, jsonb, timestamp, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export type OrderItem = { variantId: string; title: string; quantity: number; unitFils: number };
+export type StockPlan = { productId: string; quantity: number };
 // Historical orders have no point; every new direct checkout requires one.
 export type OrderAddress = {
   area: string; block: string; street: string; house: string;
   location?: { latitude: number; longitude: number };
 };
-export type StockQuantity = { inventoryItemId: string; locationId: string; quantity: number; changeFromQuantity: number };
+export type StockQuantity = StockPlan;
 export const customerOrdersTable = pgTable("customer_orders", {
   id: text("id").primaryKey(),
   number: text("number").notNull().unique(),
@@ -31,6 +32,7 @@ export const customerOrdersTable = pgTable("customer_orders", {
   stockStatus: text("stock_status").notNull().default("unreserved"),
   stockPlan: jsonb("stock_plan").$type<StockQuantity[]>(),
   releasePlan: jsonb("release_plan").$type<StockQuantity[]>(),
+  userId: uuid("user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

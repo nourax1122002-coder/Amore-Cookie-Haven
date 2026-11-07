@@ -11,25 +11,20 @@ From the repository root:
   contract checks for concurrency, expiry, privacy and failure behavior.
 
 The HTTP suite bundles the actual Express app, routes, authorization policy,
-rate limiters, schemas, Shopify transport/response handling, error handler and
-production request logging. Requests use a fresh loopback-only server on an
+rate limiters, schemas, error handler and production request logging. Requests use a fresh loopback-only server on an
 ephemeral port, not the running storefront. Each run starts a fresh process so
 limiter state cannot persist between runs; the two limiter tests independently
 exercise the IP and normalized-order limits without sleeping or disabling them.
 
-Only external identity/database boundaries are replaced at bundle time. Clerk
-returns fictional anonymous, verified visitor, unverified owner and verified
-owner identities, while the real `requireAdmin` policy still runs. Database
-commerce access throws; a small in-memory repository fake provides security
-counters and fault injection for either limiter. The Clerk proxy is disabled in
-this test bundle. These tests do
-not verify Clerk token signatures, login or real identity-provider networking.
+Only external identity/database boundaries are replaced at bundle time. A
+fictional identity adapter returns anonymous, verified visitor, unverified
+owner and verified owner states, while the real `requireAdmin` policy still
+runs. A small in-memory repository fake provides security counters and fault
+injection. These tests do not contact Supabase Auth or use real accounts.
 
 The runner whitelists child-process environment variables instead of inheriting
-credentials. Shopify `fetch` calls must target a fictional hostname and use an
-expected read-only order query. The mock returns synthetic orders, protected-data
-GraphQL errors (including partial data), HTTP denial or a thrown network error.
-No live Shopify, Clerk, database, orders, payments or privileged accounts are used.
+credentials. Any unexpected outbound request fails the suite. No live database,
+payment provider or privileged account is used.
 
 Private canaries populate phones, addresses and confirmation tokens/URLs.
 Every HTTP response (including headers) and the real Pino output are checked for
@@ -45,7 +40,7 @@ two independent Express servers and a shared in-memory implementation of the
 atomic repository contract used by Supabase RPCs. It verifies cross-instance
 limits, HMAC-only key storage and fail-closed behavior without network access or
 writes to the connected Supabase project. The isolated HTTP suite also verifies
-no Shopify calls on store failure or a missing shared hashing secret, with 503,
+tracking fails closed on a missing shared hashing secret, with 503,
 Retry-After and no-store.
 
 Merchant first-purchase setup remains outside these suites.

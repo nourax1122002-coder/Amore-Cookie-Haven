@@ -1,44 +1,35 @@
-import { Router } from "express";
+import { Router, raw as rawBody } from "express";
+import { randomUUID } from "node:crypto";
 import { getInquiryCounts, listInquiries, updateInquiry } from "@workspace/db";
 import {
   GetAdminSessionResponse, GetAdminSummaryResponse, GetAdminSettingsResponse,
   SaveSettingsBody, SaveSettingsResponse, ListInquiriesResponse, UpdateInquiryParams,
   UpdateInquiryBody, UpdateInquiryResponse, ListAdminProductsResponse, SaveProductBody, SaveProductResponse,
-  ListAdminOrdersQueryParams, ListAdminOrdersResponse,
 } from "@workspace/api-zod";
 import { approvedAdminEmails, isAdministrator, requireAdmin } from "../middlewares/security";
 import { getCatalog, saveCatalogProduct } from "../lib/catalog";
-import { getShopifyStorefrontConfig } from "../lib/shopifyStorefrontClient";
 import { readSettings, writeSettings } from "../lib/store-settings";
 import { readiness } from "../lib/cart";
 import { HttpError } from "../lib/errors";
-import { listOrders } from "../lib/orders";
 import { paymentConfiguration } from "../lib/myfatoorah";
+import { uploadProductImage } from "@workspace/db";
 
 const router = Router();
 router.use("/admin", (_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
 router.get("/admin/me", async (req, res): Promise<void> => {
-  res.json(GetAdminSessionResponse.parse({ isAdmin: await isAdministrator(req), setupRequired: !approvedAdminEmails().length }));
+  res.json(GetAdminSessionResponse.parse({ isAdmin: await isAdministrator(req, res), setupRequired: !approvedAdminEmails().length }));
 });
 router.use("/admin", requireAdmin);
-router.get("/admin/orders", async (req, res): Promise<void> => {
-  const { after } = ListAdminOrdersQueryParams.parse(req.query);
-  res.json(ListAdminOrdersResponse.parse(await listOrders(after)));
-});
 router.get("/admin/summary", async (_req, res): Promise<void> => {
-  const [inquiries, products, ready, config] = await Promise.all([
-    getInquiryCounts(),
-    getCatalog(true), readiness(), getShopifyStorefrontConfig(),
-  ]);
+  const [inquiries, products, ready] = await Promise.all([getInquiryCounts(), getCatalog(true), readiness()]);
   res.json(GetAdminSummaryResponse.parse({
     inquiryCount: inquiries.total, newInquiryCount: inquiries.fresh,
     lowStock: products.filter(p => p.stock <= p.lowStockThreshold),
-    shopAdminUrl: `https://${config.shopDomain}/admin`, shopCurrency: ready.shopCurrency,
+    shopAdminUrl: "", shopCurrency: ready.shopCurrency,
     checkoutEnabled: ready.checkoutReady,
     notices: [
       ...(ready.launchMessage ? [ready.launchMessage] : []),
-      "New orders and verified MyFatoorah payments are managed in Amore Cookies. Shopify remains the catalog and stock source. / تُدار الطلبات الجديدة ومدفوعات ماي فاتورة المؤكدة داخل أموري؛ المنتجات والمخزون مرتبطان بـShopify.",
-      "Stock starts at zero until approved quantities are entered. / يبدأ المخزون بصفر حتى إدخال الكميات الفعلية.",
+      "Products, inventory, customer accounts and orders are stored in Supabase. / المنتجات والمخزون وحسابات العملاء والطلبات محفوظة في Supabase.",
       ...paymentConfiguration().missing.map(key => `Payment setup required: ${key}`),
     ],
   }));
@@ -75,5 +66,13 @@ router.get("/admin/products", async (_req, res): Promise<void> => {
 });
 router.post("/admin/products", async (req, res): Promise<void> => {
   res.json(SaveProductResponse.parse(await saveCatalogProduct(SaveProductBody.parse(req.body))));
+});
+router.post("/admin/product-images", rawBody({ type: ["image/jpeg", "image/png", "image/webp"], limit: "5mb" }), async (req, res): Promise<void> => {
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new HttpError(400, "Choose a valid product image.");
+  const contentType = req.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+  const extension = contentType === "image/jpeg" ? "jpg" : contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "";
+  if (!extension) throw new HttpError(415, "Only JPG, PNG, and WebP product images are supported.");
+  const imageUrl = await uploadProductImage(`${randomUUID()}.${extension}`, req.body, contentType);
+  res.status(201).json({ imageUrl });
 });
 export default router;
