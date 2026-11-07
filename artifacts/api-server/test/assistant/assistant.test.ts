@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { pool } from "@workspace/db";
 import { SendAssistantMessageBody } from "@workspace/api-zod";
-import { createOpenRouter, isFreeModel, AssistantError, FREE_ROUTING, retrySeconds, validatePrivateInput } from "../../src/lib/assistant/openrouter";
+import { createOpenRouter, isFreeModel, selectFreeModels, AssistantError, FREE_ROUTING, retrySeconds, validatePrivateInput } from "../../src/lib/assistant/openrouter";
 import { createAssistantQuota } from "../../src/lib/assistant/quota";
 
-const model = { id: "google/gemma-4-26b-a4b-it:free", pricing: { prompt: "0", completion: "0" },
+const model = { id: "google/gemma-4-31b-it:free", pricing: { prompt: "0", completion: "0" },
   architecture: { input_modalities: ["text"], output_modalities: ["text"] }, context_length: 8192 };
+const backupModel = { ...model, id: "google/gemma-4-26b-a4b-it:free" };
 const messages = [{ role: "user" as const, content: "شلون أخبز الكوكيز؟" }];
 function mockFetch(completion: () => Response | Promise<Response>, models: any[] = [model], remaining = 50) {
   const calls: Array<{ url: string; options?: RequestInit }> = [];
@@ -40,7 +41,11 @@ test("discovery rejects paid, unknown, incomplete and nontext routes including n
   for (const bad of [{ ...model, id: model.id.replace(":free", "") }, { ...model, pricing: {} },
     { ...model, pricing: { ...model.pricing, request: "0.001" } }, { ...model, pricing: { prompt: "", completion: "0" } },
     { ...model, pricing: { prompt: "NaN", completion: "0" } }, { ...model, architecture: {} },
-    { ...model, id: "unknown/test:free" }]) assert.equal(isFreeModel(bad), false);
+    { ...model, id: "unknown/test:free" }, { ...model, id: "nvidia/nemotron-3.5-lightning:free" }]) assert.equal(isFreeModel(bad), false);
+  assert.deepEqual(selectFreeModels([backupModel, { ...model, pricing: { prompt: "1", completion: "0" } }, model]),
+    [model.id, backupModel.id]);
+  assert.deepEqual(selectFreeModels([backupModel]), [backupModel.id]);
+  assert.deepEqual(selectFreeModels([{ ...model, pricing: { prompt: "0", completion: "0", request: "" } }]), []);
 });
 test("a genuine response path enforces zero-price privacy routing and never sends credentials as content", async () => {
   const mock = mockFetch(result);
@@ -89,6 +94,43 @@ test("429 honors retry headers, identifies daily limits and never automatically 
   await expectFailure(() => createOpenRouter(daily.fn).chat("fixture-secret", messages, "", AbortSignal.timeout(1000)), "daily_limit");
   assert.equal(retrySeconds("garbage"), 30);
   assert.equal(retrySeconds("-1"), 1); // Parsed as a past date; never a negative countdown.
+});
+test("a failed primary falls back once to the second catalogue-verified free model", async () => {
+  const replies = [
+    Response.json({ error: { message: "temporary provider limit" } }, { status: 429, headers: { "Retry-After": "17" } }),
+    Response.json({ model: backupModel.id, choices: [{ message: { content: "اتبعي خطوات الخبز المعتمدة في صفحة المتجر." } }], usage: { cost: 0 } }),
+  ];
+  const mock = mockFetch(() => replies.shift()!, [backupModel, model]);
+  const reply = await createOpenRouter(mock.fn).chat("fixture-secret", messages, "معلومات عامة عن الخبز", AbortSignal.timeout(1000));
+  assert.equal(reply.model, backupModel.id);
+  assert.equal(reply.zeroCostVerified, true);
+  const posts = mock.calls.filter(c => c.options?.method === "POST");
+  assert.equal(posts.length, 2);
+  assert.deepEqual(posts.map(c => JSON.parse(String(c.options?.body)).model), [model.id, backupModel.id]);
+  for (const post of posts) {
+    const body = JSON.parse(String(post.options?.body));
+    assert.deepEqual(body.provider, FREE_ROUTING);
+    assert.equal(body.models, undefined);
+    assert.ok(!JSON.stringify(body).includes("fixture-secret"));
+  }
+});
+test("when all free candidates are throttled, preserve the longest retry timing without repeating either model", async () => {
+  const replies = [
+    Response.json({ error: { message: "provider rate limit" } }, { status: 429, headers: { "Retry-After": "17" } }),
+    Response.json({ error: { message: "provider rate limit" } }, { status: 429, headers: { "Retry-After": "43" } }),
+  ];
+  const mock = mockFetch(() => replies.shift()!, [backupModel, model]);
+  await assert.rejects(() => createOpenRouter(mock.fn).chat("fixture-secret", messages, "", AbortSignal.timeout(1000)),
+    (e: any) => e.code === "rate_limit" && e.status === 429 && e.retryAfterSeconds === 43
+      && e.message === "المساعد مشغول مؤقتاً. انتظري المدة الموضحة ثم أعيدي المحاولة.");
+  const posts = mock.calls.filter(c => c.options?.method === "POST");
+  assert.deepEqual(posts.map(c => JSON.parse(String(c.options?.body)).model), [model.id, backupModel.id]);
+  assert.equal(posts.length, 2);
+});
+test("an account daily limit stops before trying the backup model", async () => {
+  const mock = mockFetch(() => Response.json({ error: { message: "daily free limit reached" } }, { status: 429 }), [model, backupModel]);
+  await expectFailure(() => createOpenRouter(mock.fn).chat("fixture-secret", messages, "", AbortSignal.timeout(1000)), "daily_limit");
+  assert.equal(mock.calls.filter(c => c.options?.method === "POST").length, 1);
 });
 test("network, abort, configuration, upstream 5xx, malformed, English-only and unexpected-cost responses fail closed", async () => {
   for (const [completion, code] of [
