@@ -16,6 +16,10 @@ type AuthContextValue = {
   refresh: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<StoreAccount>;
   signUp: (email: string, password: string, displayName: string) => Promise<{ user: StoreAccount | null; requiresEmailConfirmation: boolean }>;
+  resendConfirmation: (email: string) => Promise<void>;
+  requestPasswordRecovery: (email: string) => Promise<void>;
+  establishRecoverySession: (accessToken: string, refreshToken: string) => Promise<void>;
+  updatePasswordFromRecovery: (password: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -82,6 +86,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return result;
   }, [queryClient]);
 
+  const resendConfirmation = useCallback(async (email: string) => {
+    await authRequest<{ requested: true }>("/api/auth/resend-confirmation", { email });
+  }, []);
+
+  const requestPasswordRecovery = useCallback(async (email: string) => {
+    await authRequest<{ requested: true }>("/api/auth/password-recovery", { email });
+  }, []);
+
+  const establishRecoverySession = useCallback(async (accessToken: string, refreshToken: string) => {
+    await authRequest<void>("/api/auth/recovery/session", { accessToken, refreshToken });
+  }, []);
+
+  const updatePasswordFromRecovery = useCallback(async (password: string) => {
+    await authRequest<{ updated: true }>("/api/auth/recovery/update-password", { password });
+  }, []);
+
   const signOut = useCallback(async () => {
     await authRequest<{ user: null }>("/api/auth/sign-out", {});
     previousId.current = null;
@@ -89,7 +109,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
   }, [queryClient]);
 
-  return <AuthContext.Provider value={{ user, loading, error, refresh, signIn, signUp, signOut }}>
+  return <AuthContext.Provider value={{
+    user, loading, error, refresh, signIn, signUp, resendConfirmation,
+    requestPasswordRecovery, establishRecoverySession, updatePasswordFromRecovery, signOut,
+  }}>
     {children}
   </AuthContext.Provider>;
 }

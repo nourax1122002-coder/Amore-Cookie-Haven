@@ -5,8 +5,12 @@ import { mapSupabaseSignInError, mapSupabaseSignUpError } from "./auth-errors";
 
 const ACCESS_COOKIE = "amore_auth_access";
 const REFRESH_COOKIE = "amore_auth_refresh";
+const RECOVERY_ACCESS_COOKIE = "amore_password_recovery_access";
+const RECOVERY_REFRESH_COOKIE = "amore_password_recovery_refresh";
 const COOKIE_PATH = "/api";
+const RECOVERY_COOKIE_PATH = "/api/auth";
 const REFRESH_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
+const RECOVERY_MAX_AGE = 10 * 60 * 1000;
 
 export type AmoreAccount = {
   id: string;
@@ -26,13 +30,13 @@ type AuthSession = { access_token: string; refresh_token: string; expires_in?: n
 export const approvedAdminEmails = () => (process.env.ADMIN_EMAILS ?? "")
   .split(",").map(email => email.trim().toLowerCase()).filter(Boolean);
 
-function cookieOptions(req: Request, maxAge: number) {
+function cookieOptions(req: Request, maxAge: number, path = COOKIE_PATH) {
   return {
     httpOnly: true,
     signed: true,
     sameSite: "lax" as const,
     secure: req.secure || req.get("x-forwarded-proto") === "https",
-    path: COOKIE_PATH,
+    path,
     maxAge,
   };
 }
@@ -47,6 +51,18 @@ function clearSessionCookies(req: Request, res: Response) {
   const options = { ...cookieOptions(req, 0), expires: new Date(0) };
   res.clearCookie(ACCESS_COOKIE, options);
   res.clearCookie(REFRESH_COOKIE, options);
+}
+
+function setRecoveryCookies(req: Request, res: Response, session: AuthSession) {
+  const options = cookieOptions(req, RECOVERY_MAX_AGE, RECOVERY_COOKIE_PATH);
+  res.cookie(RECOVERY_ACCESS_COOKIE, session.access_token, options);
+  res.cookie(RECOVERY_REFRESH_COOKIE, session.refresh_token, options);
+}
+
+function clearRecoveryCookies(req: Request, res: Response) {
+  const options = { ...cookieOptions(req, 0, RECOVERY_COOKIE_PATH), expires: new Date(0) };
+  res.clearCookie(RECOVERY_ACCESS_COOKIE, options);
+  res.clearCookie(RECOVERY_REFRESH_COOKIE, options);
 }
 
 async function accountFromUser(user: AuthUser): Promise<AmoreAccount> {
@@ -121,6 +137,71 @@ export async function signUpWithPassword(email: string, password: string, displa
   });
   if (result.error) throw mapSupabaseSignUpError(result.error);
   return result.data;
+}
+
+export async function resendSignupConfirmation(email: string, emailRedirectTo?: string) {
+  const result = await createSupabaseAuthClient().auth.resend({
+    type: "signup",
+    email,
+    options: emailRedirectTo ? { emailRedirectTo } : undefined,
+  });
+  if (result.error) throw mapSupabaseSignUpError(result.error);
+}
+
+export async function requestPasswordRecovery(email: string, redirectTo?: string) {
+  const result = await createSupabaseAuthClient().auth.resetPasswordForEmail(
+    email,
+    redirectTo ? { redirectTo } : undefined,
+  );
+  if (result.error) throw mapSupabaseSignUpError(result.error);
+}
+
+export async function establishRecoverySession(
+  req: Request,
+  res: Response,
+  accessToken: string,
+  refreshToken: string,
+) {
+  const auth = createSupabaseAuthClient();
+  const result = await auth.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+  if (result.error || !result.data.session || !result.data.user) {
+    throw new HttpError(
+      400,
+      "This password-reset link is invalid or has expired. Request a new one. / رابط استعادة كلمة المرور غير صالح أو انتهت صلاحيته. اطلبي رابطاً جديداً.",
+    );
+  }
+  setRecoveryCookies(req, res, result.data.session);
+}
+
+export async function updatePasswordFromRecovery(req: Request, res: Response, password: string) {
+  const accessToken = req.signedCookies?.[RECOVERY_ACCESS_COOKIE];
+  const refreshToken = req.signedCookies?.[RECOVERY_REFRESH_COOKIE];
+  if (typeof accessToken !== "string" || typeof refreshToken !== "string") {
+    throw new HttpError(
+      401,
+      "Open the password-reset link from your email again. / افتحي رابط استعادة كلمة المرور من بريدك الإلكتروني مجدداً.",
+    );
+  }
+
+  const auth = createSupabaseAuthClient();
+  const session = await auth.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+  if (session.error || !session.data.session || !session.data.user) {
+    clearRecoveryCookies(req, res);
+    throw new HttpError(
+      401,
+      "This password-reset link is invalid or has expired. Request a new one. / رابط استعادة كلمة المرور غير صالح أو انتهت صلاحيته. اطلبي رابطاً جديداً.",
+    );
+  }
+
+  const result = await auth.auth.updateUser({ password });
+  if (result.error) {
+    if ((result.error.status ?? 0) >= 500) throw authServiceUnavailable();
+    throw new HttpError(
+      400,
+      "Supabase could not accept this password. Choose a different password and try again. / لم يقبل Supabase كلمة المرور. اختاري كلمة مرور مختلفة وحاولي مجدداً.",
+    );
+  }
+  clearRecoveryCookies(req, res);
 }
 
 export async function signOutSession(req: Request, res: Response) {

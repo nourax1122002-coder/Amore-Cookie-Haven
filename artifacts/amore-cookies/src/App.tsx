@@ -14,7 +14,7 @@ import { OrderDetails } from '@/components/order-status';
 import { PaymentResult, LocalOrdersAdmin } from '@/components/payments';
 import { DeliveryLocationPicker } from '@/components/delivery-location-picker';
 import { SafeAssistantWidget } from '@/components/assistant-widget';
-import { AuthPage } from '@/components/auth-pages';
+import { AuthPage, PasswordRecoveryPage } from '@/components/auth-pages';
 import { MyFavoritesPage, MyOrdersPage, UserPortalPage } from '@/components/account-pages';
 import { FavoriteButton } from '@/components/favorite-button';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
@@ -488,9 +488,14 @@ function AdminSettings({lang}:{lang:Lang}) {
 function AuthRoutes() {
   const [authLang,setAuthLang]=useState<Lang>(()=>(localStorage.getItem('amore-lang') as Lang)||'en');
   const toggleAuthLang=()=>setAuthLang(current=>{const next=current==='en'?'ar':'en';localStorage.setItem('amore-lang',next);document.documentElement.lang=next;document.documentElement.dir=next==='ar'?'rtl':'ltr';return next;});
+  const recoveryLink = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type') === 'recovery';
   return <Switch>
-    <Route path="/sign-in/*?"><AuthPage mode="sign-in" lang={authLang} onToggleLanguage={toggleAuthLang}/></Route>
+    <Route path="/sign-in/*?">{recoveryLink
+      ? <PasswordRecoveryPage mode="reset" lang={authLang} onToggleLanguage={toggleAuthLang}/>
+      : <AuthPage mode="sign-in" lang={authLang} onToggleLanguage={toggleAuthLang}/>}</Route>
     <Route path="/sign-up/*?"><AuthPage mode="sign-up" lang={authLang} onToggleLanguage={toggleAuthLang}/></Route>
+    <Route path="/forgot-password/*?"><PasswordRecoveryPage mode="request" lang={authLang} onToggleLanguage={toggleAuthLang}/></Route>
+    <Route path="/reset-password/*?"><PasswordRecoveryPage mode="reset" lang={authLang} onToggleLanguage={toggleAuthLang}/></Route>
     <Route><AppShell/></Route>
   </Switch>;
 }
