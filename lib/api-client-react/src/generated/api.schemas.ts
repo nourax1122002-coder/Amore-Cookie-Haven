@@ -82,6 +82,48 @@ export interface Product {
   ingredientsAr: string;
 }
 
+export interface CurrencyConversionSource {
+  name: string;
+  url: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  date: string;
+}
+
+export type CurrencyConversionCurrency = typeof CurrencyConversionCurrency[keyof typeof CurrencyConversionCurrency];
+
+
+export const CurrencyConversionCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+  SAR: 'SAR',
+} as const;
+
+export type CurrencyConversionCalculation = typeof CurrencyConversionCalculation[keyof typeof CurrencyConversionCalculation];
+
+
+export const CurrencyConversionCalculation = {
+  direct: 'direct',
+  eur_cross_rate: 'eur_cross_rate',
+} as const;
+
+export interface CurrencyConversion {
+  /** @minimum 0 */
+  amount: number;
+  currency: CurrencyConversionCurrency;
+  calculation: CurrencyConversionCalculation;
+  /**
+     * @minItems 1
+     * @maxItems 2
+     */
+  sources: CurrencyConversionSource[];
+  informationalOnly: true;
+}
+
+export interface CurrencyConversionFailure {
+  error: string;
+}
+
 export interface ProductInput {
   id?: string;
   /**
@@ -468,6 +510,25 @@ export interface AdminSummary {
   checkoutEnabled: boolean;
   notices: string[];
 }
+
+export type GetCurrencyConversionParams = {
+/**
+ * @maximum 10000
+ * @exclusiveMinimum 0
+ */
+amount: number;
+currency: GetCurrencyConversionCurrency;
+};
+
+export type GetCurrencyConversionCurrency = typeof GetCurrencyConversionCurrency[keyof typeof GetCurrencyConversionCurrency];
+
+
+export const GetCurrencyConversionCurrency = {
+  USD: 'USD',
+  EUR: 'EUR',
+  GBP: 'GBP',
+  SAR: 'SAR',
+} as const;
 
 export type StartCheckout200 = {
   url: string;

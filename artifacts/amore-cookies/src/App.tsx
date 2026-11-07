@@ -11,9 +11,9 @@ import {
   useGetAdminSettings, useGetAdminSummary, useGetCart, useGetProduct, useGetStore,
   useListAdminProducts, useListInquiries, useListProducts, useSaveProduct, useSaveSettings,
   useStartCheckout, useTrackOrder, useUpdateCart, useUpdateInquiry,
-  useGetPaymentAvailability,
+  useGetPaymentAvailability, useGetCurrencyConversion,
 } from '@workspace/api-client-react';
-import type { Cart, Inquiry, Product, ProductInput, StoreSettings, TrackingResult } from '@workspace/api-client-react';
+import type { Cart, Inquiry, Product, ProductInput, StoreSettings, TrackingResult, GetCurrencyConversionParams } from '@workspace/api-client-react';
 import { AdminOrders, OrderDetails } from '@/components/order-status';
 import { PaymentResult, LocalOrdersAdmin } from '@/components/payments';
 import { DeliveryLocationPicker } from '@/components/delivery-location-picker';
@@ -71,6 +71,8 @@ const copy: Record<Lang, Record<string, string>> = {
     shippingLink:'Shipping settings', paymentLink:'Payment settings', shopProducts:'Shopify products', unknownStock:'Inventory unavailable', reviewBefore:'Review before continuing',
     trackingUnavailable:'Order tracking is not available right now. Please try again later.', noProducts:'The collection is being prepared.',
     launch:'A little patience. Something lovely is coming.', checkoutDisabled:'Pre-launch · Checkout disabled', awaitingApproval:'Awaiting approved ingredients',
+    displayCurrency:'Display price in', conversionLoading:'Loading an indicative conversion…', conversionError:'Currency conversion is temporarily unavailable. The KWD price remains unchanged.',
+    conversionNote:'Approximate price for reference only. Checkout remains in KWD.', rateSources:'Rate sources and dates',
   },
   ar: {
     home:'الرئيسية', products:'منتجاتنا', about:'من نحن', baking:'طريقة التحضير', cafes:'للمقاهي', individuals:'للأفراد',
@@ -99,6 +101,8 @@ const copy: Record<Lang, Record<string, string>> = {
     shippingLink:'إعدادات الشحن', paymentLink:'إعدادات الدفع', shopProducts:'منتجات Shopify', unknownStock:'المخزون غير متاح', reviewBefore:'مراجعة قبل المتابعة',
     trackingUnavailable:'تتبع الطلب غير متاح حالياً. يرجى المحاولة لاحقاً.', noProducts:'المجموعة قيد التحضير.',
     launch:'قليل من الصبر. شيء جميل قادم.', checkoutDisabled:'قبل الإطلاق · الدفع معطل', awaitingApproval:'بانتظار اعتماد المكونات', piece:'قطعة',
+    displayCurrency:'عرض السعر بعملة', conversionLoading:'جارٍ تحميل السعر التقريبي…', conversionError:'تحويل العملة غير متاح مؤقتاً. يبقى سعر الدينار الكويتي دون تغيير.',
+    conversionNote:'سعر تقريبي للاسترشاد فقط. يتم الدفع بالدينار الكويتي.', rateSources:'مصادر الأسعار وتواريخها',
   },
 } as const;
 
@@ -266,20 +270,45 @@ function ProductDetail({lang,settings}:{lang:Lang;settings?:StoreSettings}) {
   const [,params]=useRoute('/products/:handle');const handle=params?.handle||'';const q=useGetProduct(handle,{query:{queryKey:getGetProductQueryKey(handle),enabled:!!handle,refetchInterval:60000}});const p=q.data;const c=copy[lang];
   const [,navigate]=useLocation();
   const [quantity,setQuantity]=useState('1');
+  const [displayCurrency,setDisplayCurrency]=useState<GetCurrencyConversionParams['currency']|'KWD'>('KWD');
+  const conversionCurrency: GetCurrencyConversionParams['currency']=displayCurrency==='KWD'?'USD':displayCurrency;
+  const conversion=useGetCurrencyConversion({amount:p?Math.round(p.price*1000)/1000:0.001,currency:conversionCurrency},{query:{
+    enabled:Boolean(p&&displayCurrency!=='KWD'&&p.currency==='KWD'),
+    staleTime:24*60*60*1000,
+    gcTime:25*60*60*1000,
+  }});
   const add=useUpdateCart({mutation:{onSuccess:cart=>{
     queryClient.setQueryData(getGetCartQueryKey(),cart);
     navigate('/checkout');
   }}});
-  useEffect(()=>{setQuantity('1');add.reset();},[handle]);
+  useEffect(()=>{setQuantity('1');setDisplayCurrency('KWD');add.reset();},[handle]);
   if(q.isLoading)return <LoadingBlock lang={lang}/>;if(q.isError)return <div className="container-wide py-20"><ErrorNotice lang={lang} onRetry={()=>q.refetch()}/></div>;
   if(!p)return <div className="container-wide py-20"><EmptyState text={c.noProducts}/></div>;
   const sold=!p.available||p.stock<=0;
+  const priceCurrency=p.currency||'KWD';
   const selectedQuantity=Number(quantity);
   const maxQuantity=Math.min(p.stock,1000);
   const validQuantity=Number.isInteger(selectedQuantity)&&selectedQuantity>=1&&selectedQuantity<=maxQuantity;
+  const englishIngredients=p.ingredients.trim();
+  const arabicIngredients=p.ingredientsAr.trim();
+  const ingredientsText=lang==='ar'?(arabicIngredients||englishIngredients):(englishIngredients||arabicIngredients);
   return <div className="container-wide py-12 md:py-20"><Link href="/products" className="text-xs text-[#8b6870] inline-flex gap-2 items-center mb-8"><ArrowLeft size={14}/>{c.browse}</Link><div className="grid md:grid-cols-2 gap-10 lg:gap-20 items-center">
     <div className="rounded-[28px] overflow-hidden bg-[#f8e8ec] aspect-square"><Picture src={p.imageUrl||images.cookie} alt={lang==='ar'?p.titleAr:p.title} className="w-full h-full object-cover"/></div>
-    <div><span className="eyebrow">{c.frozen}</span><h1 className="serif text-5xl md:text-6xl text-[#5B0D1E] mt-3">{lang==='ar'?(p.titleAr||p.title):p.title}</h1><p className="mt-5 leading-7 text-sm text-[#795963]">{lang==='ar'?(p.descriptionAr||p.description):(p.description||p.descriptionAr)}</p><div className="flex gap-5 mt-6 text-[11px] text-[#8b6870]"><span>{p.pieces} {c.piece}</span><span>{lang==='ar'?'مجمدة · جاهزة للخبز':'Frozen · Ready to bake'}</span></div><div className="mt-7 font-semibold text-xl text-[#5B0D1E]">{p.currency||'KWD'} {p.price.toFixed(3)}</div>
+    <div><span className="eyebrow">{c.frozen}</span><h1 className="serif text-5xl md:text-6xl text-[#5B0D1E] mt-3">{lang==='ar'?(p.titleAr||p.title):p.title}</h1><p className="mt-5 leading-7 text-sm text-[#795963]">{lang==='ar'?(p.descriptionAr||p.description):(p.description||p.descriptionAr)}</p><div className="flex gap-5 mt-6 text-[11px] text-[#8b6870]"><span>{p.pieces} {c.piece}</span><span>{lang==='ar'?'مجمدة · جاهزة للخبز':'Frozen · Ready to bake'}</span></div>
+    {priceCurrency==='KWD'?<div className="mt-7 rounded-2xl border border-[#efdee2] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <strong className="font-semibold text-xl text-[#5B0D1E]" dir="ltr">{displayCurrency==='KWD'?`${p.price.toFixed(3)} KWD`:conversion.data&&!conversion.isError?`${conversion.data.amount.toFixed(2)} ${displayCurrency}`:`— ${displayCurrency}`}</strong>
+        <label htmlFor="product-display-currency" className="text-xs font-medium text-[#795963]">{c.displayCurrency}</label>
+        <select id="product-display-currency" className="field w-auto min-w-24 py-2" value={displayCurrency} onChange={event=>setDisplayCurrency(event.target.value as GetCurrencyConversionParams['currency']|'KWD')}>
+          {(['KWD','USD','EUR','GBP','SAR'] as const).map(currency=><option key={currency} value={currency}>{currency}</option>)}
+        </select>
+      </div>
+      {displayCurrency!=='KWD'&&<div className="mt-3 text-[11px] leading-5 text-[#896a71]">
+        {conversion.isLoading&&<p role="status">{c.conversionLoading}</p>}
+        {conversion.isError&&<p role="alert" className="text-red-700">{c.conversionError}</p>}
+        {conversion.data&&<><p id="currency-conversion-note">{c.conversionNote}</p><div className="mt-2"><span className="font-semibold">{c.rateSources}: </span>{conversion.data.sources.map((source,index)=><span key={`${source.name}-${source.date}`}>{index>0?' · ':''}<a href={source.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">{source.name}</a> ({source.date})</span>)}</div></>}
+      </div>}
+    </div>:<div className="mt-7 font-semibold text-xl text-[#5B0D1E]">{priceCurrency} {p.price.toFixed(3)}</div>}
     <div className="mt-5 p-4 rounded-xl bg-[#f8e8ec] text-[11px] text-[#7b4d5a] flex gap-3"><Snowflake size={17}/>{lang==='ar'?(settings?.storageAr||c.storage):(settings?.storageEn||c.storage)}</div>
     <form className="mt-5" onSubmit={event=>{
       event.preventDefault();
@@ -299,7 +328,7 @@ function ProductDetail({lang,settings}:{lang:Lang;settings?:StoreSettings}) {
       <div className="mt-4 flex flex-wrap gap-3"><button type="submit" className="btn-primary flex-1 disabled:opacity-50" disabled={sold||add.isPending||!validQuantity} data-testid="button-add-product">{sold?c.sold:add.isPending?c.loading:c.add}<Plus size={15}/></button><Link href="/cart" className="btn-outline">{c.bag}<ShoppingBag size={15}/></Link></div>
       {add.isError&&<p role="alert" className="mt-3 text-xs text-red-700">{lang==='ar'?'تعذرت الإضافة. تحققي من الكمية المتوفرة وما أضفتِه مسبقاً للسلة، ثم حاولي مجدداً.':'Could not add this quantity. Check available stock and items already in your bag, then retry.'}</p>}
     </form>
-    <div className="mt-8 border-t border-[#efdee2] pt-6"><h2 className="font-semibold text-sm text-[#5B0D1E]">{c.ingredients}</h2><p className="mt-2 text-xs leading-6 text-[#795963]">{(lang==='ar'?p.ingredientsAr:p.ingredients)||c.awaitingApproval}</p></div>
+    {ingredientsText&&<div className="mt-8 border-t border-[#efdee2] pt-6"><h2 className="font-semibold text-sm text-[#5B0D1E]">{c.ingredients}</h2><p className="mt-2 text-xs leading-6 text-[#795963]">{ingredientsText}</p></div>}
     <div className="mt-6"><h2 className="font-semibold text-sm text-[#5B0D1E]">{c.storage}</h2><BakingSteps lang={lang} settings={settings}/></div>
     </div></div></div>;
 }

@@ -33,7 +33,10 @@ import type {
   Cart,
   CartInput,
   CheckoutInput,
+  CurrencyConversion,
+  CurrencyConversionFailure,
   GetAdminSession200,
+  GetCurrencyConversionParams,
   GetPaymentOrderParams,
   HealthStatus,
   Inquiry,
@@ -627,6 +630,111 @@ export function useGetProduct<TData = Awaited<ReturnType<typeof getProduct>>, TE
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetProductQueryOptions(handle,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCurrencyConversionUrl = (params: GetCurrencyConversionParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/currency-conversion?${stringifiedParams}` : `/api/currency-conversion`
+}
+
+/**
+ * Informational KWD product-price estimate only; never used for cart, checkout, or payment.
+ */
+export const getCurrencyConversion = async (params: GetCurrencyConversionParams, options?: Parameters<typeof customFetch>[1]): Promise<CurrencyConversion> => {
+
+  return customFetch<CurrencyConversion>(getGetCurrencyConversionUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCurrencyConversionQueryKey = (params?: GetCurrencyConversionParams,) => {
+    return [
+    `/api/currency-conversion`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCurrencyConversionQueryOptions = <TData = Awaited<ReturnType<typeof getCurrencyConversion>>, TError = ErrorType<CurrencyConversionFailure>>(params: GetCurrencyConversionParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCurrencyConversion>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCurrencyConversionQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrencyConversion>>> = ({ signal }) => getCurrencyConversion(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCurrencyConversion>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCurrencyConversionQueryResult = NonNullable<Awaited<ReturnType<typeof getCurrencyConversion>>>
+export type GetCurrencyConversionQueryError = ErrorType<CurrencyConversionFailure>
+
+
+export function useGetCurrencyConversion<TData = Awaited<ReturnType<typeof getCurrencyConversion>>, TError = ErrorType<CurrencyConversionFailure>>(
+ params: GetCurrencyConversionParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCurrencyConversion>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCurrencyConversion>>,
+          TError,
+          Awaited<ReturnType<typeof getCurrencyConversion>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCurrencyConversion<TData = Awaited<ReturnType<typeof getCurrencyConversion>>, TError = ErrorType<CurrencyConversionFailure>>(
+ params: GetCurrencyConversionParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCurrencyConversion>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCurrencyConversion>>,
+          TError,
+          Awaited<ReturnType<typeof getCurrencyConversion>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCurrencyConversion<TData = Awaited<ReturnType<typeof getCurrencyConversion>>, TError = ErrorType<CurrencyConversionFailure>>(
+ params: GetCurrencyConversionParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCurrencyConversion>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetCurrencyConversion<TData = Awaited<ReturnType<typeof getCurrencyConversion>>, TError = ErrorType<CurrencyConversionFailure>>(
+ params: GetCurrencyConversionParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCurrencyConversion>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCurrencyConversionQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

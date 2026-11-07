@@ -89,6 +89,35 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Product" }
+  /currency-conversion:
+    get:
+      operationId: getCurrencyConversion
+      description: Informational KWD product-price estimate only; never used for cart, checkout, or payment.
+      parameters:
+        - in: query
+          name: amount
+          required: true
+          schema: { type: number, exclusiveMinimum: 0, maximum: 10000 }
+        - in: query
+          name: currency
+          required: true
+          schema: { type: string, enum: [USD, EUR, GBP, SAR] }
+      responses:
+        "200":
+          description: Converted display amount with rate attribution and data dates; no raw rates are returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrencyConversion" }
+        "400":
+          description: Invalid amount or target currency
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrencyConversionFailure" }
+        "503":
+          description: Current exchange-rate data is unavailable or too old
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrencyConversionFailure" }
   /cart:
     get:
       operationId: getCart
@@ -400,6 +429,31 @@ components:
         lowStockThreshold: { type: integer }
         ingredients: { type: string }
         ingredientsAr: { type: string }
+    CurrencyConversionSource:
+      type: object
+      required: [name, url, date]
+      properties:
+        name: { type: string }
+        url: { type: string, format: uri }
+        date: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+    CurrencyConversion:
+      type: object
+      required: [amount, currency, calculation, sources, informationalOnly]
+      properties:
+        amount: { type: number, minimum: 0 }
+        currency: { type: string, enum: [USD, EUR, GBP, SAR] }
+        calculation: { type: string, enum: [direct, eur_cross_rate] }
+        sources:
+          type: array
+          minItems: 1
+          maxItems: 2
+          items: { $ref: "#/components/schemas/CurrencyConversionSource" }
+        informationalOnly: { type: boolean, const: true }
+    CurrencyConversionFailure:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
     ProductInput:
       type: object
       required: [title, titleAr, description, descriptionAr, price, pieces, imageUrl, stock, lowStockThreshold, ingredients, ingredientsAr]

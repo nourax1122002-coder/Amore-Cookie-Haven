@@ -174,6 +174,39 @@ export const GetProductResponse = zod.object({
 })
 
 
+/**
+ * Informational KWD product-price estimate only; never used for cart, checkout, or payment.
+ */
+export const getCurrencyConversionQueryAmountExclusiveMin = 0;
+export const getCurrencyConversionQueryAmountMax = 10000;
+
+
+
+export const GetCurrencyConversionQueryParams = zod.object({
+  "amount": zod.coerce.number().gt(getCurrencyConversionQueryAmountExclusiveMin).max(getCurrencyConversionQueryAmountMax),
+  "currency": zod.enum(['USD', 'EUR', 'GBP', 'SAR'])
+})
+
+export const getCurrencyConversionResponseAmountMin = 0;
+
+export const getCurrencyConversionResponseSourcesItemDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getCurrencyConversionResponseSourcesMax = 2;
+
+
+
+export const GetCurrencyConversionResponse = zod.object({
+  "amount": zod.number().min(getCurrencyConversionResponseAmountMin),
+  "currency": zod.enum(['USD', 'EUR', 'GBP', 'SAR']),
+  "calculation": zod.enum(['direct', 'eur_cross_rate']),
+  "sources": zod.array(zod.object({
+  "name": zod.string(),
+  "url": zod.string().url(),
+  "date": zod.string().regex(getCurrencyConversionResponseSourcesItemDateRegExp)
+})).min(1).max(getCurrencyConversionResponseSourcesMax),
+  "informationalOnly": zod.literal(true)
+})
+
+
 export const GetCartResponse = zod.object({
   "lines": zod.array(zod.object({
   "id": zod.string(),
