@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   getGetAdminSessionQueryKey, getGetAdminSummaryQueryKey, getGetAdminSettingsQueryKey,
@@ -486,15 +486,23 @@ function AdminSettings({lang}:{lang:Lang}) {
   </form>;
 }
 function AuthRoutes() {
+  const [authLocation] = useLocation();
   const [authLang,setAuthLang]=useState<Lang>(()=>(localStorage.getItem('amore-lang') as Lang)||'en');
   const toggleAuthLang=()=>setAuthLang(current=>{const next=current==='en'?'ar':'en';localStorage.setItem('amore-lang',next);document.documentElement.lang=next;document.documentElement.dir=next==='ar'?'rtl':'ltr';return next;});
-  const recoveryLink = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type') === 'recovery';
+  const [recoveryLink,setRecoveryLink]=useState(()=>new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type')==='recovery');
+  const previousLocation=useRef(authLocation);
+  useEffect(()=>{
+    if(previousLocation.current===authLocation)return;
+    previousLocation.current=authLocation;
+    setRecoveryLink(authLocation==='/sign-in'&&new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type')==='recovery');
+  },[authLocation]);
   return <Switch>
     <Route path="/sign-in/*?">{recoveryLink
       ? <PasswordRecoveryPage mode="reset" lang={authLang} onToggleLanguage={toggleAuthLang}/>
       : <AuthPage mode="sign-in" lang={authLang} onToggleLanguage={toggleAuthLang}/>}</Route>
     <Route path="/sign-up/*?"><AuthPage mode="sign-up" lang={authLang} onToggleLanguage={toggleAuthLang}/></Route>
     <Route path="/forgot-password/*?"><PasswordRecoveryPage mode="request" lang={authLang} onToggleLanguage={toggleAuthLang}/></Route>
+    <Route path="/resend-confirmation/*?"><PasswordRecoveryPage mode="resend" lang={authLang} onToggleLanguage={toggleAuthLang}/></Route>
     <Route path="/reset-password/*?"><PasswordRecoveryPage mode="reset" lang={authLang} onToggleLanguage={toggleAuthLang}/></Route>
     <Route><AppShell/></Route>
   </Switch>;

@@ -27,4 +27,8 @@ export async function establishSession(_req: Request, _res: Response, user: { id
 }
 export async function signInWithPassword() { throw new Error("Auth is isolated in this test."); }
 export async function signUpWithPassword() { throw new Error("Auth is isolated in this test."); }
+export async function resendSignupConfirmation() { throw new Error("Auth email sending is isolated in this test."); }
+export async function requestPasswordRecovery() { throw new Error("Auth email sending is isolated in this test."); }
+export async function establishRecoverySession() { throw new Error("Password recovery is isolated in this test."); }
+export async function updatePasswordFromRecovery() { throw new Error("Password recovery is isolated in this test."); }
 export async function signOutSession() {}

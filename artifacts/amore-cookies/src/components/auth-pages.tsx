@@ -112,15 +112,18 @@ export function AuthPage({ mode, lang, onToggleLanguage }: { mode: "sign-in" | "
           {mode === "sign-in" ? (isArabic ? "إنشاء حساب" : "Create account") : (isArabic ? "تسجيل الدخول" : "Sign in")}
         </Link>
       </p>
-      {mode === "sign-in" && <Link className="text-center text-xs text-[#5B0D1E] underline" href="/forgot-password">{isArabic ? "نسيتِ كلمة المرور؟" : "Forgot password?"}</Link>}
+      {mode === "sign-in" && <>
+        <Link className="text-center text-xs text-[#5B0D1E] underline" href="/forgot-password">{isArabic ? "نسيتِ كلمة المرور؟" : "Forgot password?"}</Link>
+        <Link className="text-center text-xs text-[#5B0D1E] underline" href="/resend-confirmation">{isArabic ? "إعادة إرسال رسالة التأكيد" : "Resend confirmation email"}</Link>
+      </>}
       <Link className="text-center text-xs text-[#795963] underline" href="/">{isArabic ? "المتابعة كضيفة" : "Continue as guest"}</Link>
     </form>
   </div>;
 }
 
-export function PasswordRecoveryPage({ mode, lang, onToggleLanguage }: { mode: "request" | "reset"; lang: Lang; onToggleLanguage: () => void }) {
+export function PasswordRecoveryPage({ mode, lang, onToggleLanguage }: { mode: "request" | "resend" | "reset"; lang: Lang; onToggleLanguage: () => void }) {
   const {
-    requestPasswordRecovery, establishRecoverySession, updatePasswordFromRecovery,
+    requestPasswordRecovery, resendConfirmation, establishRecoverySession, updatePasswordFromRecovery,
   } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -169,6 +172,10 @@ export function PasswordRecoveryPage({ mode, lang, onToggleLanguage }: { mode: "
       });
   }, [establishRecoverySession, isArabic, mode]);
 
+  const requestEmail = async (value: string) => mode === "resend"
+    ? resendConfirmation(value)
+    : requestPasswordRecovery(value);
+
   async function requestReset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (actionLock.current || cooldown > 0) return;
@@ -177,12 +184,16 @@ export function PasswordRecoveryPage({ mode, lang, onToggleLanguage }: { mode: "
     setError("");
     setMessage("");
     try {
-      await requestPasswordRecovery(email.trim());
+      await requestEmail(email.trim());
       setSent(true);
       setCooldown(60);
-      setMessage(isArabic
-        ? "إذا كان البريد مرتبطاً بحساب، فستصل رسالة الاستعادة. استخدمي أحدث رابط فقط."
-        : "If this email belongs to an account, a reset message was requested. Use only the latest link.");
+      setMessage(mode === "resend"
+        ? (isArabic
+          ? "إذا كان الحساب يحتاج إلى تأكيد، فستصل رسالة جديدة. استخدمي أحدث رسالة فقط."
+          : "If this account needs confirmation, a new message was requested. Use only the latest email.")
+        : (isArabic
+          ? "إذا كان البريد مرتبطاً بحساب، فستصل رسالة الاستعادة. استخدمي أحدث رابط فقط."
+          : "If this email belongs to an account, a reset message was requested. Use only the latest link."));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : (isArabic ? "تعذر طلب استعادة كلمة المرور." : "Could not request a password reset."));
     } finally {
@@ -216,17 +227,21 @@ export function PasswordRecoveryPage({ mode, lang, onToggleLanguage }: { mode: "
 
   const title = mode === "request"
     ? (isArabic ? "استعادة كلمة المرور" : "Reset your password")
-    : (isArabic ? "اختاري كلمة مرور جديدة" : "Choose a new password");
+    : mode === "resend"
+      ? (isArabic ? "تأكيد البريد الإلكتروني" : "Confirm your email")
+      : (isArabic ? "اختاري كلمة مرور جديدة" : "Choose a new password");
 
   return <div dir={isArabic ? "rtl" : "ltr"} className="min-h-[100dvh] bg-[#f8e8ec] px-4 py-10 flex flex-col items-center justify-center">
     <AuthHeader lang={lang} onToggle={onToggleLanguage}/>
     <Link href="/" className="mb-6"><img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/images/amore-logo.png`} className="w-24 h-24 rounded-full object-contain" alt="Amore Cookies"/></Link>
     <form onSubmit={mode === "request" ? requestReset : saveNewPassword} className="card-surface w-full max-w-[440px] p-6 sm:p-8 grid gap-4">
       <h1 className="serif text-3xl text-[#5B0D1E]">{title}</h1>
-      {mode === "request"
-        ? <p className="text-xs leading-6 text-[#795963]">{isArabic ? "أدخلي بريد الحساب. إذا كان مسجلاً، سنطلب رسالة استعادة من Supabase." : "Enter the account email. If it is registered, Supabase will send reset instructions."}</p>
+      {mode !== "reset"
+        ? <p className="text-xs leading-6 text-[#795963]">{mode === "resend"
+          ? (isArabic ? "أدخلي بريد الحساب لطلب رسالة تأكيد جديدة. لا يكشف الرد ما إذا كان الحساب مسجلاً." : "Enter the account email to request a new confirmation message. The response does not reveal whether an account exists.")
+          : (isArabic ? "أدخلي بريد الحساب. إذا كان مسجلاً، سنطلب رسالة استعادة من Supabase." : "Enter the account email. If it is registered, Supabase will send reset instructions.")}</p>
         : <p className="text-xs leading-6 text-[#795963]">{isArabic ? "يجب أن يكون الرابط حديثاً ومستخدماً مرة واحدة. لا تشاركيه مع أحد." : "The reset link is single-use. Do not share it with anyone."}</p>}
-      {mode === "request" && <label><span className="field-label">{isArabic ? "البريد الإلكتروني" : "Email"}</span><input className="field" type="email" autoComplete="email" required maxLength={254} value={email} onChange={e => setEmail(e.target.value)}/></label>}
+      {mode !== "reset" && <label><span className="field-label">{isArabic ? "البريد الإلكتروني" : "Email"}</span><input className="field" type="email" autoComplete="email" required maxLength={254} value={email} onChange={e => setEmail(e.target.value)}/></label>}
       {mode === "reset" && <>
         <label><span className="field-label">{isArabic ? "كلمة المرور الجديدة" : "New password"}</span><input className="field" type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={password} onChange={e => setPassword(e.target.value)}/></label>
         <label><span className="field-label">{isArabic ? "تأكيد كلمة المرور" : "Confirm password"}</span><input className="field" type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}/></label>
@@ -234,14 +249,16 @@ export function PasswordRecoveryPage({ mode, lang, onToggleLanguage }: { mode: "
       {pending && mode === "reset" && <p className="text-xs text-[#795963]" role="status">{isArabic ? "جارٍ التحقق من الرابط…" : "Verifying the reset link…"}</p>}
       {error && <p className="text-xs text-red-700" role="alert">{error}</p>}
       {message && <p className="rounded-xl bg-[#f8e8ec] p-3 text-xs leading-6 text-[#5B0D1E]" role="status">{message}</p>}
-      {mode === "request" && !sent && <button disabled={pending || cooldown > 0} className="btn-primary w-full disabled:opacity-50">{pending ? (isArabic ? "جارٍ الإرسال…" : "Sending…") : (isArabic ? "طلب رابط الاستعادة" : "Send reset link")}<ArrowRight size={14}/></button>}
-      {mode === "request" && sent && <button type="button" disabled={pending || cooldown > 0} onClick={() => setSent(false)} className="btn-outline w-full disabled:opacity-50">
+      {mode !== "reset" && !sent && <button disabled={pending || cooldown > 0} className="btn-primary w-full disabled:opacity-50">{pending ? (isArabic ? "جارٍ الإرسال…" : "Sending…") : mode === "resend"
+        ? (isArabic ? "طلب رسالة التأكيد" : "Request confirmation email")
+        : (isArabic ? "طلب رابط الاستعادة" : "Send reset link")}<ArrowRight size={14}/></button>}
+      {mode !== "reset" && sent && <button type="button" disabled={pending || cooldown > 0} onClick={() => setSent(false)} className="btn-outline w-full disabled:opacity-50">
         {cooldown > 0
           ? (isArabic ? `إعادة الطلب بعد ${cooldown} ث` : `Request again in ${cooldown}s`)
           : (isArabic ? "طلب رسالة أخرى" : "Request another email")}
       </button>}
       {mode === "reset" && !updated && <button disabled={pending || !ready} className="btn-primary w-full disabled:opacity-50">{pending ? (isArabic ? "جارٍ الحفظ…" : "Saving…") : (isArabic ? "حفظ كلمة المرور" : "Save new password")}<ArrowRight size={14}/></button>}
-      {(mode === "request" || updated || error) && <Link href="/sign-in" className="text-center text-xs text-[#5B0D1E] underline">{isArabic ? "العودة لتسجيل الدخول" : "Back to sign in"}</Link>}
+      {(mode !== "reset" || updated || error) && <Link href="/sign-in" className="text-center text-xs text-[#5B0D1E] underline">{isArabic ? "العودة لتسجيل الدخول" : "Back to sign in"}</Link>}
       {mode === "reset" && error && <Link href="/forgot-password" className="text-center text-xs text-[#5B0D1E] underline">{isArabic ? "طلب رابط جديد" : "Request a new reset link"}</Link>}
     </form>
   </div>;
