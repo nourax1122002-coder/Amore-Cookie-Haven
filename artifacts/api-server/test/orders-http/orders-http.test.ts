@@ -102,6 +102,15 @@ test("Supabase session endpoint returns no user to a guest without exposing cred
   assert.deepEqual(response.body, { user: null });
 });
 
+test("API artifact base path and health endpoint respond successfully", async () => {
+  const base = await request("/api");
+  assert.equal(base.status, 200);
+  assert.deepEqual(base.body, { status: "ok" });
+  const health = await request("/api/healthz");
+  assert.equal(health.status, 200);
+  assert.deepEqual(health.body, { status: "ok" });
+});
+
 test("admin order data is private to approved administrators", async () => {
   assert.equal((await request("/api/admin/local-orders")).status, 401);
   assert.equal((await request("/api/admin/local-orders", undefined, "visitor")).status, 403);
