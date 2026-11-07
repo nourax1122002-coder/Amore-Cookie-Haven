@@ -14,3 +14,9 @@ Expose account order history through a read-only RLS-protected projection of the
 **Why:** The owner asked to connect through Supabase MCP and the framework rather than a raw server link, then explicitly chose Supabase as the sole store backend and asked to remove Clerk. Letting customers edit order totals, payment state, or fulfillment history would undermine payment integrity and the store's audit trail.
 
 **How to apply:** Follow this boundary for order, inquiry, settings, quota, product, inventory, cart, and account persistence. Verify schema/RLS through MCP and exercise RPCs without exposing customer data or credentials.
+
+Hosted Supabase email/password sign-up can create an unconfirmed Auth user while returning no session. The built-in email service has provider-side sending limits; an `over_email_send_rate_limit` 429 is not an incorrect project URL/key or the app's own IP limiter. Never disable confirmation to conceal this failure; preserve the user and explain that retrying after quota reset or configuring SMTP is required.
+
+**Why:** Amore's Auth audit logs showed a saved but unconfirmed user, an email confirmation send blocked by Supabase's hourly sending quota, and an unusable/expired one-time link.
+
+**How to apply:** When diagnosing Supabase sign-up, check Auth logs and `auth.users` confirmation status, distinguish provider 429s from app rate limits, and do not claim end-to-end sign-in works until confirmation email delivery and a real user sign-in are verified.

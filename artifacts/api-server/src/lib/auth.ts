@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { createSupabaseAuthClient, saveUserProfile, type UserProfileRecord } from "@workspace/db";
 import { HttpError } from "./errors";
+import { mapSupabaseSignInError, mapSupabaseSignUpError } from "./auth-errors";
 
 const ACCESS_COOKIE = "amore_auth_access";
 const REFRESH_COOKIE = "amore_auth_refresh";
@@ -104,11 +105,7 @@ export async function getAuthenticatedUserContext(req: Request, res: Response): 
 
 export async function signInWithPassword(email: string, password: string) {
   const result = await createSupabaseAuthClient().auth.signInWithPassword({ email, password });
-  if (result.error) {
-    if ((result.error.status ?? 0) === 429) throw new HttpError(429, "Too many attempts. Please wait before trying again. / محاولات كثيرة. يرجى الانتظار قبل المحاولة مجدداً.");
-    if ((result.error.status ?? 0) >= 500) throw authServiceUnavailable();
-    throw new HttpError(401, "Email or password is incorrect. / البريد الإلكتروني أو كلمة المرور غير صحيحة.");
-  }
+  if (result.error) throw mapSupabaseSignInError(result.error);
   if (!result.data.session || !result.data.user) throw authServiceUnavailable();
   return result.data;
 }
@@ -122,11 +119,7 @@ export async function signUpWithPassword(email: string, password: string, displa
   const result = await createSupabaseAuthClient().auth.signUp({
     email, password, options: { data: { display_name: displayName }, ...(emailRedirectTo ? { emailRedirectTo } : {}) },
   });
-  if (result.error) {
-    if ((result.error.status ?? 0) === 429) throw new HttpError(429, "Too many attempts. Please wait before trying again. / محاولات كثيرة. يرجى الانتظار قبل المحاولة مجدداً.");
-    if ((result.error.status ?? 0) >= 500) throw authServiceUnavailable();
-    throw new HttpError(400, "Please check your email and password. / يرجى التحقق من البريد الإلكتروني وكلمة المرور.");
-  }
+  if (result.error) throw mapSupabaseSignUpError(result.error);
   return result.data;
 }
 

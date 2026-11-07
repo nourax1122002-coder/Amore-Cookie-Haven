@@ -14,8 +14,9 @@
     "test:admin:http": "node test/run-orders-http.mjs admin-http",
     "test:tracking:shared": "esbuild src/lib/tracking-limits.pg.test.ts --bundle --platform=node --format=cjs --outfile=/tmp/amore-tracking-shared.test.cjs && NODE_ENV=production node --test /tmp/amore-tracking-shared.test.cjs",
     "test:currency": "esbuild src/lib/currency-conversion.test.ts --bundle --platform=node --format=esm --outfile=/tmp/amore-currency-conversion.test.mjs && node --test /tmp/amore-currency-conversion.test.mjs",
+    "test:auth-errors": "esbuild src/lib/auth-errors.test.ts --bundle --platform=node --format=esm --outfile=/tmp/amore-auth-errors.test.mjs && node --test /tmp/amore-auth-errors.test.mjs",
     "test:assistant": "node test/run-assistant.mjs",
-    "test": "pnpm run test:orders && pnpm run test:orders:http && pnpm run test:admin:http && pnpm run test:tracking:shared && pnpm run test:payments && pnpm run test:assistant && pnpm run test:currency"
+    "test": "pnpm run test:orders && pnpm run test:orders:http && pnpm run test:admin:http && pnpm run test:tracking:shared && pnpm run test:payments && pnpm run test:assistant && pnpm run test:currency && pnpm run test:auth-errors"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
