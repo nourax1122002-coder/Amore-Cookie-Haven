@@ -11,9 +11,9 @@ Bilingual English/Arabic store for frozen, ready-to-bake cookie dough for homes 
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required environment: `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_EMAILS` (comma-separated approved administrator emails), managed `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`, and the connected Shopify integration. Never put actual secret values in this file.
+- Required environment: `SUPABASE_DATABASE_URL` for the production database (Supabase PostgreSQL session-pooler URL, stored only in Secrets), development fallback `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_EMAILS` (comma-separated approved administrator emails), managed `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`, and the connected Shopify integration. Never put actual secret values in this file.
 - Backend Shopify access uses Replit connector runtime authentication. Storefront credentials remain server-side.
-- Database schema is in `lib/db/src/schema`; apply development changes using the development push command above. Do not run schema changes or destructive seeds on server startup.
+- Database schema is in `lib/db/src/schema`; `SUPABASE_DATABASE_URL` takes precedence for runtime connections and schema pushes, while `DATABASE_URL` remains a development fallback. Apply schema changes intentionally with the push command above. Do not run schema changes or destructive seeds on server startup.
 - `node scripts/seed-shopify.mjs` is an explicit initial setup operation only. It creates the two approved products, publishes to the Replit channel and starts inventory at zero; already-published products are preserved. Do not make this a startup command.
 
 ## Stack

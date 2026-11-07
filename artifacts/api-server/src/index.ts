@@ -3,6 +3,10 @@ import { logger } from "./lib/logger";
 import { pruneSecurityCounters } from "./lib/tracking-limits";
 import { startPaymentReconciliation } from "./lib/local-orders";
 
+if (process.env.NODE_ENV === "production" && !process.env.SUPABASE_DATABASE_URL) {
+  throw new Error("SUPABASE_DATABASE_URL is required for the production database.");
+}
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
