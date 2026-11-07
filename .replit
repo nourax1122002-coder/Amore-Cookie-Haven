@@ -43,6 +43,7 @@ timeoutMs = 20000
 
 [userenv.shared]
 ADMIN_EMAILS = "amore26@gmail.com"
+SUPABASE_URL = "https://fnuhkqkebztnyrdcukno.supabase.co"
 
 [nix]
 channel = "stable-25_05"
