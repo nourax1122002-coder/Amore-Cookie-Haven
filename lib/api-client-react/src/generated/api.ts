@@ -25,6 +25,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AccountFavorite,
+  AccountOrder,
   AdminSummary,
   AssistantFailure,
   AssistantInput,
@@ -37,6 +39,7 @@ import type {
   CheckoutInput,
   CurrencyConversion,
   CurrencyConversionFailure,
+  FavoriteInput,
   GetAdminSession200,
   GetCurrencyConversionParams,
   GetPaymentOrderParams,
@@ -1944,6 +1947,360 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getSignOutAuthAccountMutationOptions(options), queryClient);
+    }
+
+export const getListAccountOrdersUrl = () => {
+
+
+
+
+  return `/api/account/orders`
+}
+
+export const listAccountOrders = async ( options?: Parameters<typeof customFetch>[1]): Promise<AccountOrder[]> => {
+
+  return customFetch<AccountOrder[]>(getListAccountOrdersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAccountOrdersQueryKey = () => {
+    return [
+    `/api/account/orders`
+    ] as const;
+    }
+
+
+export const getListAccountOrdersQueryOptions = <TData = Awaited<ReturnType<typeof listAccountOrders>>, TError = ErrorType<void>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountOrders>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAccountOrdersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAccountOrders>>> = ({ signal }) => listAccountOrders({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAccountOrders>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListAccountOrdersQueryResult = NonNullable<Awaited<ReturnType<typeof listAccountOrders>>>
+export type ListAccountOrdersQueryError = ErrorType<void>
+
+
+export function useListAccountOrders<TData = Awaited<ReturnType<typeof listAccountOrders>>, TError = ErrorType<void>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountOrders>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAccountOrders>>,
+          TError,
+          Awaited<ReturnType<typeof listAccountOrders>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListAccountOrders<TData = Awaited<ReturnType<typeof listAccountOrders>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountOrders>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAccountOrders>>,
+          TError,
+          Awaited<ReturnType<typeof listAccountOrders>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListAccountOrders<TData = Awaited<ReturnType<typeof listAccountOrders>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountOrders>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useListAccountOrders<TData = Awaited<ReturnType<typeof listAccountOrders>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountOrders>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListAccountOrdersQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListAccountFavoritesUrl = () => {
+
+
+
+
+  return `/api/account/favorites`
+}
+
+export const listAccountFavorites = async ( options?: Parameters<typeof customFetch>[1]): Promise<AccountFavorite[]> => {
+
+  return customFetch<AccountFavorite[]>(getListAccountFavoritesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAccountFavoritesQueryKey = () => {
+    return [
+    `/api/account/favorites`
+    ] as const;
+    }
+
+
+export const getListAccountFavoritesQueryOptions = <TData = Awaited<ReturnType<typeof listAccountFavorites>>, TError = ErrorType<void>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountFavorites>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAccountFavoritesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAccountFavorites>>> = ({ signal }) => listAccountFavorites({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAccountFavorites>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListAccountFavoritesQueryResult = NonNullable<Awaited<ReturnType<typeof listAccountFavorites>>>
+export type ListAccountFavoritesQueryError = ErrorType<void>
+
+
+export function useListAccountFavorites<TData = Awaited<ReturnType<typeof listAccountFavorites>>, TError = ErrorType<void>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountFavorites>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAccountFavorites>>,
+          TError,
+          Awaited<ReturnType<typeof listAccountFavorites>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListAccountFavorites<TData = Awaited<ReturnType<typeof listAccountFavorites>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountFavorites>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAccountFavorites>>,
+          TError,
+          Awaited<ReturnType<typeof listAccountFavorites>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListAccountFavorites<TData = Awaited<ReturnType<typeof listAccountFavorites>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountFavorites>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useListAccountFavorites<TData = Awaited<ReturnType<typeof listAccountFavorites>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountFavorites>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListAccountFavoritesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAddAccountFavoriteUrl = () => {
+
+
+
+
+  return `/api/account/favorites`
+}
+
+export const addAccountFavorite = async (favoriteInput: FavoriteInput, options?: Parameters<typeof customFetch>[1]): Promise<AccountFavorite> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AccountFavorite>(getAddAccountFavoriteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(favoriteInput)
+  }
+);}
+
+
+
+
+
+export const getAddAccountFavoriteMutationKey = () => ['addAccountFavorite'] as const;
+
+export const getAddAccountFavoriteMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addAccountFavorite>>, TError,AddAccountFavoriteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addAccountFavorite>>, TError,AddAccountFavoriteMutationVariables, TContext> => {
+
+const mutationKey = getAddAccountFavoriteMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addAccountFavorite>>, AddAccountFavoriteMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  addAccountFavorite(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddAccountFavoriteMutationResult = NonNullable<Awaited<ReturnType<typeof addAccountFavorite>>>
+    export type AddAccountFavoriteMutationBody = BodyType<FavoriteInput>
+    export type AddAccountFavoriteMutationError = ErrorType<void>
+    export type AddAccountFavoriteMutationVariables = {data: BodyType<FavoriteInput>}
+
+    export const useAddAccountFavorite = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addAccountFavorite>>, TError,AddAccountFavoriteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof addAccountFavorite>>,
+        TError,
+        AddAccountFavoriteMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAddAccountFavoriteMutationOptions(options), queryClient);
+    }
+
+export const getRemoveAccountFavoriteUrl = () => {
+
+
+
+
+  return `/api/account/favorites`
+}
+
+export const removeAccountFavorite = async (favoriteInput: FavoriteInput, options?: Parameters<typeof customFetch>[1]): Promise<OperationResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<OperationResult>(getRemoveAccountFavoriteUrl(),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(favoriteInput)
+  }
+);}
+
+
+
+
+
+export const getRemoveAccountFavoriteMutationKey = () => ['removeAccountFavorite'] as const;
+
+export const getRemoveAccountFavoriteMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeAccountFavorite>>, TError,RemoveAccountFavoriteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeAccountFavorite>>, TError,RemoveAccountFavoriteMutationVariables, TContext> => {
+
+const mutationKey = getRemoveAccountFavoriteMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeAccountFavorite>>, RemoveAccountFavoriteMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  removeAccountFavorite(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveAccountFavoriteMutationResult = NonNullable<Awaited<ReturnType<typeof removeAccountFavorite>>>
+    export type RemoveAccountFavoriteMutationBody = BodyType<FavoriteInput>
+    export type RemoveAccountFavoriteMutationError = ErrorType<void>
+    export type RemoveAccountFavoriteMutationVariables = {data: BodyType<FavoriteInput>}
+
+    export const useRemoveAccountFavorite = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeAccountFavorite>>, TError,RemoveAccountFavoriteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof removeAccountFavorite>>,
+        TError,
+        RemoveAccountFavoriteMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRemoveAccountFavoriteMutationOptions(options), queryClient);
     }
 
 export const getGetAdminSessionUrl = () => {

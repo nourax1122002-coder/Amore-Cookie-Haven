@@ -58,5 +58,10 @@ export async function createSupabaseAuthClient() { throw new Error("Unexpected A
 export async function reserveOrderProductStock() { throw new Error("Unexpected stock reservation in orders boundary test."); }
 export async function releaseOrderProductStock() { throw new Error("Unexpected stock release in orders boundary test."); }
 export async function uploadProductImage() { throw new Error("Unexpected product image upload in orders boundary test."); }
+export function createSupabaseUserClient() { throw new Error("Unexpected authenticated Supabase request in guest account test."); }
+export async function listAccountOrderRows() { return []; }
+export async function listFavoriteRows() { return []; }
+export async function addFavoriteRow() { throw new Error("Unexpected favorite write in guest account test."); }
+export async function removeFavoriteRow() { throw new Error("Unexpected favorite delete in guest account test."); }
 
 export { customerOrdersTable } from "../../../../../lib/db/src/schema/customer-orders";

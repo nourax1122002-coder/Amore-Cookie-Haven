@@ -301,6 +301,64 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AuthSessionResponse" }
+  /account/orders:
+    get:
+      operationId: listAccountOrders
+      responses:
+        "200":
+          description: Orders owned by the authenticated Supabase account.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AccountOrder" }
+        "401":
+          description: Sign-in required.
+  /account/favorites:
+    get:
+      operationId: listAccountFavorites
+      responses:
+        "200":
+          description: Active favorite products owned by the authenticated account.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AccountFavorite" }
+        "401":
+          description: Sign-in required.
+    post:
+      operationId: addAccountFavorite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FavoriteInput" }
+      responses:
+        "200":
+          description: Favorite saved for the authenticated account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountFavorite" }
+        "401":
+          description: Sign-in required.
+        "404":
+          description: Product not found or inactive.
+    delete:
+      operationId: removeAccountFavorite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FavoriteInput" }
+      responses:
+        "200":
+          description: Favorite removed if it belongs to the authenticated account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResult" }
+        "401":
+          description: Sign-in required.
   /admin/me:
     get:
       operationId: getAdminSession
@@ -710,6 +768,25 @@ components:
             properties:
               title: { type: string }
               quantity: { type: integer }
+    AccountOrder:
+      allOf:
+        - { $ref: "#/components/schemas/OrderStatus" }
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string, format: uuid }
+    AccountFavorite:
+      type: object
+      required: [productId, addedAt, product]
+      properties:
+        productId: { type: string, format: uuid }
+        addedAt: { type: string }
+        product: { $ref: "#/components/schemas/Product" }
+    FavoriteInput:
+      type: object
+      required: [productId]
+      properties:
+        productId: { type: string, format: uuid }
     PaymentAvailability:
       type: object
       required: [enabled, shippingFils, methods]

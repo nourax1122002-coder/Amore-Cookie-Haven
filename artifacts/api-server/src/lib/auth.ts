@@ -65,11 +65,17 @@ function authServiceUnavailable() {
 }
 
 export async function getAuthenticatedUser(req: Request, res: Response): Promise<AmoreAccount | null> {
+  const context = await getAuthenticatedUserContext(req, res);
+  return context?.user ?? null;
+}
+
+export async function getAuthenticatedUserContext(req: Request, res: Response): Promise<{ user: AmoreAccount; accessToken: string } | null> {
   const accessToken = req.signedCookies?.[ACCESS_COOKIE];
   const refreshToken = req.signedCookies?.[REFRESH_COOKIE];
   if (!accessToken && !refreshToken) return null;
   const auth = createSupabaseAuthClient();
   let user: AuthUser | null = null;
+  let resolvedAccessToken = typeof accessToken === "string" ? accessToken : "";
   if (typeof accessToken === "string") {
     const result = await auth.auth.getUser(accessToken);
     if (!result.error && result.data.user) user = result.data.user;
@@ -85,13 +91,15 @@ export async function getAuthenticatedUser(req: Request, res: Response): Promise
     if (refreshed.data.session && refreshed.data.user) {
       setSessionCookies(req, res, refreshed.data.session);
       user = refreshed.data.user;
+      resolvedAccessToken = refreshed.data.session.access_token;
     }
   }
   if (!user) {
     clearSessionCookies(req, res);
     return null;
   }
-  return accountFromUser(user);
+  if (!resolvedAccessToken) throw authServiceUnavailable();
+  return { user: await accountFromUser(user), accessToken: resolvedAccessToken };
 }
 
 export async function signInWithPassword(email: string, password: string) {

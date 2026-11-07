@@ -1,4 +1,5 @@
 import type { CustomerOrder, InquiryRecord, StoreSettingsRecord } from "./schema";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { fromDatabaseRow, supabase, toDatabaseRow, unwrap } from "./supabase";
 
 export type ProductRecord = {
@@ -203,6 +204,44 @@ export async function listCustomerOrders(limit = 100) {
   const result = await supabase.from("customer_orders").select("*")
     .order("created_at", { ascending: false }).limit(limit);
   return (unwrap(result, "order list") as Record<string, unknown>[]).map(mapOrder);
+}
+
+export type AccountOrderRecord = {
+  id: string;
+  userId: string;
+  number: string;
+  paymentStatus: string;
+  fulfillmentStatus: string;
+  totalFils: number;
+  currency: string;
+  items: { title: string; quantity: number }[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export async function listAccountOrderRows(client: SupabaseClient) {
+  const rows = unwrap(await client.from("orders").select("*")
+    .order("created_at", { ascending: false }).limit(100), "account order list") as Record<string, unknown>[];
+  return rows.map(row => fromDatabaseRow<AccountOrderRecord>(row));
+}
+
+export type FavoriteRecord = { productId: string; createdAt: Date };
+
+export async function listFavoriteRows(client: SupabaseClient) {
+  const rows = unwrap(await client.from("favorites").select("product_id,created_at")
+    .order("created_at", { ascending: false }).limit(500), "favorite list") as Record<string, unknown>[];
+  return rows.map(row => fromDatabaseRow<FavoriteRecord>(row));
+}
+
+export async function addFavoriteRow(client: SupabaseClient, userId: string, productId: string) {
+  const row = unwrap(await client.from("favorites")
+    .upsert({ user_id: userId, product_id: productId }, { onConflict: "user_id,product_id" })
+    .select("product_id,created_at").single(), "favorite save") as Record<string, unknown>;
+  return fromDatabaseRow<FavoriteRecord>(row);
+}
+
+export async function removeFavoriteRow(client: SupabaseClient, productId: string) {
+  unwrap(await client.from("favorites").delete().eq("product_id", productId), "favorite remove");
 }
 
 export async function deleteCustomerOrders(ids: string[]) {

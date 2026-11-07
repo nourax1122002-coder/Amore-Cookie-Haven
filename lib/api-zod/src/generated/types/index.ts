@@ -6,6 +6,8 @@
  * OpenAPI spec version: 1.0.0
  */
 
+export * from './accountFavorite';
+export * from './accountOrder';
 export * from './adminSummary';
 export * from './assistantFailure';
 export * from './assistantInput';
@@ -34,6 +36,7 @@ export * from './currencyConversionFailure';
 export * from './currencyConversionSource';
 export * from './deliveryAddressInput';
 export * from './deliveryLocation';
+export * from './favoriteInput';
 export * from './getAdminSession200';
 export * from './getCurrencyConversionCurrency';
 export * from './getCurrencyConversionParams';

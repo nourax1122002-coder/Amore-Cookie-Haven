@@ -600,6 +600,89 @@ export const SignOutAuthAccountResponse = zod.object({
 })
 
 
+export const ListAccountOrdersResponseItem = zod.object({
+  "number": zod.string(),
+  "stage": zod.enum(['received', 'confirmed', 'preparing', 'partially_fulfilled', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'review']),
+  "financialStatus": zod.string(),
+  "fulfillmentStatus": zod.string(),
+  "createdAt": zod.string(),
+  "total": zod.string(),
+  "currency": zod.string(),
+  "hasMoreItems": zod.boolean(),
+  "items": zod.array(zod.object({
+  "title": zod.string(),
+  "quantity": zod.number().int()
+}))
+}).and(zod.object({
+  "id": zod.string().uuid()
+}))
+export const ListAccountOrdersResponse = zod.array(ListAccountOrdersResponseItem)
+
+
+export const ListAccountFavoritesResponseItem = zod.object({
+  "productId": zod.string().uuid(),
+  "addedAt": zod.string(),
+  "product": zod.object({
+  "id": zod.string(),
+  "handle": zod.string(),
+  "title": zod.string(),
+  "titleAr": zod.string(),
+  "description": zod.string(),
+  "descriptionAr": zod.string(),
+  "price": zod.number(),
+  "currency": zod.string(),
+  "shopCurrency": zod.string(),
+  "pieces": zod.number().int(),
+  "imageUrl": zod.string(),
+  "variantId": zod.string(),
+  "available": zod.boolean(),
+  "stock": zod.number().int(),
+  "lowStockThreshold": zod.number().int(),
+  "ingredients": zod.string(),
+  "ingredientsAr": zod.string()
+})
+})
+export const ListAccountFavoritesResponse = zod.array(ListAccountFavoritesResponseItem)
+
+
+export const AddAccountFavoriteBody = zod.object({
+  "productId": zod.string().uuid()
+})
+
+export const AddAccountFavoriteResponse = zod.object({
+  "productId": zod.string().uuid(),
+  "addedAt": zod.string(),
+  "product": zod.object({
+  "id": zod.string(),
+  "handle": zod.string(),
+  "title": zod.string(),
+  "titleAr": zod.string(),
+  "description": zod.string(),
+  "descriptionAr": zod.string(),
+  "price": zod.number(),
+  "currency": zod.string(),
+  "shopCurrency": zod.string(),
+  "pieces": zod.number().int(),
+  "imageUrl": zod.string(),
+  "variantId": zod.string(),
+  "available": zod.boolean(),
+  "stock": zod.number().int(),
+  "lowStockThreshold": zod.number().int(),
+  "ingredients": zod.string(),
+  "ingredientsAr": zod.string()
+})
+})
+
+
+export const RemoveAccountFavoriteBody = zod.object({
+  "productId": zod.string().uuid()
+})
+
+export const RemoveAccountFavoriteResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
 export const GetAdminSessionResponse = zod.object({
   "isAdmin": zod.boolean(),
   "setupRequired": zod.boolean()

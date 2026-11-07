@@ -67,14 +67,16 @@ after(async () => {
   if (server) await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
 });
 
-async function request(path: string, body?: unknown, user?: string, clientIp = freshIp()) {
+async function request(path: string, body?: unknown, user?: string, clientIp = freshIp(), method?: string) {
+  const payload = body === undefined ? undefined : JSON.stringify(body);
   const result = await new Promise<(typeof responses)[number]>((resolve, reject) => {
     const req = http.request({
       host: "127.0.0.1", port, path,
-      method: body === undefined ? "GET" : "POST",
+       method: method ?? (body === undefined ? "GET" : "POST"),
       headers: {
         "Content-Type": "application/json", "X-Forwarded-For": clientIp,
         ...(user ? { "X-Test-User": user } : {}),
+        ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
       },
     }, res => {
       let text = "";
@@ -88,7 +90,7 @@ async function request(path: string, body?: unknown, user?: string, clientIp = f
     });
     req.setTimeout(5000, () => req.destroy(new Error("Test HTTP request timed out")));
     req.on("error", reject);
-    req.end(body === undefined ? undefined : JSON.stringify(body));
+    req.end(payload);
   });
   responses.push(result);
   return result;
@@ -100,6 +102,20 @@ test("Supabase session endpoint returns no user to a guest without exposing cred
   const response = await request("/api/auth/session");
   assert.equal(response.status, 200);
   assert.deepEqual(response.body, { user: null });
+});
+
+test("account order and favorite endpoints require an authenticated Supabase account", async () => {
+  const requests = [
+    ["/api/account/orders", undefined, "GET"],
+    ["/api/account/favorites", undefined, "GET"],
+    ["/api/account/favorites", { productId: "00000000-0000-4000-8000-000000000001" }, "POST"],
+    ["/api/account/favorites", { productId: "00000000-0000-4000-8000-000000000001" }, "DELETE"],
+  ] as const;
+  for (const [path, body, method] of requests) {
+    const response = await request(path, body, undefined, freshIp(), method);
+    assert.equal(response.status, 401, `${method} ${path}: ${JSON.stringify(response.body)}`);
+    assert.match(response.body.error, /sign in|تسجيل الدخول/i);
+  }
 });
 
 test("API artifact base path and health endpoint respond successfully", async () => {

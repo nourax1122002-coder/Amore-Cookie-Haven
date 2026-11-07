@@ -32,6 +32,20 @@ export function assertSupabaseConfiguration() { void getClient(); }
 // Auth requests use an isolated client so one user's session cannot affect
 // the service client's headers or another concurrent auth operation.
 export function createSupabaseAuthClient() { return makeClient(); }
+// Use a fresh client for each authenticated request. The secret key remains
+// server-side in the apikey header while the caller JWT is the Authorization
+// identity, so Postgres evaluates that user's RLS policies.
+export function createSupabaseUserClient(accessToken: string) {
+  if (!accessToken || accessToken.length > 8192 || /[\r\n]/.test(accessToken)) {
+    throw new Error("A valid Supabase user access token is required.");
+  }
+  const { url, key } = supabaseCredentials();
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    db: { schema: "public" },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
+}
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, property) {
     const value = Reflect.get(getClient(), property);

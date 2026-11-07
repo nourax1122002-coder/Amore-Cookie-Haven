@@ -459,6 +459,20 @@ export interface TrackingResult {
   order?: OrderStatus;
 }
 
+export type AccountOrder = OrderStatus & {
+  id: string;
+};
+
+export interface AccountFavorite {
+  productId: string;
+  addedAt: string;
+  product: Product;
+}
+
+export interface FavoriteInput {
+  productId: string;
+}
+
 export interface PaymentAvailability {
   enabled: boolean;
   /** @nullable */

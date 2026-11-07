@@ -14,7 +14,9 @@ import { OrderDetails } from '@/components/order-status';
 import { PaymentResult, LocalOrdersAdmin } from '@/components/payments';
 import { DeliveryLocationPicker } from '@/components/delivery-location-picker';
 import { SafeAssistantWidget } from '@/components/assistant-widget';
-import { AccountPage, AuthPage } from '@/components/auth-pages';
+import { AuthPage } from '@/components/auth-pages';
+import { MyFavoritesPage, MyOrdersPage, UserPortalPage } from '@/components/account-pages';
+import { FavoriteButton } from '@/components/favorite-button';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import type { DeliveryLocation } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -23,9 +25,10 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import {
   ArrowLeft, ArrowRight, ArrowUpRight, Check, CircleHelp, Cookie,
-  ExternalLink, Flame, Menu, Minus, Plus, RefreshCw,
+  ExternalLink, Flame, LogOut, Menu, Minus, Plus, RefreshCw,
   ShoppingBag, Snowflake, Sparkles, X,
 } from 'lucide-react';
+import { getListAccountFavoritesQueryKey, useListAccountFavorites } from '@workspace/api-client-react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useRoute } from 'wouter';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } } });
@@ -40,6 +43,7 @@ type Lang = 'en' | 'ar';
 const copy: Record<Lang, Record<string, string>> = {
   en: {
     home:'Home', products:'Our cookies', about:'Our story', baking:'How to bake', cafes:'For cafés', individuals:'For home',
+    account:'Account', logout:'Log out', myOrders:'My orders', myFavorites:'My favorites',
     bag:'Bag', shop:'Shop the dough', seeAll:'Meet the cookies', made:'A little love, ready for the oven.',
     hero:'The warmest thing in your freezer.', heroText:'Small-batch frozen cookie dough, made for the moments worth making a little sweeter.',
     frozen:'Frozen cookie dough · Ready to bake', pieces:'12 pieces per bag', sold:'Currently sold out', learn:'The Amore way',
@@ -70,6 +74,7 @@ const copy: Record<Lang, Record<string, string>> = {
   },
   ar: {
     home:'الرئيسية', products:'منتجاتنا', about:'من نحن', baking:'طريقة التحضير', cafes:'للمقاهي', individuals:'للأفراد',
+    account:'حسابي', logout:'تسجيل الخروج', myOrders:'طلباتي', myFavorites:'مفضلتي',
     bag:'السلة', shop:'تسوقي العجينة', seeAll:'اكتشفي الكوكيز', made:'قليل من الحب، جاهز للفرن.',
     hero:'أجمل شيء في الفريزر.', heroText:'عجينة كوكيز مجمدة تُحضّر على دفعات صغيرة، للحظات تستحق أن تكون أحلى.',
     frozen:'عجينة كوكيز مجمدة · جاهزة للخبز', pieces:'١٢ قطعة في الكيس', sold:'نفدت الكمية حالياً', learn:'طريقة أموري',
@@ -103,12 +108,15 @@ const copy: Record<Lang, Record<string, string>> = {
 function AppShell() {
   const [lang,setLang] = useState<Lang>(() => localStorage.getItem('amore-lang') === 'ar' ? 'ar' : 'en');
   const [mobileOpen,setMobileOpen] = useState(false);
+  const [signOutError,setSignOutError] = useState('');
   const [path] = useLocation();
-  const {user}=useAuth();
+  const {user,signOut}=useAuth();
   const storeQuery = useGetStore({ query:{ queryKey:getGetStoreQueryKey(), refetchInterval:60000 } });
   const store = storeQuery.data;
   const c = copy[lang];
   const rtl = lang === 'ar';
+  const accountName=user?.displayName?.trim()||user?.email.split('@')[0]||c.account;
+  const handleSignOut=async()=>{setSignOutError('');try{await signOut();setMobileOpen(false);}catch{setSignOutError(lang==='ar'?'تعذر تسجيل الخروج. حاولي مجدداً.':'Could not sign out. Please retry.');}};
   const toggleLang = () => setLang(v => { const next=v==='en'?'ar':'en'; localStorage.setItem('amore-lang',next); return next; });
   useEffect(()=>{document.documentElement.lang=lang;document.documentElement.dir=rtl?'rtl':'ltr';document.body.classList.toggle('font-ar',rtl)},[lang,rtl]);
   const settings = store?.settings;
@@ -118,6 +126,7 @@ function AppShell() {
   useEffect(() => {
     const title = nav.find(([href]) => href === path)?.[1] ?? ({
       '/cart': c.bag, '/checkout': c.checkout, '/tracking': c.tracking, '/admin': c.admin, '/policies': c.policies,
+      '/user-portal':c.account,'/my-orders':c.myOrders,'/my-favorites':c.myFavorites,
     } as Record<string, string>)[path] ?? c.products;
     document.title = `${title} | Amore Cookies`;
     document.querySelector('meta[property="og:title"]')?.setAttribute('content', document.title);
@@ -132,12 +141,17 @@ function AppShell() {
         <nav className="hidden lg:flex items-center gap-7">{nav.map(([href,label],i)=><Link key={`${href}-${i}`} href={href} className={`text-[10px] tracking-[.11em] uppercase font-semibold transition-colors hover:text-[#a35168] ${path===href?'text-[#5B0D1E]':'text-[#795963]'}`}>{label}</Link>)}</nav>
         <div className="flex items-center gap-3">
           <button className="text-[10px] tracking-widest font-bold text-[#5B0D1E] px-2 py-2" onClick={toggleLang} data-testid="button-toggle-language">{rtl?'EN':'عربي'}</button>
-           <Link href={user?'/user-portal':'/sign-in'} className="text-[10px] font-semibold text-[#5B0D1E] hidden sm:inline" data-testid="link-account">{user?(rtl?'حسابي':'Account'):(rtl?'دخول':'Sign in')}</Link>
+           <Link href={user?'/user-portal':'/sign-in'} className="text-[10px] font-semibold text-[#5B0D1E] hidden sm:inline max-w-36 truncate" data-testid="link-account">{user?accountName:(rtl?'دخول':'Sign in')}</Link>
+           {user&&<button type="button" onClick={()=>void handleSignOut()} className="hidden lg:inline-flex items-center gap-1 text-[10px] font-semibold text-[#795963] hover:text-[#5B0D1E]" data-testid="button-navbar-sign-out"><LogOut size={13}/>{c.logout}</button>}
           <Link href="/cart" className="relative inline-flex items-center gap-2 rounded-full border border-[#e9d2d8] px-4 py-2.5 text-[10px] font-bold text-[#5B0D1E]" data-testid="link-cart"><ShoppingBag size={15}/><span className="hidden sm:inline">{c.bag}</span></Link>
           <button className="lg:hidden p-2 text-[#5B0D1E]" onClick={()=>setMobileOpen(!mobileOpen)} aria-label="Toggle navigation">{mobileOpen?<X/>:<Menu/>}</button>
         </div>
       </div>
-      {mobileOpen&&<nav className="lg:hidden border-t border-[#f0e1e4] bg-[#fffaf8] px-5 py-3 grid grid-cols-2 gap-1">{nav.map(([href,label],i)=><Link key={`${href}-${i}`} href={href} onClick={()=>setMobileOpen(false)} className="py-3 text-xs text-[#5B0D1E]">{label}</Link>)}</nav>}
+      {signOutError&&<div role="alert" className="border-t border-[#f0e1e4] px-5 py-2 text-center text-[10px] text-red-700">{signOutError}</div>}
+      {mobileOpen&&<nav className="lg:hidden border-t border-[#f0e1e4] bg-[#fffaf8] px-5 py-3 grid grid-cols-2 gap-1">
+        {nav.map(([href,label],i)=><Link key={`${href}-${i}`} href={href} onClick={()=>setMobileOpen(false)} className="py-3 text-xs text-[#5B0D1E]">{label}</Link>)}
+        {user&&<><Link href="/user-portal" onClick={()=>setMobileOpen(false)} className="py-3 text-xs font-semibold text-[#5B0D1E]">{accountName}</Link><Link href="/my-orders" onClick={()=>setMobileOpen(false)} className="py-3 text-xs text-[#5B0D1E]">{c.myOrders}</Link><Link href="/my-favorites" onClick={()=>setMobileOpen(false)} className="py-3 text-xs text-[#5B0D1E]">{c.myFavorites}</Link><button type="button" onClick={()=>void handleSignOut()} className="py-3 text-start text-xs text-[#5B0D1E]">{c.logout}</button></>}
+      </nav>}
     </header>
     <main className="flex-1">
       <Switch>
@@ -151,9 +165,11 @@ function AppShell() {
         <Route path="/checkout"><CheckoutPage lang={lang} store={store}/></Route>
         <Route path="/payment/:result"><PaymentResult lang={lang}/></Route>
         <Route path="/tracking"><TrackingPage lang={lang}/></Route>
+        <Route path="/user-portal"><UserPortalPage lang={lang}/></Route>
+        <Route path="/my-orders"><MyOrdersPage lang={lang}/></Route>
+        <Route path="/my-favorites"><MyFavoritesPage lang={lang}/></Route>
         <Route path="/policies"><PoliciesPage lang={lang} settings={settings}/></Route>
         <Route path="/admin"><AdminPage lang={lang}/></Route>
-        <Route path="/user-portal"><AccountPage lang={lang}/></Route>
         <Route component={NotFound}/>
       </Switch>
     </main>
@@ -164,7 +180,7 @@ function AppShell() {
 }
 
 function Picture({src,alt,className=''}:{src:string;alt:string;className?:string}) { return <img src={src} alt={alt} loading="lazy" className={className}/>; }
-function ProductCard({product,lang,index=0}:{product:Product;lang:Lang;index?:number}) {
+function ProductCard({product,lang,index=0,isFavorite=false}:{product:Product;lang:Lang;index?:number;isFavorite?:boolean}) {
   const c=copy[lang], title=lang==='ar'?(product.titleAr||product.title):product.title;
   const [,navigate]=useLocation();
   const add=useUpdateCart({mutation:{onSuccess:cart=>{
@@ -172,11 +188,14 @@ function ProductCard({product,lang,index=0}:{product:Product;lang:Lang;index?:nu
     navigate('/checkout');
   }}});
   const sold=!product.available || product.stock<=0;
-  return <article className={`group reveal delay-${Math.min(index+1,3)}`}>
-    <Link href={`/products/${product.handle}`} className="block overflow-hidden rounded-[24px] bg-[#f8e8ec] aspect-[.94] relative" data-testid={`link-product-${product.id}`}>
-      <Picture src={product.imageUrl||images.cookie} alt={title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.035]"/>
-      <span className="absolute top-4 start-4 rounded-full bg-[#fffaf8]/90 backdrop-blur px-3 py-1.5 text-[9px] font-bold text-[#5B0D1E] tracking-wide">{sold?c.sold:c.frozen}</span>
-    </Link>
+   return <article className={`group reveal delay-${Math.min(index+1,3)}`}>
+     <div className="relative overflow-hidden rounded-[24px] bg-[#f8e8ec] aspect-[.94]">
+       <Link href={`/products/${product.handle}`} className="block h-full w-full relative" data-testid={`link-product-${product.id}`}>
+         <Picture src={product.imageUrl||images.cookie} alt={title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.035]"/>
+         <span className="absolute top-4 start-4 rounded-full bg-[#fffaf8]/90 backdrop-blur px-3 py-1.5 text-[9px] font-bold text-[#5B0D1E] tracking-wide">{sold?c.sold:c.frozen}</span>
+       </Link>
+       <FavoriteButton productId={product.id} isFavorite={isFavorite} lang={lang} compact className="absolute top-3 end-3 z-10 shadow-sm"/>
+     </div>
     <div className="pt-4 flex justify-between gap-3 items-start">
       <div><Link href={`/products/${product.handle}`} className="font-display text-[22px] leading-tight text-[#5B0D1E] hover:text-[#9d5367]">{title}</Link><p className="mt-1 text-[11px] text-[#896a71]">{product.pieces} {lang==='ar'?'قطعة':'pieces'} · {c.frozen}</p><p className="mt-3 font-semibold text-sm text-[#5B0D1E]">{product.currency||'KWD'} {product.price.toFixed(3)}</p></div>
       <button disabled={sold||add.isPending} onClick={()=>product.variantId&&add.mutate({data:{action:'add',variantId:product.variantId,quantity:1}})} aria-label={sold?c.sold:c.add} className="mt-1 h-10 w-10 rounded-full bg-[#FFD6E5] text-[#5B0D1E] grid place-items-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#f7b9d0] transition-colors" data-testid={`button-add-${product.id}`}><Plus size={17}/></button>
@@ -185,7 +204,12 @@ function ProductCard({product,lang,index=0}:{product:Product;lang:Lang;index?:nu
     {add.isSuccess && <p role="status" className="mt-3 text-xs text-[#5B0D1E]">{lang==='ar'?'تمت الإضافة إلى السلة.':'Added to your bag.'}</p>}
   </article>;
 }
-function ProductGrid({lang,products}:{lang:Lang;products:Product[]}) { return <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-7 gap-y-10">{products.map((p,i)=><ProductCard product={p} lang={lang} key={p.id} index={i}/>)}</div>; }
+function ProductGrid({lang,products}:{lang:Lang;products:Product[]}) {
+  const {user,loading}=useAuth();
+  const favorites=useListAccountFavorites({query:{queryKey:getListAccountFavoritesQueryKey(),enabled:Boolean(user&&!loading)}});
+  const favoriteIds=new Set((favorites.data??[]).map(item=>item.productId));
+  return <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-7 gap-y-10">{products.map((p,i)=><ProductCard product={p} lang={lang} key={p.id} index={i} isFavorite={favoriteIds.has(p.id)}/>)}</div>;
+}
 function LoadingBlock({lang}:{lang:Lang}) { return <div className="container-wide py-24"><div className="animate-pulse grid md:grid-cols-3 gap-6">{[0,1,2].map(i=><div key={i} className="h-[360px] rounded-3xl bg-[#f3e4e8]"/> )}</div><p className="text-center text-xs text-[#896a71] mt-6">{copy[lang].loading}</p></div>; }
 function ErrorNotice({onRetry,lang}:{onRetry:()=>void;lang:Lang}) { return <div className="card-surface max-w-xl mx-auto p-8 text-center"><CircleHelp className="mx-auto text-[#9d5367] mb-4"/><p className="text-sm text-[#5B0D1E]">{lang==='ar'?'تعذر تحميل المحتوى.':'We couldn’t load this just now.'}</p><button onClick={onRetry} className="btn-outline mt-4"><RefreshCw size={14}/>{copy[lang].retry}</button></div>; }
 
@@ -246,6 +270,8 @@ function PageIntro({eyebrow,title,children}:{eyebrow:string;title:string;childre
 function ProductDetail({lang,settings}:{lang:Lang;settings?:StoreSettings}) {
   const [,params]=useRoute('/products/:handle');const handle=params?.handle||'';const q=useGetProduct(handle,{query:{queryKey:getGetProductQueryKey(handle),enabled:!!handle,refetchInterval:60000}});const p=q.data;const c=copy[lang];
   const [,navigate]=useLocation();
+  const {user,loading:authLoading}=useAuth();
+  const favorites=useListAccountFavorites({query:{queryKey:getListAccountFavoritesQueryKey(),enabled:Boolean(user&&!authLoading)}});
   const [quantity,setQuantity]=useState('1');
   const [displayCurrency,setDisplayCurrency]=useState<GetCurrencyConversionParams['currency']|'KWD'>('KWD');
   const conversionCurrency: GetCurrencyConversionParams['currency']=displayCurrency==='KWD'?'USD':displayCurrency;
@@ -269,9 +295,10 @@ function ProductDetail({lang,settings}:{lang:Lang;settings?:StoreSettings}) {
   const englishIngredients=p.ingredients.trim();
   const arabicIngredients=p.ingredientsAr.trim();
   const ingredientsText=lang==='ar'?(arabicIngredients||englishIngredients):(englishIngredients||arabicIngredients);
+  const isFavorite=Boolean(favorites.data?.some(item=>item.productId===p.id));
   return <div className="container-wide py-12 md:py-20"><Link href="/products" className="text-xs text-[#8b6870] inline-flex gap-2 items-center mb-8"><ArrowLeft size={14}/>{c.browse}</Link><div className="grid md:grid-cols-2 gap-10 lg:gap-20 items-center">
     <div className="rounded-[28px] overflow-hidden bg-[#f8e8ec] aspect-square"><Picture src={p.imageUrl||images.cookie} alt={lang==='ar'?p.titleAr:p.title} className="w-full h-full object-cover"/></div>
-    <div><span className="eyebrow">{c.frozen}</span><h1 className="serif text-5xl md:text-6xl text-[#5B0D1E] mt-3">{lang==='ar'?(p.titleAr||p.title):p.title}</h1><p className="mt-5 leading-7 text-sm text-[#795963]">{lang==='ar'?(p.descriptionAr||p.description):(p.description||p.descriptionAr)}</p><div className="flex gap-5 mt-6 text-[11px] text-[#8b6870]"><span>{p.pieces} {c.piece}</span><span>{lang==='ar'?'مجمدة · جاهزة للخبز':'Frozen · Ready to bake'}</span></div>
+     <div><span className="eyebrow">{c.frozen}</span><h1 className="serif text-5xl md:text-6xl text-[#5B0D1E] mt-3">{lang==='ar'?(p.titleAr||p.title):p.title}</h1><FavoriteButton productId={p.id} isFavorite={isFavorite} lang={lang} className="mt-4"/><p className="mt-5 leading-7 text-sm text-[#795963]">{lang==='ar'?(p.descriptionAr||p.description):(p.description||p.descriptionAr)}</p><div className="flex gap-5 mt-6 text-[11px] text-[#8b6870]"><span>{p.pieces} {c.piece}</span><span>{lang==='ar'?'مجمدة · جاهزة للخبز':'Frozen · Ready to bake'}</span></div>
     {priceCurrency==='KWD'?<div className="mt-7 rounded-2xl border border-[#efdee2] p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <strong className="font-semibold text-xl text-[#5B0D1E]" dir="ltr">{displayCurrency==='KWD'?`${p.price.toFixed(3)} KWD`:conversion.data&&!conversion.isError?`${conversion.data.amount.toFixed(2)} ${displayCurrency}`:`— ${displayCurrency}`}</strong>
@@ -464,7 +491,6 @@ function AuthRoutes() {
   return <Switch>
     <Route path="/sign-in/*?"><AuthPage mode="sign-in" lang={authLang} onToggleLanguage={toggleAuthLang}/></Route>
     <Route path="/sign-up/*?"><AuthPage mode="sign-up" lang={authLang} onToggleLanguage={toggleAuthLang}/></Route>
-    <Route path="/user-portal"><AccountPage lang={authLang}/></Route>
     <Route><AppShell/></Route>
   </Switch>;
 }

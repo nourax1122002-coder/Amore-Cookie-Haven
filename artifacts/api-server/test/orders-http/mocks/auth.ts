@@ -17,6 +17,11 @@ export async function getAuthenticatedUser(req: Request, _res: Response) {
   };
 }
 
+export async function getAuthenticatedUserContext(req: Request, res: Response) {
+  const user = await getAuthenticatedUser(req, res);
+  return user ? { user, accessToken: `fictional.jwt.for.${user.id}` } : null;
+}
+
 export async function establishSession(_req: Request, _res: Response, user: { id: string; email: string }) {
   return { id: user.id, email: user.email, displayName: "", emailVerified: true, role: "customer" as const };
 }

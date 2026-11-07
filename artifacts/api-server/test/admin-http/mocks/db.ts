@@ -94,3 +94,8 @@ export async function saveUserProfile() { throw new Error("Unexpected profile wr
 export async function createSupabaseAuthClient() { throw new Error("Unexpected Auth network request in admin boundary test."); }
 export async function reserveOrderProductStock() { throw new Error("Unexpected stock reservation in admin boundary test."); }
 export async function releaseOrderProductStock() { throw new Error("Unexpected stock release in admin boundary test."); }
+export function createSupabaseUserClient() { throw new Error("Unexpected authenticated Supabase request in admin boundary test."); }
+export async function listAccountOrderRows() { return []; }
+export async function listFavoriteRows() { return []; }
+export async function addFavoriteRow() { throw new Error("Unexpected favorite write in admin boundary test."); }
+export async function removeFavoriteRow() { throw new Error("Unexpected favorite delete in admin boundary test."); }
