@@ -1,19 +1,32 @@
 import type { CustomerOrder, StockQuantity } from "@workspace/db";
-import { db, customerOrdersTable, pool } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { acquireNamedLock, releaseNamedLock, renewNamedLock, updateCustomerOrder } from "@workspace/db";
+import { randomUUID } from "node:crypto";
 import { shopifyAdminRequest } from "./shopify-admin-api";
 import { HttpError } from "./errors";
 
-// A session advisory lock survives individual commits, but releases on disconnect.
-// It serializes this storefront's reserve/release operations across all instances.
+// A short-lived database lease serializes Shopify stock changes across API workers.
 export async function stockLock<T>(work: () => Promise<T>) {
-  const client = await pool.connect();
+  const name = "amore-shopify-stock";
+  const owner = randomUUID();
+  const leaseMs = 5 * 60_000;
+  const deadline = Date.now() + 30_000;
+  let acquired = false;
+  while (!acquired && Date.now() < deadline) {
+    acquired = await acquireNamedLock(name, owner, leaseMs);
+    if (!acquired) await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (!acquired) throw new HttpError(503, "Inventory is busy. Please retry shortly. / المخزون مشغول، يرجى إعادة المحاولة قريباً.");
+  const heartbeat = setInterval(() => {
+    void renewNamedLock(name, owner, leaseMs).catch(() => {
+      // The lease remains protected until expiry; never release another worker's lock.
+    });
+  }, 60_000);
+  heartbeat.unref();
   try {
-    await client.query("SELECT pg_advisory_lock(91704221)");
     return await work();
   } finally {
-    await client.query("SELECT pg_advisory_unlock(91704221)").catch(() => {});
-    client.release();
+    clearInterval(heartbeat);
+    await releaseNamedLock(name, owner).catch(() => {});
   }
 }
 async function quantities(order: CustomerOrder, release: boolean): Promise<StockQuantity[]> {
@@ -50,15 +63,15 @@ export async function reserveStock(order: CustomerOrder) {
   const plan = order.stockPlan ?? await quantities(order, false);
   // Persist the exact request BEFORE the external write. Retry with the same
   // idempotency key and quantities after any timeout; never decrement twice.
-  await db.update(customerOrdersTable).set({ stockPlan: plan, stockStatus: "reserving" }).where(eq(customerOrdersTable.id, order.id));
+  await updateCustomerOrder(order.id, { stockPlan: plan, stockStatus: "reserving" });
   await apply(order.id, plan, false);
-  await db.update(customerOrdersTable).set({ stockStatus: "reserved" }).where(eq(customerOrdersTable.id, order.id));
+  await updateCustomerOrder(order.id, { stockStatus: "reserved" });
 }
 export async function releaseStock(order: CustomerOrder) {
   if (order.stockStatus === "released") return;
   if (!["reserved", "releasing"].includes(order.stockStatus) || order.paymentStatus === "paid") throw new HttpError(409, "Inventory cannot be released.");
   const plan = order.releasePlan ?? await quantities(order, true);
-  await db.update(customerOrdersTable).set({ releasePlan: plan, stockStatus: "releasing" }).where(eq(customerOrdersTable.id, order.id));
+  await updateCustomerOrder(order.id, { releasePlan: plan, stockStatus: "releasing" });
   await apply(order.id, plan, true);
-  await db.update(customerOrdersTable).set({ stockStatus: "released" }).where(eq(customerOrdersTable.id, order.id));
+  await updateCustomerOrder(order.id, { stockStatus: "released" });
 }

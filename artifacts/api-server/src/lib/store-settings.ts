@@ -1,5 +1,4 @@
-import { db, storeSettingsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { readSettingsRow, writeSettingsRow } from "@workspace/db";
 import { SaveSettingsBody } from "@workspace/api-zod";
 
 export const defaultSettings = {
@@ -25,12 +24,11 @@ export const defaultSettings = {
 };
 
 export async function readSettings() {
-  const [row] = await db.select().from(storeSettingsTable).where(eq(storeSettingsTable.id, "amore"));
+  const row = await readSettingsRow();
   return SaveSettingsBody.parse(row?.content ?? defaultSettings);
 }
 
 export async function writeSettings(content: ReturnType<typeof SaveSettingsBody.parse>) {
-  await db.insert(storeSettingsTable).values({ id: "amore", content })
-    .onConflictDoUpdate({ target: storeSettingsTable.id, set: { content, updatedAt: new Date() } });
+  await writeSettingsRow(content);
   return content;
 }

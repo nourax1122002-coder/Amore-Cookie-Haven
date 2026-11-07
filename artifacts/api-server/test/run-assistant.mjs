@@ -7,9 +7,9 @@ const temp = await mkdtemp(join(tmpdir(), "amore-assistant-"));
 try {
   const outfile = join(temp, "assistant.test.cjs");
   await build({ entryPoints: ["test/assistant/assistant.test.ts"], bundle: true, platform: "node", format: "cjs", outfile, logLevel: "warning" });
-  // Unit tests never inherit the owner's OpenRouter or Clerk credentials.
+  // Unit tests never inherit the owner's OpenRouter, Clerk or database credentials.
   const child = spawn(process.execPath, ["--test", outfile], {
-    stdio: "inherit", env: { PATH: process.env.PATH, DATABASE_URL: process.env.DATABASE_URL },
+    stdio: "inherit", env: { PATH: process.env.PATH },
   });
   process.exitCode = await new Promise((resolve, reject) => {
     child.once("error", reject); child.once("exit", code => resolve(code ?? 1));

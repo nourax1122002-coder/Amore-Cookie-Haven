@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import test, { after, beforeEach } from "node:test";
 import { createHmac, randomUUID } from "node:crypto";
 import type { Request } from "express";
-import { db, customerOrdersTable } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { deleteCustomerOrders, getCustomerOrder, getCustomerOrderByRequestKey, updateCustomerOrder } from "@workspace/db";
 import { StartCheckoutBody } from "@workspace/api-zod";
 import {
   moneyToFils, paymentConfiguration, safePaymentUrl, validWebhookSignature, verifyDetails,
@@ -23,8 +22,12 @@ const details = (id: string, invoice: string, paymentId = "fixture-payment") => 
   Amount: { BaseCurrency: "KWD", ValueInBaseCurrency: "21.500", PayCurrency: "KWD", ValueInPayCurrency: "21.500" },
 });
 const response = (data: unknown) => new Response(JSON.stringify({ IsSuccess: true, Data: data }), { status: 200 });
+const supabaseFetch = globalThis.fetch.bind(globalThis);
 globalThis.fetch = async (input, init) => {
   const url = String(input);
+  if (process.env.SUPABASE_URL && url.startsWith(process.env.SUPABASE_URL)) {
+    return supabaseFetch(input, init);
+  }
   assert.ok(url.startsWith("https://api.myfatoorah.com/v3/"), "No real network requests allowed");
   if (url.endsWith("/payment-methods")) return response({ PaymentMethods: [{ ApiName: "KNET", CurrencyIso: "KWD" }, { ApiName: "CARD", CurrencyIso: "KWD" }] });
   if (url.endsWith("/payments") && init?.method === "POST") {
@@ -54,7 +57,7 @@ beforeEach(() => {
   fixture.requests.clear(); fixture.details.clear(); fixture.invoices.clear();
 });
 after(async () => {
-  if (savedIds.length) await db.delete(customerOrdersTable).where(inArray(customerOrdersTable.id, savedIds));
+  if (savedIds.length) await deleteCustomerOrders(savedIds);
 });
 async function begin() {
   const cart = randomUUID();
@@ -64,7 +67,7 @@ async function begin() {
   const result = await localCheckout(req, body);
   const id = new URL(result.url).pathname.split("/").at(-1)!;
   savedIds.push(id);
-  const [order] = await db.select().from(customerOrdersTable).where(eq(customerOrdersTable.id, id));
+  const order = await getCustomerOrder(id);
   assert.ok(order);
   return { req, body, result, order };
 }
@@ -146,7 +149,7 @@ test("ambiguous provider POST is never retried as another invoice; held stock st
   const req = { fixtureCart: randomUUID() } as unknown as Request;
   const body = StartCheckoutBody.parse({ requestKey: randomUUID(), phone: "50000000", address: { area:"Fixture",block:"1",street:"2",house:"3",location } });
   await assert.rejects(localCheckout(req, body));
-  const [row] = await db.select().from(customerOrdersTable).where(eq(customerOrdersTable.requestKey, body.requestKey!));
+  const row = await getCustomerOrderByRequestKey(body.requestKey!);
   assert.ok(row); savedIds.push(row.id);
   assert.equal(row.paymentStatus, "review"); assert.equal(row.stockStatus, "reserved");
   await assert.rejects(localCheckout(req, body)); assert.equal(fixture.invoiceCalls, 1);
@@ -173,6 +176,6 @@ test("coordinates persist, stay administrative-only, and are part of checkout id
   assert.equal(fixture.invoiceCalls, 1);
   // Historical JSON records remain readable without inventing a point.
   const oldAddress = { area: "Fixture", block:"1", street:"2", house:"3" };
-  await db.update(customerOrdersTable).set({address:oldAddress}).where(eq(customerOrdersTable.id,order.id));
+  await updateCustomerOrder(order.id, { address: oldAddress });
   assert.equal((await localOrderList()).find(row => row.id===order.id)?.address.location, undefined);
 });

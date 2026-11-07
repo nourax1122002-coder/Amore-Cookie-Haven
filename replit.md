@@ -10,17 +10,16 @@ Bilingual English/Arabic store for frozen, ready-to-bake cookie dough for homes 
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required environment: `SUPABASE_DATABASE_URL` for the production database (Supabase PostgreSQL session-pooler URL, stored only in Secrets), development fallback `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_EMAILS` (comma-separated approved administrator emails), managed `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`, and the connected Shopify integration. Never put actual secret values in this file.
+- Required environment: `SUPABASE_URL` (Supabase project API URL) and `SUPABASE_SECRET_KEY` (server-only key stored in Replit Secrets), `SESSION_SECRET`, `ADMIN_EMAILS` (comma-separated approved administrator emails), managed `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`, and the connected Shopify integration. Never put actual secret values in this file.
 - Backend Shopify access uses Replit connector runtime authentication. Storefront credentials remain server-side.
-- Database schema is in `lib/db/src/schema`; `SUPABASE_DATABASE_URL` takes precedence for runtime connections and schema pushes, while `DATABASE_URL` remains a development fallback. Apply schema changes intentionally with the push command above. Do not run schema changes or destructive seeds on server startup.
+- The server uses `@supabase/supabase-js`; its secret key must never enter frontend code. Schema migrations live in `lib/db/migrations` and are applied through the Supabase MCP migration operation. All private tables have RLS enabled and no public policies; runtime access is server-only. Do not run schema changes or destructive seeds on server startup. `SUPABASE_DATABASE_URL` and `DATABASE_URL` are not used by the runtime.
 - `node scripts/seed-shopify.mjs` is an explicit initial setup operation only. It creates the two approved products, publishes to the Replit channel and starts inventory at zero; already-published products are preserved. Do not make this a startup command.
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5
-- DB: PostgreSQL + Drizzle ORM
+- DB: Supabase PostgreSQL via server-only Supabase JS (Drizzle schema definitions remain for shared types)
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (API) and Vite (storefront)
@@ -34,11 +33,11 @@ Bilingual English/Arabic store for frozen, ready-to-bake cookie dough for homes 
 
 ## Architecture decisions
 
-- The owner explicitly chose direct MyFatoorah API payments and locally managed new orders. PostgreSQL is the ledger for these new orders; Shopify remains the source for products, variants, available stock and carts. Historical Shopify orders are preserved separately.
+- The owner explicitly chose direct MyFatoorah API payments and locally managed new orders. Supabase is the ledger for these new orders; Shopify remains the source for products, variants, available stock and carts. Historical Shopify orders are preserved separately.
 - Checkout creates a durable local order, reserves Shopify availability with idempotent compare-and-set, then redirects to MyFatoorah's official hosted payment page. Server-side payment verification controls paid status; browser redirects and administrator input cannot mark orders paid.
 - See `docs/myfatoorah-live-setup.md` for production approval gates, Secrets, webhook V2 configuration, recovery and current limitations. No sandbox fallback or live activation is allowed without owner approval.
 - New checkout addresses require an explicitly confirmed delivery point, saved with the existing address JSON and included in payment idempotency. Historical orders may omit coordinates. Precise location belongs only in protected administration, never public receipts/tracking or AI prompts. See `docs/delivery-map.md` for the Leaflet/OSM usage policy and tests.
-- The Arabic assistant uses the owner's server-side OpenRouter key directly, not the credit-billed Replit proxy. Preserve zero-price routing, privacy filtering and PostgreSQL shared quotas; never silently switch to paid models or send checkout/order context. See `docs/arabic-assistant.md`.
+- The Arabic assistant uses the owner's server-side OpenRouter key directly, not the credit-billed Replit proxy. Preserve zero-price routing, privacy filtering and Supabase-backed shared quotas; never silently switch to paid models or send checkout/order context. See `docs/arabic-assistant.md`.
 - Administration requires a verified Clerk email matching the owner-approved `ADMIN_EMAILS` allowlist. Public signup does not confer administrator privileges. Create and verify the approved owner account in `/sign-up` before opening `/admin`.
 - Development and production Clerk accounts are separate. The owner must create/verify their approved account in each environment used.
 
@@ -47,9 +46,9 @@ Bilingual English/Arabic store for frozen, ready-to-bake cookie dough for homes 
 - Catalogue/detail pages, server-checked Shopify cart, discount entry, guarded checkout, baking instructions, about/policies pages, persistent café inquiry form, protected product/inventory/content/inquiry administration.
 - New local orders, delivery address/phone, verified financial status and paid-order delivery-stage updates appear in the protected dashboard. Historical Shopify summaries remain separately readable; the connection does not grant `write_orders`.
 - Phone-and-order-number tracking verifies an exact order number against the checkout/shipping phone in Shopify. Responses expose only status, items and totals, never phone/address or privileged confirmation links. Protected-field errors fail closed; buyers can still use their existing Shopify confirmation link. A store with no orders cannot prove protected phone access for a real order.
-- Tracking limits share PostgreSQL security-only counters (10/IP/15 minutes and 20/normalized order/hour). Atomic upserts preserve limits across replicas/restarts; IPs retain IPv6 /56 grouping. Keys are scoped HMACs using the existing `SESSION_SECRET`, which must be present and identical across replicas (rotating it invalidates existing counters). No phones, orders or customer records are retained. Store failure/timeout blocks tracking with 503 and Retry-After; throttling keeps 429, Retry-After and no-store. A startup/minute janitor deletes expired counters in bounded batches, even without tracking traffic. Use the normal Drizzle development-schema/post-merge flow for the security table; no startup DDL.
+- Tracking limits share Supabase RPC-backed security-only counters (10/IP/15 minutes and 20/normalized order/hour). Atomic RPCs preserve limits across replicas/restarts; IPs retain IPv6 /56 grouping. Keys are scoped HMACs using the existing `SESSION_SECRET`, which must be present and identical across replicas (rotating it invalidates existing counters). No phones, orders or customer records are retained in counters. Store failure blocks tracking with 503 and Retry-After; throttling keeps 429, Retry-After and no-store. A startup/minute janitor deletes expired counters in bounded batches, even without tracking traffic.
 - `pnpm --filter @workspace/api-server run test:orders` checks phone matching, disclosure boundaries and Shopify status mapping without making orders.
-- `pnpm run validate` typechecks the project and runs order logic, isolated HTTP security regressions and real-PostgreSQL shared-limiter concurrency checks. The latter requires the development database/schema and `SESSION_SECRET`; it creates and removes only random security-test counters. See `artifacts/api-server/test/orders-http/README.md`; no real orders, payments or accounts are used.
+- `pnpm run validate` typechecks the project and runs order logic, isolated HTTP security regressions and shared-limiter/quota tests. Payment integration tests use clearly fictional fixtures and remove any Supabase test orders afterward. No real customer records or live payment requests are used.
 - `pnpm --filter @workspace/api-server run test:admin:http` checks product creation/editing, settings saves and inquiry updates through the real HTTP/security stack with fictional identities, Shopify and database state. It is included in `validate`; no real store settings or products are changed. See `artifacts/api-server/test/admin-http/README.md`.
 - `pnpm --filter @workspace/api-server run test:payments` uses isolated gateway/stock mocks and temporary self-cleaning database fixtures. It covers KWD totals, activation gates, signatures, invoice/amount/currency binding, duplicate checkout, stock reservation/release, uncertain API outcomes and monotonic paid status. It never calls a real gateway.
 

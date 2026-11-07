@@ -1,27 +1,45 @@
-// No database connection is permitted in the HTTP security suite. This fake is
-// only for HTTP boundary regressions; real atomic SQL is tested separately.
-const counters = new Map<string, { hits: number; expires_at: Date }>();
+// No database connection is permitted in the HTTP boundary suite.
+const counters = new Map<string, { hits: number; expiresAt: Date }>();
 let failedScope: string | null = null;
 export function failCounters(scope: string | null) { failedScope = scope; }
-export const pool = {
-  async query({ text, values }: { text: string; values: unknown[] }) {
-    if (!text.includes("INSERT INTO security_counters")) throw new Error("Unexpected SQL");
-    const [scope, hash, windowMs, cap] = values;
-    if (failedScope === "all" || scope === failedScope) throw new Error("Fictional counter store failure");
-    const key = `${scope}:${hash}`;
-    let row = counters.get(key);
-    if (!row || row.expires_at.getTime() <= Date.now()) {
-      row = { hits: 0, expires_at: new Date(Date.now() + Number(windowMs)) };
-      counters.set(key, row);
-    }
-    row.hits = Math.min(row.hits + 1, Number(cap));
-    return { rows: [{ ...row }] };
-  },
-};
+export async function incrementSecurityCounter(scope: string, hash: string, windowMs: number, cap: number) {
+  if (failedScope === "all" || scope === failedScope) throw new Error("Fictional counter store failure");
+  const key = `${scope}:${hash}`;
+  let row = counters.get(key);
+  if (!row || row.expiresAt.getTime() <= Date.now()) {
+    row = { hits: 0, expiresAt: new Date(Date.now() + windowMs) };
+    counters.set(key, row);
+  }
+  row.hits = Math.min(row.hits + 1, cap);
+  return { totalHits: row.hits, resetTime: row.expiresAt };
+}
+export async function deleteSecurityCounter(scope: string, hash: string) { counters.delete(`${scope}:${hash}`); }
+export async function pruneSecurityCounters() {
+  for (const [key, row] of counters) if (row.expiresAt.getTime() <= Date.now()) counters.delete(key);
+}
+export async function readActiveSecurityCounter() { return undefined; }
+export async function claimSecurityLease() { return true; }
+export async function releaseSecurityLease() {}
+export async function setSecurityCooldown() {}
+export async function createInquiry(input: Record<string, any>) {
+  return { id: 1, ...input, status: "new", createdAt: new Date() };
+}
+export async function getCustomerOrder() { return undefined; }
+export async function getCustomerOrderByNumber() { return undefined; }
+export async function getCustomerOrderByRequestKey() { return undefined; }
+export async function getLatestOrderForCart() { return undefined; }
+export async function insertCustomerOrder() { throw new Error("Unexpected order insert in HTTP boundary test"); }
+export async function updateCustomerOrder() { return undefined; }
+export async function listCustomerOrders() { return []; }
+export async function listOrdersForReconciliation() { return []; }
+export async function deleteCustomerOrders() {}
+export async function acquireNamedLock() { return true; }
+export async function renewNamedLock() { return true; }
+export async function releaseNamedLock() {}
+export async function readSettingsRow() { return undefined; }
+export async function writeSettingsRow(content: Record<string, unknown>) { return { id: "amore", content, updatedAt: new Date() }; }
+export async function getInquiryCounts() { return { total: 1, fresh: 1 }; }
+export async function listInquiries() { return []; }
+export async function updateInquiry() { return undefined; }
 
-export const db = new Proxy({}, {
-  get() { throw new Error("Unexpected database access in order HTTP tests"); },
-});
-export const inquiriesTable = {};
-export const storeSettingsTable = {};
 export { customerOrdersTable } from "../../../../../lib/db/src/schema/customer-orders";

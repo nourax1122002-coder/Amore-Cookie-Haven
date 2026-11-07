@@ -23,7 +23,7 @@ so blanket rejections cannot make the suite pass. Matching Origin, omitted
 Origin for non-browser clients, and the first forwarded host behind a proxy
 are exercised. Product saves use the actual Shopify mutation-building code
 against synthetic GraphQL replies; settings and inquiries use a small
-in-memory Drizzle-boundary fake. The fake reuses schema definitions only,
+in-memory repository fake. The fake reuses schema definitions only,
 never the real database entrypoint.
 
 `test/run-orders-http.mjs` is shared with the order HTTP suite and selects this

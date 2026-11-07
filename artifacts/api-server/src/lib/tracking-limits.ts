@@ -1,35 +1,21 @@
 import { createHmac } from "node:crypto";
 import type { ErrorRequestHandler } from "express";
 import rateLimit, { type Options, type Store } from "express-rate-limit";
-import { pool } from "@workspace/db";
+import {
+  deleteSecurityCounter, incrementSecurityCounter, pruneSecurityCounters as pruneSupabaseCounters,
+} from "@workspace/db";
 import { normalizeOrderNumber } from "./orders";
 
-export type CounterQuery = (text: string, values: unknown[]) =>
-  Promise<{ rows: Record<string, unknown>[] }>;
-
-const query: CounterQuery = (text, values) => {
-  const config = { text, values, query_timeout: 4000 };
-  return pool.query(config);
+export type CounterBackend = {
+  increment(scope: string, keyHash: string, windowMs: number, cap: number): Promise<{ totalHits: number; resetTime: Date }>;
+  delete(scope: string, keyHash: string): Promise<void>;
+};
+const supabaseCounters: CounterBackend = {
+  increment: incrementSecurityCounter,
+  delete: deleteSecurityCounter,
 };
 
-// Bound pool acquisition as well as query execution. A late query can only
-// consume an extra attempt, never allow a request through after the deadline.
-async function boundedQuery(execute: CounterQuery, text: string, values: unknown[]) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      execute(text, values),
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("Security counter timeout")), 5000);
-        timer.unref();
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-export class PostgresSecurityStore implements Store {
+export class SupabaseSecurityStore implements Store {
   readonly localKeys = false;
   readonly prefix: string;
   private windowMs = 0;
@@ -37,7 +23,7 @@ export class PostgresSecurityStore implements Store {
   constructor(
     private readonly scope: string,
     private readonly limit: number,
-    private readonly execute: CounterQuery = query,
+    private readonly backend: CounterBackend = supabaseCounters,
   ) {
     this.prefix = `${scope}:`;
   }
@@ -54,20 +40,7 @@ export class PostgresSecurityStore implements Store {
 
   async increment(key: string) {
     if (!this.windowMs) throw new Error("Security store is not initialized");
-    const result = await boundedQuery(this.execute, `
-      INSERT INTO security_counters (scope, key_hash, hits, expires_at)
-      VALUES ($1, $2, 1, statement_timestamp() + $3 * interval '1 millisecond')
-      ON CONFLICT (scope, key_hash) DO UPDATE SET
-        hits = CASE WHEN security_counters.expires_at <= statement_timestamp()
-          THEN 1 ELSE LEAST(security_counters.hits + 1, $4) END,
-        expires_at = CASE WHEN security_counters.expires_at <= statement_timestamp()
-          THEN EXCLUDED.expires_at ELSE security_counters.expires_at END
-      RETURNING hits, expires_at
-    `, [this.scope, this.hash(key), this.windowMs, this.limit + 1]);
-    const row = result.rows[0];
-    const totalHits = Number(row?.hits);
-    const resetTime = row?.expires_at instanceof Date
-      ? row.expires_at : new Date(String(row?.expires_at));
+    const { totalHits, resetTime } = await this.backend.increment(this.scope, this.hash(key), this.windowMs, this.limit + 1);
     if (!Number.isInteger(totalHits) || totalHits < 1 || !Number.isFinite(resetTime.getTime())) {
       throw new Error("Invalid security counter result");
     }
@@ -78,26 +51,14 @@ export class PostgresSecurityStore implements Store {
   async decrement(_key: string) {}
 
   async resetKey(key: string) {
-    await boundedQuery(this.execute,
-      "DELETE FROM security_counters WHERE scope = $1 AND key_hash = $2",
-      [this.scope, this.hash(key)]);
+    await this.backend.delete(this.scope, this.hash(key));
   }
 }
 
-export async function pruneSecurityCounters(execute: CounterQuery = query) {
-  // Recheck expiry on the DELETE itself: another replica may have just renewed
-  // a selected key. No unexpired counter can be removed by the janitor.
-  await boundedQuery(execute, `
-    DELETE FROM security_counters
-    WHERE (scope, key_hash) IN (
-      SELECT scope, key_hash FROM security_counters
-      WHERE expires_at <= statement_timestamp()
-      ORDER BY expires_at LIMIT 10000
-    ) AND expires_at <= statement_timestamp()
-  `, []);
-}
+export const PostgresSecurityStore = SupabaseSecurityStore;
+export async function pruneSecurityCounters() { await pruneSupabaseCounters(); }
 
-export function createTrackingLimits(execute: CounterQuery = query, namespace = "tracking") {
+export function createTrackingLimits(backend: CounterBackend = supabaseCounters, namespace = "tracking") {
   const common = {
     standardHeaders: "draft-8" as const,
     legacyHeaders: false,
@@ -107,12 +68,12 @@ export function createTrackingLimits(execute: CounterQuery = query, namespace = 
   return [
     rateLimit({
       ...common, windowMs: 15 * 60_000, limit: 10,
-      store: new PostgresSecurityStore(`${namespace}:ip`, 10, execute),
+      store: new SupabaseSecurityStore(`${namespace}:ip`, 10, backend),
       // Keep express-rate-limit's default IP validation and IPv6 /56 grouping.
     }),
     rateLimit({
       ...common, windowMs: 60 * 60_000, limit: 20,
-      store: new PostgresSecurityStore(`${namespace}:order`, 20, execute),
+      store: new SupabaseSecurityStore(`${namespace}:order`, 20, backend),
       keyGenerator: req =>
         (normalizeOrderNumber(String(req.body?.orderNumber ?? "")) ?? "invalid").replace(/^#/, ""),
     }),

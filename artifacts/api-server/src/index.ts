@@ -2,14 +2,9 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { pruneSecurityCounters } from "./lib/tracking-limits";
 import { startPaymentReconciliation } from "./lib/local-orders";
-import { databaseConfigurationIssue, databaseTarget } from "@workspace/db";
+import { assertSupabaseConfiguration } from "@workspace/db";
 
-if (process.env.NODE_ENV === "production" && databaseTarget !== "supabase") {
-  throw new Error("A valid SUPABASE_DATABASE_URL is required for the production database.");
-}
-if (databaseConfigurationIssue) {
-  logger.warn("Invalid Supabase database URL; using the existing Replit database for this development run.");
-}
+assertSupabaseConfiguration();
 
 const rawPort = process.env["PORT"];
 

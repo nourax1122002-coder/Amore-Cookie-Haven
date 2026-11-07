@@ -1,8 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import rateLimit from "express-rate-limit";
 import { createHash } from "node:crypto";
-import { db, inquiriesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { createInquiry } from "@workspace/db";
 import {
   GetStoreResponse, ListProductsResponse, GetProductParams, GetProductResponse,
   GetCartResponse, UpdateCartBody, UpdateCartResponse, StartCheckoutBody, StartCheckoutResponse,
@@ -67,9 +66,7 @@ router.post("/wholesale", inquiryLimit, async (req, res): Promise<void> => {
   if (![input.cafeName, input.contactName, input.area, input.products].every(s => s.trim().length)) throw new HttpError(400, "Please complete all required fields. / يرجى إكمال الحقول المطلوبة.");
   if (!/^\+?[\d\s()-]{8,30}$/.test(input.phone)) throw new HttpError(400, "Enter a valid phone number. / يرجى إدخال رقم هاتف صحيح.");
   const requestHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
-  let [row] = await db.insert(inquiriesTable).values({ ...input, requestHash })
-    .onConflictDoNothing({ target: inquiriesTable.requestKey }).returning();
-  if (!row) [row] = await db.select().from(inquiriesTable).where(eq(inquiriesTable.requestKey, input.requestKey));
+  const row = await createInquiry({ ...input, requestHash });
   if (!row || row.requestHash !== requestHash) throw new HttpError(409, "This submission key has already been used. Reload the form. / يرجى إعادة تحميل النموذج.");
   const { requestHash: _hash, ...inquiry } = row;
   res.setHeader("Cache-Control", "no-store");

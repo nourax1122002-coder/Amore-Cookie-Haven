@@ -1,6 +1,5 @@
 import { Router } from "express";
-import { db, inquiriesTable } from "@workspace/db";
-import { count, desc, eq } from "drizzle-orm";
+import { getInquiryCounts, listInquiries, updateInquiry } from "@workspace/db";
 import {
   GetAdminSessionResponse, GetAdminSummaryResponse, GetAdminSettingsResponse,
   SaveSettingsBody, SaveSettingsResponse, ListInquiriesResponse, UpdateInquiryParams,
@@ -27,13 +26,12 @@ router.get("/admin/orders", async (req, res): Promise<void> => {
   res.json(ListAdminOrdersResponse.parse(await listOrders(after)));
 });
 router.get("/admin/summary", async (_req, res): Promise<void> => {
-  const [totals, newOnes, products, ready, config] = await Promise.all([
-    db.select({ value: count() }).from(inquiriesTable),
-    db.select({ value: count() }).from(inquiriesTable).where(eq(inquiriesTable.status, "new")),
+  const [inquiries, products, ready, config] = await Promise.all([
+    getInquiryCounts(),
     getCatalog(true), readiness(), getShopifyStorefrontConfig(),
   ]);
   res.json(GetAdminSummaryResponse.parse({
-    inquiryCount: totals[0]?.value ?? 0, newInquiryCount: newOnes[0]?.value ?? 0,
+    inquiryCount: inquiries.total, newInquiryCount: inquiries.fresh,
     lowStock: products.filter(p => p.stock <= p.lowStockThreshold),
     shopAdminUrl: `https://${config.shopDomain}/admin`, shopCurrency: ready.shopCurrency,
     checkoutEnabled: ready.checkoutReady,
@@ -62,13 +60,13 @@ router.put("/admin/settings", async (req, res): Promise<void> => {
   res.json(SaveSettingsResponse.parse(await writeSettings(input)));
 });
 router.get("/admin/inquiries", async (_req, res): Promise<void> => {
-  const rows = await db.select().from(inquiriesTable).orderBy(desc(inquiriesTable.createdAt)).limit(500);
+  const rows = await listInquiries(500);
   res.json(ListInquiriesResponse.parse(rows.map(({ requestHash: _hash, ...r }) => ({ ...r, createdAt: r.createdAt.toISOString() }))));
 });
 router.patch("/admin/inquiries/:id", async (req, res): Promise<void> => {
   const { id } = UpdateInquiryParams.parse(req.params);
   const data = UpdateInquiryBody.parse(req.body);
-  const [row] = await db.update(inquiriesTable).set(data).where(eq(inquiriesTable.id, id)).returning();
+  const row = await updateInquiry(Number(id), data);
   if (!row) throw new HttpError(404, "Inquiry not found.");
   res.json(UpdateInquiryResponse.parse({ ...row, createdAt: row.createdAt.toISOString() }));
 });

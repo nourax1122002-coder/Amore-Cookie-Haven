@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { pool } from "@workspace/db";
+import { createHmac, randomUUID } from "node:crypto";
 import { SendAssistantMessageBody } from "@workspace/api-zod";
 import { createOpenRouter, isFreeModel, selectFreeModels, AssistantError, FREE_ROUTING, retrySeconds, validatePrivateInput } from "../../src/lib/assistant/openrouter";
 import { createAssistantQuota } from "../../src/lib/assistant/quota";
@@ -179,32 +178,65 @@ test("timeouts abort upstream work, and only a non-billable metadata GET has one
 });
 test("unavailable shared storage fails closed without an in-memory fallback", async () => {
   process.env.SESSION_SECRET = "test-only-assistant-quota";
-  const quota = createAssistantQuota(async () => { throw new Error("fixture-secret DB unavailable"); });
+  const unavailable = {
+    async increment() { throw new Error("fixture store unavailable"); },
+    async delete() { throw new Error("fixture store unavailable"); },
+    async activeUntil() { throw new Error("fixture store unavailable"); },
+    async claimLease() { throw new Error("fixture store unavailable"); },
+    async releaseLease() { throw new Error("fixture store unavailable"); },
+    async cooldown() { throw new Error("fixture store unavailable"); },
+  };
+  const quota = createAssistantQuota(unavailable);
   await expectFailure(() => quota.acquire("192.0.2.4"), "quota_store");
 });
-test("PostgreSQL quota shares concurrency, client throttles, account daily budgets and cooldown between instances", async () => {
+test("shared quota backend coordinates leases, limits, daily budgets and cooldown", async () => {
   process.env.SESSION_SECRET = "test-only-assistant-quota";
   const prefix = `assistant-test-${randomUUID()}`;
-  const execute = async (text: string, values: unknown[]) => pool.query(text, values);
-  const scopes = ["client_minute", "client_day", "account_minute", "account_day", "lease", "cooldown"].map(s => `${prefix}_${s}`);
-  try {
-    const a = createAssistantQuota(execute, prefix), b = createAssistantQuota(execute, prefix);
-    const releases = await Promise.all([a.acquire("192.0.2.1"), b.acquire("192.0.2.2")]);
-    await expectFailure(() => a.acquire("192.0.2.3"), "rate_limit");
-    await Promise.all(releases.map(r => r()));
-    // Same client sees shared limits, not independent worker allowances.
-    const r = await b.acquire("192.0.2.1"); await r();
-    const s = await a.acquire("192.0.2.1"); await s();
-    await expectFailure(() => b.acquire("192.0.2.1"), "rate_limit");
-    // Seed only this test's day counter to its cap; do not touch real quotas.
-    await execute("UPDATE security_counters SET hits=50 WHERE scope=$1", [`${prefix}_account_day`]);
-    await expectFailure(() => b.acquire("198.51.100.1"), "daily_limit");
-    await execute("UPDATE security_counters SET hits=0 WHERE scope=$1", [`${prefix}_account_day`]);
-    await execute("UPDATE security_counters SET hits=20 WHERE scope=$1", [`${prefix}_account_minute`]);
-    await expectFailure(() => b.acquire("198.51.100.5"), "rate_limit");
-    await a.cooldown(17);
-    await assert.rejects(() => b.acquire("198.51.100.2"), (e: any) => e.code === "rate_limit" && e.retryAfterSeconds <= 17);
-    const rows = await execute("SELECT key_hash FROM security_counters WHERE scope=ANY($1::text[])", [scopes]);
-    assert.ok(rows.rows.every(row => /^[a-f0-9]{64}$/.test(row.key_hash)));
-  } finally { await execute("DELETE FROM security_counters WHERE scope=ANY($1::text[])", [scopes]); await pool.end(); }
+  const records = new Map<string, { hits: number; expiresAt: Date }>();
+  const leases = new Map<string, { token: number; expiresAt: Date }>();
+  const backend = {
+    async increment(scope: string, key: string, windowMs: number, cap: number) {
+      const id = `${scope}:${key}`, now = Date.now();
+      let row = records.get(id);
+      if (!row || row.expiresAt.getTime() <= now) { row = { hits: 0, expiresAt: new Date(now + windowMs) }; records.set(id, row); }
+      row.hits = Math.min(row.hits + 1, cap);
+      return { totalHits: row.hits, resetTime: row.expiresAt };
+    },
+    async delete(scope: string, key: string) { records.delete(`${scope}:${key}`); },
+    async activeUntil(scope: string, key: string) {
+      const row = records.get(`${scope}:${key}`);
+      return row && row.expiresAt.getTime() > Date.now() ? row.expiresAt : undefined;
+    },
+    async claimLease(scope: string, key: string, token: number, seconds: number) {
+      const id = `${scope}:${key}`, current = leases.get(id);
+      if (current && current.expiresAt.getTime() > Date.now()) return false;
+      leases.set(id, { token, expiresAt: new Date(Date.now() + seconds * 1000) });
+      return true;
+    },
+    async releaseLease(scope: string, key: string, token: number) {
+      const id = `${scope}:${key}`;
+      if (leases.get(id)?.token === token) leases.delete(id);
+    },
+    async cooldown(scope: string, key: string, seconds: number) {
+      const id = `${scope}:${key}`, previous = records.get(id);
+      records.set(id, { hits: 1, expiresAt: new Date(Math.max(Date.now() + seconds * 1000, previous?.expiresAt.getTime() ?? 0)) });
+    },
+  };
+  const a = createAssistantQuota(backend, prefix), b = createAssistantQuota(backend, prefix);
+  const releases = await Promise.all([a.acquire("192.0.2.1"), b.acquire("192.0.2.2")]);
+  await expectFailure(() => a.acquire("192.0.2.3"), "rate_limit");
+  await Promise.all(releases.map(r => r()));
+  const r = await b.acquire("192.0.2.1"); await r();
+  const s = await a.acquire("192.0.2.1"); await s();
+  await expectFailure(() => b.acquire("192.0.2.1"), "rate_limit");
+  const counterHash = (scope: string, value: string) =>
+    createHmac("sha256", process.env.SESSION_SECRET!).update(`${scope}:${value}`).digest("hex");
+  const date = new Date().toISOString().slice(0, 10);
+  records.set(`${prefix}_account_day:${counterHash(`${prefix}_account_day`, `account:${date}`)}`, { hits: 50, expiresAt: new Date(Date.now() + 86_400_000) });
+  await expectFailure(() => b.acquire("198.51.100.1"), "daily_limit");
+  records.set(`${prefix}_account_minute:${counterHash(`${prefix}_account_minute`, "account")}`, { hits: 20, expiresAt: new Date(Date.now() + 60_000) });
+  await expectFailure(() => b.acquire("198.51.100.5"), "rate_limit");
+  await a.cooldown(17);
+  await assert.rejects(() => b.acquire("198.51.100.2"), (e: any) => e.code === "rate_limit" && e.retryAfterSeconds <= 17);
+  assert.ok([...records.keys()].every(key => !key.includes("192.0.2.") && !key.includes("198.51.100.")));
 });

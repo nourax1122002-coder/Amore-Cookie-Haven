@@ -15,7 +15,11 @@ try {
     } }],
   });
   const child = spawn(process.execPath, ["--test", outfile], {
-    stdio: "inherit", env: { PATH: process.env.PATH, DATABASE_URL: process.env.DATABASE_URL },
+    stdio: "inherit", env: {
+      PATH: process.env.PATH,
+      SUPABASE_URL: process.env.SUPABASE_URL,
+      SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
+    },
   });
   process.exitCode = await new Promise((resolve, reject) => { child.once("error", reject); child.once("exit", code=>resolve(code??1)); });
 } finally { await rm(temp, { recursive: true, force: true }); }
