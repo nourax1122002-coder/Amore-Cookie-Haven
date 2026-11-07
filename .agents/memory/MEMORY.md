@@ -3,4 +3,4 @@
 - [Live payment approval](live-payment-approval.md) — explain provider fees first; no live transactions or paid services without the owner's approval.
 - [Shopify cart markets](shopify-market-cart.md) — a forced, unconfigured Kuwait Market can silently zero cart quantities despite catalog stock.
 - [Free services and release](free-services-and-release.md) — no paid map/AI services; explain quotas first and verify the published bonus features before claiming completion.
-- [Amore Supabase access](supabase-data-access.md) — keep app writes in server-only Supabase JS; use MCP migrations and private RLS tables without public policies.
+- [Amore Supabase access](supabase-data-access.md) — Supabase replaces Clerk and Shopify for store data/auth; keep private tables and admin roles server-controlled.
