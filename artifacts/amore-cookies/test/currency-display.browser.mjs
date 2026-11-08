@@ -139,6 +139,8 @@ async function mockApi(page) {
 
     if (method === "GET" && path === "/api/store") {
       body = store;
+    } else if (method === "GET" && path === "/api/auth/session") {
+      body = { user: null };
     } else if (method === "GET" && path === "/api/assistant/status") {
       body = { enabled: false, dailyLimit: 0, perMinuteLimit: 0 };
     } else if (method === "GET" && path === "/api/products") {
