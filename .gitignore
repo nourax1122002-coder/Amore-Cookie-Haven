@@ -37,6 +37,12 @@ node_modules
 /.sass-cache
 /connect.lock
 /coverage
+/recovery-exports/
+/private-backups/
+*.supabase-backup
+*.supabase-backup.*
+*.dump
+*.dump.gz
 /libpeerconnection.log
 npm-debug.log
 yarn-error.log
