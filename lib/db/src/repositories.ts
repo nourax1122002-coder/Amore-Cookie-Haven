@@ -208,7 +208,6 @@ export async function listCustomerOrders(limit = 100) {
 
 export type AccountOrderRecord = {
   id: string;
-  userId: string;
   number: string;
   paymentStatus: string;
   fulfillmentStatus: string;
@@ -216,11 +215,12 @@ export type AccountOrderRecord = {
   currency: string;
   items: { title: string; quantity: number }[];
   createdAt: Date;
-  updatedAt: Date;
 };
 
-export async function listAccountOrderRows(client: SupabaseClient) {
-  const rows = unwrap(await client.from("orders").select("*")
+export async function listAccountOrderRows(client: SupabaseClient, userId: string) {
+  const rows = unwrap(await client.from("orders")
+    .select("id,number,payment_status,fulfillment_status,total_fils,currency,items,created_at")
+    .eq("user_id", userId)
     .order("created_at", { ascending: false }).limit(100), "account order list") as Record<string, unknown>[];
   return rows.map(row => fromDatabaseRow<AccountOrderRecord>(row));
 }

@@ -58,8 +58,40 @@ export async function createSupabaseAuthClient() { throw new Error("Unexpected A
 export async function reserveOrderProductStock() { throw new Error("Unexpected stock reservation in orders boundary test."); }
 export async function releaseOrderProductStock() { throw new Error("Unexpected stock release in orders boundary test."); }
 export async function uploadProductImage() { throw new Error("Unexpected product image upload in orders boundary test."); }
-export function createSupabaseUserClient() { throw new Error("Unexpected authenticated Supabase request in guest account test."); }
-export async function listAccountOrderRows() { return []; }
+export function createSupabaseUserClient(accessToken: string) {
+  return { userId: accessToken.replace("fictional.jwt.for.", "") };
+}
+const accountOrders = [
+  {
+    id: "00000000-0000-4000-8000-000000000031",
+    userId: "visitor",
+    number: "AM-ACCOUNT-VISITOR",
+    paymentStatus: "paid",
+    fulfillmentStatus: "preparing",
+    totalFils: 12500,
+    currency: "KWD",
+    items: [{ title: "Chocolate cookie", quantity: 2 }],
+    createdAt: new Date("2026-11-01T12:00:00.000Z"),
+    phone: "FICTIONAL-ACCOUNT-PHONE",
+    address: "FICTIONAL-ACCOUNT-ADDRESS",
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000032",
+    userId: "another",
+    number: "AM-ACCOUNT-ANOTHER",
+    paymentStatus: "pending",
+    fulfillmentStatus: "received",
+    totalFils: 9000,
+    currency: "KWD",
+    items: [{ title: "Vanilla cookie", quantity: 1 }],
+    createdAt: new Date("2026-11-02T12:00:00.000Z"),
+    phone: "FICTIONAL-ACCOUNT-PHONE",
+    address: "FICTIONAL-ACCOUNT-ADDRESS",
+  },
+];
+export async function listAccountOrderRows(client: { userId: string }, userId: string) {
+  return accountOrders.filter(order => order.userId === userId && client.userId === userId);
+}
 export async function listFavoriteRows() { return []; }
 export async function addFavoriteRow() { throw new Error("Unexpected favorite write in guest account test."); }
 export async function removeFavoriteRow() { throw new Error("Unexpected favorite delete in guest account test."); }

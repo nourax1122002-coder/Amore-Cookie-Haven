@@ -8,7 +8,7 @@
     "./schema": "./src/schema/index.ts"
   },
   "scripts": {
-    "test": "node --test src/supabase.test.mjs"
+    "test": "node --test src/supabase.test.mjs && pnpm --filter @workspace/api-server run test:account-orders"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",

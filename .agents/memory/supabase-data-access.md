@@ -11,9 +11,11 @@ Keep Auth operations on isolated Supabase clients rather than the shared privile
 
 Expose account order history through a read-only RLS-protected projection of the private checkout records. The checkout service and payment reconciliation remain the only writers of order totals and status; customers must not be able to edit or delete those records through the browser. Favorites are customer-owned and support full CRUD under `auth.uid()` RLS.
 
+For customer order-history reads, also filter by the user ID from the verified server auth context and select only the fields needed for the order summary. Keep the user-scoped JWT/RLS check as an independent boundary; never substitute a service-role read for account access.
+
 **Why:** The owner asked to connect through Supabase MCP and the framework rather than a raw server link, then explicitly chose Supabase as the sole store backend and asked to remove Clerk. Letting customers edit order totals, payment state, or fulfillment history would undermine payment integrity and the store's audit trail.
 
-**How to apply:** Follow this boundary for order, inquiry, settings, quota, product, inventory, cart, and account persistence. Verify schema/RLS through MCP and exercise RPCs without exposing customer data or credentials.
+**How to apply:** Follow this boundary for order, inquiry, settings, quota, product, inventory, cart, and account persistence. For account-order listing, pass the authenticated user's ID into the query and keep its selection to customer-visible fields. Verify schema/RLS through MCP and exercise RPCs without exposing customer data or credentials.
 
 Hosted Supabase email/password sign-up can create an unconfirmed Auth user while returning no session. The built-in email service has provider-side sending limits; an `over_email_send_rate_limit` 429 is not an incorrect project URL/key or the app's own IP limiter. Never disable confirmation to conceal this failure; preserve the user and explain that retrying after quota reset or configuring SMTP is required.
 

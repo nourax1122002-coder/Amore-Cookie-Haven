@@ -118,6 +118,18 @@ test("account order and favorite endpoints require an authenticated Supabase acc
   }
 });
 
+test("account order history returns only the signed-in user's safe order details", async () => {
+  const visitor = await request("/api/account/orders", undefined, "visitor", freshIp(), "GET");
+  const another = await request("/api/account/orders", undefined, "another", freshIp(), "GET");
+
+  assert.equal(visitor.status, 200);
+  assert.deepEqual(visitor.body.map((order: { number: string }) => order.number), ["AM-ACCOUNT-VISITOR"]);
+  assert.equal(visitor.body[0].total, "12.500");
+  assert.deepEqual(visitor.body[0].items, [{ title: "Chocolate cookie", quantity: 2 }]);
+  assert.equal(another.status, 200);
+  assert.deepEqual(another.body.map((order: { number: string }) => order.number), ["AM-ACCOUNT-ANOTHER"]);
+});
+
 test("API artifact base path and health endpoint respond successfully", async () => {
   const base = await request("/api");
   assert.equal(base.status, 200);

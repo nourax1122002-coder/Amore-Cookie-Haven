@@ -30,8 +30,8 @@ async function accountClient(req: Parameters<typeof getAuthenticatedUserContext>
 }
 
 router.get("/account/orders", async (req, res): Promise<void> => {
-  const { client } = await accountClient(req, res);
-  const rows = await listAccountOrderRows(client);
+  const { user, client } = await accountClient(req, res);
+  const rows = await listAccountOrderRows(client, user.id);
   const orders = rows.map(order => ({
     id: order.id,
     number: order.number,

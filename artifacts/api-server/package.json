@@ -10,6 +10,7 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/tsconfig.json --noEmit",
     "test:orders": "esbuild src/lib/orders.test.ts --bundle --platform=node --format=esm --outfile=/tmp/amore-orders.test.mjs && node --test /tmp/amore-orders.test.mjs",
+    "test:account-orders": "esbuild ../../lib/db/src/account-orders.test.ts --bundle --platform=node --format=esm --outfile=/tmp/amore-account-orders.test.mjs && node --test /tmp/amore-account-orders.test.mjs",
     "test:orders:http": "node test/run-orders-http.mjs",
     "test:admin:http": "node test/run-orders-http.mjs admin-http",
     "test:tracking:shared": "esbuild src/lib/tracking-limits.pg.test.ts --bundle --platform=node --format=cjs --outfile=/tmp/amore-tracking-shared.test.cjs && NODE_ENV=production node --test /tmp/amore-tracking-shared.test.cjs",
