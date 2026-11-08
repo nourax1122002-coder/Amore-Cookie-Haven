@@ -2,5 +2,5 @@
 - [Shopify order access](shopify-order-access.md) — inspect live grants rather than assuming catalog-only scopes; phone access needs separate protected-data approval.
 - [Live payment approval](live-payment-approval.md) — explain provider fees first; no live transactions or paid services without the owner's approval.
 - [Shopify cart markets](shopify-market-cart.md) — a forced, unconfigured Kuwait Market can silently zero cart quantities despite catalog stock.
-- [Free services and release](free-services-and-release.md) — no paid map/AI services; explain quotas first and verify the published bonus features before claiming completion.
+- [Free services and release](free-services-and-release.md) — keep Amore AI on free provider tiers; verify a real Arabic response and honor provider 429 windows.
 - [Amore Supabase access](supabase-data-access.md) — Supabase replaces Clerk and Shopify for store data/auth; keep private tables and admin roles server-controlled.

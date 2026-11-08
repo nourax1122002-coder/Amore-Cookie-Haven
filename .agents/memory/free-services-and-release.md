@@ -25,3 +25,18 @@ the account check and zero-price catalogue discovery succeed.
 **How to apply:** Require an actual Arabic model reply and zero-cost metadata
 where available before declaring the assistant ready. Treat failed live
 verification as a blocker, not permission to loosen privacy or pay for access.
+
+For Amore's assistant, GroqCloud's `openai/gpt-oss-120b` is the verified
+non-OpenRouter route when a Groq Free-tier key is configured. Keep OpenRouter
+available for non-throttle failures, but do not call it after Groq returns 429:
+respect the provider's retry window instead of routing around a limit. Groq's
+API does not expose account billing tier in the inference response, so continue
+to require a Free account with no payment method and never claim the key's tier
+was independently verified.
+
+**Why:** The user requires no paid usage, and the Free-tier Groq model returned
+a real Arabic answer while OpenRouter's available free routes returned 429.
+
+**How to apply:** Preserve the existing busy countdown on 429, use the provider's
+retry timing, and only report a successful real test after receiving the Arabic
+reply from Groq.
