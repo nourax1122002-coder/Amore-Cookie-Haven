@@ -301,7 +301,7 @@ function ProductDetail({lang,settings}:{lang:Lang;settings?:StoreSettings}) {
      <div><span className="eyebrow">{c.frozen}</span><h1 className="serif text-5xl md:text-6xl text-[#5B0D1E] mt-3">{lang==='ar'?(p.titleAr||p.title):p.title}</h1><FavoriteButton productId={p.id} isFavorite={isFavorite} lang={lang} className="mt-4"/><p className="mt-5 leading-7 text-sm text-[#795963]">{lang==='ar'?(p.descriptionAr||p.description):(p.description||p.descriptionAr)}</p><div className="flex gap-5 mt-6 text-[11px] text-[#8b6870]"><span>{p.pieces} {c.piece}</span><span>{lang==='ar'?'مجمدة · جاهزة للخبز':'Frozen · Ready to bake'}</span></div>
     {priceCurrency==='KWD'?<div className="mt-7 rounded-2xl border border-[#efdee2] p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <strong className="font-semibold text-xl text-[#5B0D1E]" dir="ltr">{displayCurrency==='KWD'?`${p.price.toFixed(3)} KWD`:conversion.data&&!conversion.isError?`${conversion.data.amount.toFixed(2)} ${displayCurrency}`:`— ${displayCurrency}`}</strong>
+        <strong className="font-semibold text-xl text-[#5B0D1E]" dir="ltr" data-testid="product-display-price">{displayCurrency==='KWD'?`${p.price.toFixed(3)} KWD`:conversion.data&&!conversion.isError?`${conversion.data.amount.toFixed(2)} ${displayCurrency}`:`— ${displayCurrency}`}</strong>
         <label htmlFor="product-display-currency" className="text-xs font-medium text-[#795963]">{c.displayCurrency}</label>
         <select id="product-display-currency" className="field w-auto min-w-24 py-2" value={displayCurrency} onChange={event=>setDisplayCurrency(event.target.value as GetCurrencyConversionParams['currency']|'KWD')}>
           {(['KWD','USD','EUR','GBP','SAR'] as const).map(currency=><option key={currency} value={currency}>{currency}</option>)}
@@ -409,7 +409,7 @@ function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shop
       <button disabled={!ready||start.isPending} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:c.checkout}<ExternalLink size={14}/></button>
       </form><aside className="card-surface p-6 h-fit"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.bag}</h2>{cart.lines.map(line=><div key={line.id} className="flex justify-between gap-4 py-4 border-b border-[#efdee2] text-xs"><span>{line.title} × {line.quantity}</span><strong>{(line.price*line.quantity).toFixed(3)} KWD</strong></div>)}
       <div className="flex justify-between pt-5 text-sm"><span>{lang==='ar'?'التوصيل':'Delivery'}</span><span>{shipping==null?(lang==='ar'?'بانتظار الاعتماد':'Awaiting approval'):`${(shipping/1000).toFixed(3)} KWD`}</span></div>
-      <div className="flex justify-between pt-5 font-semibold text-sm"><span>{c.total}</span><span>{((subtotal+(shipping??0))/1000).toFixed(3)} KWD</span></div>
+      <div className="flex justify-between pt-5 font-semibold text-sm"><span>{c.total}</span><span data-testid="checkout-total">{((subtotal+(shipping??0))/1000).toFixed(3)} KWD</span></div>
       {shipping==null&&<p className="mt-3 text-xs text-[#896a71]">{lang==='ar'?'المبلغ لا يشمل التوصيل حتى اعتماد رسومه.':'Delivery is excluded until its charge is approved.'}</p>}
       </aside></div>}
   </div>;
