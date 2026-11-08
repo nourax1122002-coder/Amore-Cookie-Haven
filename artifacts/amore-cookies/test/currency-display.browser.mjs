@@ -73,12 +73,26 @@ const store = {
   shopCurrency: "KWD",
 };
 const conversionAmounts = { USD: 6.44, EUR: 5.78, GBP: 4.82, SAR: 24.16 };
+const conversionRates = { USD: 3.22, EUR: 2.89, GBP: 2.41, SAR: 12.08 };
+let expectedConversionAmounts = conversionAmounts;
+let expectedConversionRates = conversionRates;
 const conversionRequests = [];
 const failedCurrencies = new Set();
 const apiRequests = [];
 const unexpectedApiRequests = [];
+const liveCurrencyApiOrigin = process.env.CURRENCY_LIVE_API_ORIGIN;
 let server;
 let browser;
+
+async function fetchLiveConversion(amount, currency) {
+  const target = new URL(`/api/currency-conversion?amount=${amount}&currency=${currency}`, liveCurrencyApiOrigin);
+  const response = await fetch(target, { headers: { accept: "application/json" } });
+  const data = await response.json();
+  if (!response.ok || !Number.isFinite(data.amount) || data.currency !== currency) {
+    throw new Error(`Live ${currency} conversion failed with HTTP ${response.status}: ${JSON.stringify(data)}`);
+  }
+  return data;
+}
 
 async function findFreePort() {
   const probe = createServer();
@@ -156,13 +170,23 @@ async function mockApi(page) {
         await route.fulfill({ status: 503, json: { error: "Currency conversion is temporarily unavailable." } });
         return;
       }
+      if (liveCurrencyApiOrigin) {
+        const liveUrl = new URL(path + url.search, liveCurrencyApiOrigin);
+        const liveResponse = await fetch(liveUrl, { headers: { accept: "application/json" } });
+        await route.fulfill({
+          status: liveResponse.status,
+          contentType: liveResponse.headers.get("content-type") || "application/json",
+          body: await liveResponse.text(),
+        });
+        return;
+      }
       if (!Object.hasOwn(conversionAmounts, currency)) {
         unexpectedApiRequests.push(`${method} ${path} with currency=${currency}`);
         await route.fulfill({ status: 400, json: { error: "Unexpected conversion currency." } });
         return;
       }
       body = {
-        amount: conversionAmounts[currency],
+        amount: Math.round((amount * conversionRates[currency] + Number.EPSILON) * 100) / 100,
         currency,
         calculation: currency === "USD" || currency === "GBP" ? "eur_cross_rate" : "direct",
         sources: [{
@@ -195,6 +219,18 @@ async function mockApi(page) {
 }
 
 async function run() {
+  if (liveCurrencyApiOrigin) {
+    expectedConversionAmounts = {};
+    expectedConversionRates = {};
+    for (const currency of Object.keys(conversionAmounts)) {
+      const [price, rate] = await Promise.all([
+        fetchLiveConversion(2, currency),
+        fetchLiveConversion(1, currency),
+      ]);
+      expectedConversionAmounts[currency] = price.amount;
+      expectedConversionRates[currency] = rate.amount;
+    }
+  }
   const baseUrl = await startVite();
   browser = await chromium.launch({
     headless: true,
@@ -220,7 +256,7 @@ async function run() {
   await page.getByRole("heading", { name: product.title }).waitFor();
 
   const visiblePrice = page.getByTestId("product-display-price");
-  for (const [currency, amount] of Object.entries(conversionAmounts)) {
+  for (const [currency, amount] of Object.entries(expectedConversionAmounts)) {
     await page.locator("#product-display-currency").selectOption(currency);
     await assert.doesNotReject(
       visiblePrice.getByText(`${amount.toFixed(2)} ${currency}`, { exact: true }).waitFor(),
@@ -241,20 +277,43 @@ async function run() {
   await page.getByText("2.000 KWD", { exact: true }).first().waitFor();
   const cartCurrency = page.getByTestId("cart-display-currency");
   await cartCurrency.selectOption("USD");
-  await page.getByTestId("cart-total-display-price").getByText("6.44 USD", { exact: true }).waitFor();
-  await page.getByTestId("cart-line-unit-converted").getByText("6.44 USD", { exact: true }).waitFor();
-  await page.getByTestId("cart-line-total-converted").getByText("6.44 USD", { exact: true }).waitFor();
-  await page.getByTestId("cart-rate-updated").getByText("2026-11-07", { exact: false }).waitFor();
+  const usdCartTotal = `${expectedConversionAmounts.USD.toFixed(2)} USD`;
+  await page.getByTestId("cart-total-display-price").getByText(usdCartTotal, { exact: true }).waitFor();
+  await page.getByTestId("cart-total-original-kwd").getByText("2.000 KWD", { exact: true }).waitFor();
+  await page.getByTestId("cart-line-unit-converted").getByText(usdCartTotal, { exact: true }).waitFor();
+  await page.getByTestId("cart-line-total-converted").getByText(usdCartTotal, { exact: true }).waitFor();
+  await page.getByTestId("cart-rate").getByText(`1 KWD ≈ ${expectedConversionRates.USD.toFixed(2)} USD`, { exact: false }).waitFor();
+  await page.getByTestId("cart-rate-updated").getByText(/\d{4}-\d{2}-\d{2}/).waitFor();
+  await page.getByTestId("cart-rate-sources").getByText(
+    liveCurrencyApiOrigin ? /ExchangeRate-API|Frankfurter/ : "Test rate source",
+    { exact: false },
+  ).waitFor();
   await page.getByText("Original amount: 2.000 KWD", { exact: true }).waitFor();
   await cartCurrency.selectOption("SAR");
-  await page.getByTestId("cart-total-display-price").getByText("24.16 SAR", { exact: true }).waitFor();
-  await page.getByTestId("cart-line-total-converted").getByText("24.16 SAR", { exact: true }).waitFor();
-  await cartCurrency.selectOption("KWD");
-  await page.getByTestId("cart-total-display-price").getByText("2.000 KWD", { exact: true }).waitFor();
+  const sarCartTotal = `${expectedConversionAmounts.SAR.toFixed(2)} SAR`;
+  await page.getByTestId("cart-total-display-price").getByText(sarCartTotal, { exact: true }).waitFor();
+  await page.getByTestId("cart-line-total-converted").getByText(sarCartTotal, { exact: true }).waitFor();
+  await page.getByTestId("cart-rate").getByText(`1 KWD ≈ ${expectedConversionRates.SAR.toFixed(2)} SAR`, { exact: false }).waitFor();
   await page.goto(`${baseUrl}/checkout`);
   await page.getByTestId("checkout-total").getByText("2.000 KWD", { exact: true }).waitFor();
+  const checkoutCurrency = page.getByTestId("checkout-display-currency");
+  assert.equal(await checkoutCurrency.inputValue(), "SAR",
+    "the selected display currency carries from the bag into checkout");
+  await checkoutCurrency.selectOption("SAR");
+  await page.getByTestId("checkout-converted-total").getByText(sarCartTotal, { exact: true }).waitFor();
+  await page.locator('[data-testid^="checkout-line-total-converted-"]').getByText(sarCartTotal, { exact: true }).waitFor();
+  await page.getByTestId("checkout-rate").getByText(`1 KWD ≈ ${expectedConversionRates.SAR.toFixed(2)} SAR`, { exact: false }).waitFor();
+  await page.getByTestId("checkout-rate-updated").getByText(/\d{4}-\d{2}-\d{2}/).waitFor();
+  await checkoutCurrency.selectOption("USD");
+  await page.getByTestId("checkout-converted-total").getByText(usdCartTotal, { exact: true }).waitFor();
+  await page.locator('[data-testid^="checkout-line-total-converted-"]').getByText(usdCartTotal, { exact: true }).waitFor();
+  await page.getByTestId("checkout-total").getByText("2.000 KWD", { exact: true }).waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await checkoutCurrency.isVisible(), true, "the checkout currency selector remains visible on mobile");
+  assert.equal(await page.getByTestId("checkout-converted-total").isVisible(), true,
+    "the converted checkout total remains visible on mobile");
   assert.equal(await page.getByRole("button", { name: "Pay now" }).isDisabled(), true,
-    "currency display selection does not enable or change checkout");
+    "currency display selection never enables payment");
 
   await page.goto(`${baseUrl}/products`);
   await page.getByText("KWD 2.000", { exact: true }).waitFor();
@@ -265,7 +324,11 @@ async function run() {
     "the product selector requests each supported conversion using the KWD catalog price",
   );
   failedCurrencies.add("USD");
-  await page.evaluate(() => localStorage.setItem("amore-lang", "ar"));
+  await page.evaluate(() => {
+    localStorage.setItem("amore-lang", "ar");
+    localStorage.setItem("amore-display-currency", "KWD");
+  });
+  await page.reload();
   await page.goto(`${baseUrl}/cart`);
   await page.getByTestId("cart-total-display-price").getByText("2.000 KWD", { exact: true }).waitFor();
   await page.getByTestId("cart-display-currency").selectOption("USD");
@@ -283,7 +346,7 @@ async function run() {
     "the test adds one fixture item to the mocked cart");
   assert.deepEqual(unexpectedApiRequests, [], "no live checkout or payment endpoint is called");
 
-  console.log("Currency browser test passed: product rates and cart USD/SAR estimates display; cart falls back to KWD on API failure; checkout stays KWD and payment stays disabled.");
+  console.log(`Currency browser test passed (${liveCurrencyApiOrigin ? "live conversion API" : "fixture conversion API"}): product, cart and checkout USD/SAR estimates display; KWD remains visible and payment stays disabled.`);
 }
 
 try {

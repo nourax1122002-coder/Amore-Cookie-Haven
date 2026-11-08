@@ -40,6 +40,32 @@ const images = {
   cookie: `${basePath}/images/amore-cookie.jpg`,
 };
 type Lang = 'en' | 'ar';
+type DisplayCurrency = GetCurrencyConversionParams['currency'] | 'KWD';
+const DISPLAY_CURRENCIES: readonly DisplayCurrency[] = ['KWD', 'USD', 'SAR'];
+const DISPLAY_CURRENCY_STORAGE_KEY = 'amore-display-currency';
+
+function useDisplayCurrency() {
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>(() => {
+    try {
+      const stored = typeof window === 'undefined' ? null : window.localStorage.getItem(DISPLAY_CURRENCY_STORAGE_KEY);
+      return DISPLAY_CURRENCIES.includes(stored as DisplayCurrency) ? stored as DisplayCurrency : 'KWD';
+    } catch {
+      return 'KWD';
+    }
+  });
+
+  const selectDisplayCurrency = (currency: DisplayCurrency) => {
+    setDisplayCurrency(currency);
+    try {
+      window.localStorage.setItem(DISPLAY_CURRENCY_STORAGE_KEY, currency);
+    } catch {
+      // Currency selection remains usable if browser storage is unavailable.
+    }
+  };
+
+  return [displayCurrency, selectDisplayCurrency] as const;
+}
+
 const copy: Record<Lang, Record<string, string>> = {
   en: {
     home:'Home', products:'Our cookies', about:'Our story', baking:'How to bake', cafes:'For cafés', individuals:'For home',
@@ -71,7 +97,7 @@ const copy: Record<Lang, Record<string, string>> = {
     launch:'A little patience. Something lovely is coming.', checkoutDisabled:'Pre-launch · Checkout disabled', awaitingApproval:'Awaiting approved ingredients',
     displayCurrency:'Display price in', conversionLoading:'Loading an indicative conversion…', conversionError:'Currency conversion is temporarily unavailable. The KWD price remains unchanged.',
     conversionNote:'Approximate price for reference only. Checkout remains in KWD.', rateSources:'Rate sources and dates',
-    rateUpdated:'Rate data updated', originalKwd:'Original amount',
+    rateUpdated:'Rate data updated', rateLabel:'Indicative exchange rate', originalKwd:'Original amount',
   },
   ar: {
     home:'الرئيسية', products:'منتجاتنا', about:'من نحن', baking:'طريقة التحضير', cafes:'للمقاهي', individuals:'للأفراد',
@@ -102,7 +128,7 @@ const copy: Record<Lang, Record<string, string>> = {
     launch:'قليل من الصبر. شيء جميل قادم.', checkoutDisabled:'قبل الإطلاق · الدفع معطل', awaitingApproval:'بانتظار اعتماد المكونات', piece:'قطعة',
     displayCurrency:'عرض السعر بعملة', conversionLoading:'جارٍ تحميل السعر التقريبي…', conversionError:'تحويل العملة غير متاح مؤقتاً. يبقى سعر الدينار الكويتي دون تغيير.',
     conversionNote:'سعر تقريبي للاسترشاد فقط. يتم الدفع بالدينار الكويتي.', rateSources:'مصادر الأسعار وتواريخها',
-    rateUpdated:'تحديث بيانات الصرف', originalKwd:'المبلغ الأصلي بالدينار',
+    rateUpdated:'تحديث بيانات الصرف', rateLabel:'سعر الصرف التقريبي', originalKwd:'المبلغ الأصلي بالدينار',
   },
 } as const;
 
@@ -372,11 +398,26 @@ function CartConvertedAmount({amount,currency,lang,testId}:{amount:number;curren
   return <span data-testid={testId}>{conversion.data.amount.toFixed(2)} {currency}</span>;
 }
 
+function CurrencyRateDetails({currency,lang,testId}:{currency:GetCurrencyConversionParams['currency'];lang:Lang;testId:string}) {
+  const c=copy[lang];
+  const rate=useGetCurrencyConversion({amount:1,currency},{query:{
+    retry:false,staleTime:86_400_000,
+  }});
+  if(rate.isError)return <p role="alert" className="text-red-700">{c.conversionError}</p>;
+  if(!rate.data)return <p role="status">{c.conversionLoading}</p>;
+  const updatedDates=[...new Set(rate.data.sources.map(source=>source.date))].join(' · ');
+  return <>
+    <p data-testid={`${testId}-rate`}>{c.rateLabel}: 1 KWD ≈ {rate.data.amount.toFixed(2)} {currency}</p>
+    <p data-testid={`${testId}-rate-updated`}>{c.rateUpdated}: {updatedDates}</p>
+    <p data-testid={`${testId}-rate-sources`}>{c.rateSources}: {rate.data.sources.map(source=>source.name).join(' · ')}</p>
+  </>;
+}
+
 function CartPage({lang}:{lang:Lang}) {
   const c=copy[lang], q=useGetCart({query:{queryKey:getGetCartQueryKey(),refetchInterval:45000}}), cart=q.data;
   const mutation=useUpdateCart({mutation:{onSuccess:data=>queryClient.setQueryData(getGetCartQueryKey(),data)}});
   const [discountCode,setDiscountCode]=useState('');
-  const [displayCurrency,setDisplayCurrency]=useState<GetCurrencyConversionParams['currency']|'KWD'>('KWD');
+  const [displayCurrency,setDisplayCurrency]=useDisplayCurrency();
   const conversionCurrency: GetCurrencyConversionParams['currency']=displayCurrency==='KWD'?'USD':displayCurrency;
   const conversion=useGetCurrencyConversion({
     amount:Math.max(0.001,Math.round((cart?.total??0)*1000)/1000),currency:conversionCurrency,
@@ -390,12 +431,13 @@ function CartPage({lang}:{lang:Lang}) {
         <span className="font-semibold text-sm">{c.total}</span>
         <div className="flex flex-wrap items-center justify-end gap-3">
           <label htmlFor="cart-display-currency" className="text-xs font-medium text-[#795963]">{c.displayCurrency}</label>
-          <select id="cart-display-currency" data-testid="cart-display-currency" className="field w-auto min-w-24 py-2" value={displayCurrency} onChange={event=>setDisplayCurrency(event.target.value as GetCurrencyConversionParams['currency']|'KWD')}>
-            {(['KWD','USD','SAR'] as const).map(currency=><option key={currency} value={currency}>{currency}</option>)}
+           <select id="cart-display-currency" data-testid="cart-display-currency" className="field w-auto min-w-24 py-2" value={displayCurrency} onChange={event=>setDisplayCurrency(event.target.value as DisplayCurrency)}>
+             {DISPLAY_CURRENCIES.map(currency=><option key={currency} value={currency}>{currency}</option>)}
           </select>
           <strong className="text-2xl font-semibold tabular-nums" dir="ltr" data-testid="cart-total-display-price">
             {displayCurrency==='KWD'?`${cart.total.toFixed(3)} KWD`:cart.total<=0?`0.00 ${displayCurrency}`:!conversion.data?`${cart.total.toFixed(3)} KWD`:`${conversion.data.amount.toFixed(2)} ${displayCurrency}`}
           </strong>
+           {displayCurrency!=='KWD'&&<span className="text-xs text-[#795963]" dir="ltr" data-testid="cart-total-original-kwd">{cart.total.toFixed(3)} KWD</span>}
         </div>
       </div>
       {displayCurrency!=='KWD'&&<div className="mt-2 text-[11px] leading-5 text-[#896a71]">
@@ -403,7 +445,7 @@ function CartPage({lang}:{lang:Lang}) {
         {conversion.isError&&<p role="alert" className="text-red-700">{c.conversionError}</p>}
         <p>{c.conversionNote}</p>
         <p>{c.originalKwd}: {cart.total.toFixed(3)} KWD</p>
-        {conversion.data&&<p data-testid="cart-rate-updated">{c.rateUpdated}: {[...new Set(conversion.data.sources.map(source=>source.date))].join(' · ')}</p>}
+          {conversion.data&&<CurrencyRateDetails currency={conversionCurrency} lang={lang} testId="cart"/>}
       </div>}
      <p className="mt-3 text-[11px] text-[#896a71]">{c.shipping}</p>
      <p className="mt-4 text-xs text-[#896a71] max-w-2xl">{c.checkoutNote}</p>
@@ -411,12 +453,13 @@ function CartPage({lang}:{lang:Lang}) {
        const lineTotal=line.price*line.quantity;
        return <div key={line.id} className="card-surface p-4 flex gap-4 items-center"><Link href={`/products/${line.handle}`} className="w-24 h-24 rounded-xl bg-[#f8e8ec] overflow-hidden shrink-0"><Picture src={line.imageUrl||images.cookie} alt={line.title} className="w-full h-full object-cover"/></Link><div className="min-w-0 flex-1"><Link href={`/products/${line.handle}`} className="font-display text-lg text-[#5B0D1E]">{line.title}</Link><p className="text-[11px] text-[#896a71] mt-1">{line.price.toFixed(3)} KWD</p>{displayCurrency!=='KWD'&&<p className="text-[10px] text-[#896a71] mt-1"><CartConvertedAmount amount={line.price} currency={displayCurrency} lang={lang} testId="cart-line-unit-converted"/></p>}<div className="flex items-center gap-2 mt-3"><button aria-label={lang==='ar'?'تقليل الكمية':'Decrease quantity'} className="w-7 h-7 rounded-full border border-[#ead5da] grid place-items-center" onClick={()=>update(line.id,line.quantity-1)}><Minus size={12}/></button><span className="text-xs w-5 text-center">{line.quantity}</span><button aria-label={lang==='ar'?'زيادة الكمية':'Increase quantity'} className="w-7 h-7 rounded-full border border-[#ead5da] grid place-items-center" onClick={()=>update(line.id,line.quantity+1)}><Plus size={12}/></button></div></div><div className="text-end"><strong className="text-sm text-[#5B0D1E]">{lineTotal.toFixed(3)} KWD</strong>{displayCurrency!=='KWD'&&<p className="text-[10px] text-[#896a71] mt-1"><CartConvertedAmount amount={lineTotal} currency={displayCurrency} lang={lang} testId="cart-line-total-converted"/></p>}<button className="block ms-auto mt-3 text-[10px] text-[#9d5367] underline" onClick={()=>mutation.mutate({data:{action:'remove',lineId:line.id}})}>{lang==='ar'?'إزالة':'Remove'}</button></div></div>;
      })}</div>
-     <aside className="card-surface p-6 sticky top-24"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.total}</h2><form className="mt-5 flex gap-2" onSubmit={e=>{e.preventDefault();if(discountCode.trim())mutation.mutate({data:{action:'discount',code:discountCode.trim()}})}}><input aria-label={c.promo} className="field min-w-0" value={discountCode} onChange={e=>setDiscountCode(e.target.value)} placeholder={c.promo}/><button disabled={!discountCode.trim()||mutation.isPending} className="btn-outline px-4 shrink-0 disabled:opacity-50">{c.apply}</button></form>{cart.discountCodes.map(item=><p key={item.code} className={`mt-2 text-[10px] ${item.applicable?'text-[#557449]':'text-[#a34657]'}`}>{item.code} · {item.applicable?(lang==='ar'?'تم تطبيق الرمز':'Code applied'):(lang==='ar'?'الرمز غير قابل للتطبيق':'Code not applicable')}</p>)}{mutation.isError&&<p className="mt-2 text-[10px] text-red-700">{lang==='ar'?'تعذر تحديث السلة. حاولي مجدداً.':'The bag could not be updated. Please retry.'}</p>}<div className="flex justify-between mt-6 text-xs"><span>{c.subtotal}</span><span>{cart.subtotal.toFixed(3)} KWD</span></div><div className="flex justify-between mt-3 text-xs text-[#896a71]"><span>{c.discount}</span><span>{cart.discount.toFixed(3)} KWD</span></div><div className="border-t border-[#efdee2] mt-5 pt-5 flex justify-between font-semibold text-sm"><span>{c.total}</span><span>{displayCurrency==='KWD'?`${cart.total.toFixed(3)} KWD`:cart.total<=0?`0.00 ${displayCurrency}`:!conversion.data?`${cart.total.toFixed(3)} KWD`:`${conversion.data.amount.toFixed(2)} ${displayCurrency}`}</span></div><p className="text-[10px] leading-5 mt-4 text-[#896a71]">{c.shipping}</p>{!cart.checkoutReady&&<p className="mt-4 rounded-xl bg-[#fff1f3] p-3 text-[10px] leading-5 text-[#763246]">{c.shopBlocked}</p>}<Link href="/checkout" className={`btn-primary w-full mt-5 ${!cart.checkoutReady?'opacity-60':''}`}>{c.reviewBefore}<ArrowRight size={14}/></Link></aside></div>
+      <aside className="card-surface p-6 sticky top-24"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.total}</h2><form className="mt-5 flex gap-2" onSubmit={e=>{e.preventDefault();if(discountCode.trim())mutation.mutate({data:{action:'discount',code:discountCode.trim()}})}}><input aria-label={c.promo} className="field min-w-0" value={discountCode} onChange={e=>setDiscountCode(e.target.value)} placeholder={c.promo}/><button disabled={!discountCode.trim()||mutation.isPending} className="btn-outline px-4 shrink-0 disabled:opacity-50">{c.apply}</button></form>{cart.discountCodes.map(item=><p key={item.code} className={`mt-2 text-[10px] ${item.applicable?'text-[#557449]':'text-[#a34657]'}`}>{item.code} · {item.applicable?(lang==='ar'?'تم تطبيق الرمز':'Code applied'):(lang==='ar'?'الرمز غير قابل للتطبيق':'Code not applicable')}</p>)}{mutation.isError&&<p className="mt-2 text-[10px] text-red-700">{lang==='ar'?'تعذر تحديث السلة. حاولي مجدداً.':'The bag could not be updated. Please retry.'}</p>}<div className="flex justify-between mt-6 text-xs"><span>{c.subtotal}</span><span>{cart.subtotal.toFixed(3)} KWD</span></div><div className="flex justify-between mt-3 text-xs text-[#896a71]"><span>{c.discount}</span><span>{cart.discount.toFixed(3)} KWD</span></div><div className="border-t border-[#efdee2] mt-5 pt-5 flex justify-between font-semibold text-sm"><span>{c.total}</span><span>{cart.total.toFixed(3)} KWD</span></div>{displayCurrency!=='KWD'&&<p className="mt-2 text-xs text-[#795963]" data-testid="cart-aside-converted-total">{c.displayCurrency}: {conversion.isError?`— ${displayCurrency}`:conversion.data?`${conversion.data.amount.toFixed(2)} ${displayCurrency}`:c.conversionLoading}</p>}<p className="text-[10px] leading-5 mt-4 text-[#896a71]">{c.shipping}</p>{!cart.checkoutReady&&<p className="mt-4 rounded-xl bg-[#fff1f3] p-3 text-[10px] leading-5 text-[#763246]">{c.shopBlocked}</p>}<Link href="/checkout" className={`btn-primary w-full mt-5 ${!cart.checkoutReady?'opacity-60':''}`}>{c.reviewBefore}<ArrowRight size={14}/></Link></aside></div>
   </div>;
 }
 function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shopCurrency:string;settings:StoreSettings}}) {
   const c=copy[lang], cartQ=useGetCart({query:{queryKey:getGetCartQueryKey()}}), cart=cartQ.data;
   const start=useStartCheckout();const [phone,setPhone]=useState(''),[note,setNote]=useState('');
+  const [displayCurrency,setDisplayCurrency]=useDisplayCurrency();
   const [address,setAddress]=useState({area:'',block:'',street:'',house:''});
   const [deliveryLocation,setDeliveryLocation]=useState<DeliveryLocation|null>(null);
   const [requestKey]=useState(()=>crypto.randomUUID());
@@ -425,6 +468,11 @@ function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shop
   const ready=paymentReady&&Boolean(deliveryLocation);
   const subtotal=cart?.lines.reduce((sum,line)=>sum+Math.round(line.price*1000)*line.quantity,0)??0;
   const shipping=availability.data?.shippingFils;
+  const checkoutTotalKwd=(subtotal+(shipping??0))/1000;
+  const conversionCurrency:GetCurrencyConversionParams['currency']=displayCurrency==='KWD'?'USD':displayCurrency;
+  const totalConversion=useGetCurrencyConversion({
+    amount:Math.max(0.001,Math.round(checkoutTotalKwd*1000)/1000),currency:conversionCurrency,
+  },{query:{enabled:Boolean(displayCurrency!=='KWD'&&checkoutTotalKwd>0),retry:false,staleTime:86_400_000}});
   return <div className="container-wide py-14 md:py-20"><span className="eyebrow">{c.checkout}</span><p className="mt-4 text-xs text-[#896a71] max-w-2xl">{lang==='ar'?'تتم معالجة الدفع بأمان عبر ماي فاتورة. لا نجمع بيانات بطاقتك في الموقع.':'Payments are processed securely by MyFatoorah. We never collect your card details.'}</p>
     {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={e=>{e.preventDefault();if(!ready||!deliveryLocation||Object.values(address).some(value=>!value.trim()))return;start.mutate({data:{requestKey,lang,address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim(),location:deliveryLocation},phone:phone.trim(),note:note||undefined}},{onSuccess:r=>{window.location.assign(r.url)}})}}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
       <div inert={start.isPending}><DeliveryLocationPicker lang={lang} value={deliveryLocation} onChange={setDeliveryLocation}/></div>
@@ -443,9 +491,23 @@ function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shop
       {!paymentReady&&<p role="status" className="rounded-xl bg-[#fff1f3] p-4 text-xs leading-6 text-[#763246]">{lang==='ar'?'الدفع الحقيقي غير مفعّل بعد. بانتظار اعتماد حساب التاجر والرسوم وإعدادات التوصيل.':'Live payments are not enabled yet. Merchant approval, accepted fees and delivery configuration are required.'}</p>}
       {start.isError&&<p role="alert" className="text-xs text-red-700">{start.error.message || (lang==='ar'?'تعذر بدء الدفع. لا تعيدي الدفع إذا كانت هناك عملية قيد التحقق.':'Checkout could not be started. Do not pay again while a payment is being verified.')}</p>}
       <button disabled={!ready||start.isPending} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:c.checkout}<ExternalLink size={14}/></button>
-      </form><aside className="card-surface p-6 h-fit"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.bag}</h2>{cart.lines.map(line=><div key={line.id} className="flex justify-between gap-4 py-4 border-b border-[#efdee2] text-xs"><span>{line.title} × {line.quantity}</span><strong>{(line.price*line.quantity).toFixed(3)} KWD</strong></div>)}
+      </form><aside className="card-surface p-6 h-fit"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.bag}</h2>
+      <label htmlFor="checkout-display-currency" className="mt-5 grid gap-2 text-xs font-medium text-[#795963]">{c.displayCurrency}
+        <select id="checkout-display-currency" data-testid="checkout-display-currency" className="field w-full py-2" value={displayCurrency} onChange={event=>setDisplayCurrency(event.target.value as DisplayCurrency)}>
+          {DISPLAY_CURRENCIES.map(currency=><option key={currency} value={currency}>{currency}</option>)}
+        </select>
+      </label>
+      {cart.lines.map(line=><div key={line.id} className="py-4 border-b border-[#efdee2] text-xs"><div className="flex justify-between gap-4"><span>{line.title} × {line.quantity}</span><strong>{(line.price*line.quantity).toFixed(3)} KWD</strong></div>{displayCurrency!=='KWD'&&<p className="mt-2 text-end text-[#795963]" data-testid={`checkout-line-total-converted-${line.id}`}><CartConvertedAmount amount={line.price*line.quantity} currency={displayCurrency} lang={lang} testId={`checkout-line-total-value-${line.id}`}/></p>}</div>)}
       <div className="flex justify-between pt-5 text-sm"><span>{lang==='ar'?'التوصيل':'Delivery'}</span><span>{shipping==null?(lang==='ar'?'بانتظار الاعتماد':'Awaiting approval'):`${(shipping/1000).toFixed(3)} KWD`}</span></div>
-      <div className="flex justify-between pt-5 font-semibold text-sm"><span>{c.total}</span><span data-testid="checkout-total">{((subtotal+(shipping??0))/1000).toFixed(3)} KWD</span></div>
+      <div className="flex justify-between pt-5 font-semibold text-sm"><span>{c.total}</span><span data-testid="checkout-total">{checkoutTotalKwd.toFixed(3)} KWD</span></div>
+      {displayCurrency!=='KWD'&&<div className="mt-3 rounded-xl bg-[#fff7f8] p-3 text-[11px] leading-5 text-[#795963]">
+        {totalConversion.isLoading&&<p role="status">{c.conversionLoading}</p>}
+        {totalConversion.isError&&<p role="alert" className="text-red-700">{c.conversionError}</p>}
+        <p data-testid="checkout-converted-total">{totalConversion.isError?'—':totalConversion.data?`${totalConversion.data.amount.toFixed(2)} ${displayCurrency}`:c.conversionLoading}</p>
+        <p>{c.originalKwd}: {checkoutTotalKwd.toFixed(3)} KWD</p>
+        <p>{c.conversionNote}</p>
+        {totalConversion.data&&<CurrencyRateDetails currency={conversionCurrency} lang={lang} testId="checkout"/>}
+      </div>}
       {shipping==null&&<p className="mt-3 text-xs text-[#896a71]">{lang==='ar'?'المبلغ لا يشمل التوصيل حتى اعتماد رسومه.':'Delivery is excluded until its charge is approved.'}</p>}
       </aside></div>}
   </div>;

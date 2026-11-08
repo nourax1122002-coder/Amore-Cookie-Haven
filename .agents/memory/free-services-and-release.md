@@ -40,3 +40,14 @@ a real Arabic answer while OpenRouter's available free routes returned 429.
 **How to apply:** Preserve the existing busy countdown on 429, use the provider's
 retry timing, and only report a successful real test after receiving the Arabic
 reply from Groq.
+
+Frankfurter's reference rates do not provide KWD or SAR. For KWD-based
+estimates, use a free KWD-base source for the KWD leg and Frankfurter only for
+supported cross-rates such as EUR-to-USD; show the source and date for each leg.
+
+**Why:** The store's catalog and checkout are denominated in KWD, while
+Frankfurter's supported base currencies cannot directly convert KWD to SAR.
+
+**How to apply:** Never label KWD-to-SAR estimates as Frankfurter-only. Keep the
+KWD-base provider free, return dated source attribution, and leave checkout
+amounts in KWD.
