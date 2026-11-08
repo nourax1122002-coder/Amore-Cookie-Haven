@@ -310,7 +310,7 @@ function ProductDetail({lang,settings}:{lang:Lang;settings?:StoreSettings}) {
       {displayCurrency!=='KWD'&&<div className="mt-3 text-[11px] leading-5 text-[#896a71]">
         {conversion.isLoading&&<p role="status">{c.conversionLoading}</p>}
         {conversion.isError&&<p role="alert" className="text-red-700">{c.conversionError}</p>}
-        {conversion.data&&<><p id="currency-conversion-note">{c.conversionNote}</p><div className="mt-2"><span className="font-semibold">{c.rateSources}: </span>{conversion.data.sources.map((source,index)=><span key={`${source.name}-${source.date}`}>{index>0?' · ':''}<a href={source.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">{source.name}</a> ({source.date})</span>)}</div></>}
+        {conversion.data&&<p id="currency-conversion-note">{c.conversionNote}</p>}
       </div>}
     </div>:<div className="mt-7 font-semibold text-xl text-[#5B0D1E]">{priceCurrency} {p.price.toFixed(3)}</div>}
     <div className="mt-5 p-4 rounded-xl bg-[#f8e8ec] text-[11px] text-[#7b4d5a] flex gap-3"><Snowflake size={17}/>{lang==='ar'?(settings?.storageAr||c.storage):(settings?.storageEn||c.storage)}</div>
