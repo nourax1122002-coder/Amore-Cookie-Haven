@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
 import { SendAssistantMessageBody } from "@workspace/api-zod";
 import { createOpenRouter, isFreeModel, selectFreeModels, AssistantError, FREE_ROUTING, retrySeconds, validatePrivateInput } from "../../src/lib/assistant/openrouter";
+import { createGroqGateway, GROQ_FREE_MODEL } from "../../src/lib/assistant/groq";
 import { createAssistantQuota } from "../../src/lib/assistant/quota";
 
 const model = { id: "google/gemma-4-31b-it:free", pricing: { prompt: "0", completion: "0" },
@@ -56,6 +57,70 @@ test("a genuine response path enforces zero-price privacy routing and never send
   assert.equal(body.plugins, undefined); assert.equal(body.models, undefined);
   assert.ok(!JSON.stringify(body).includes("fixture-secret"));
   assert.equal(mock.calls.length, 3);
+});
+test("Groq free-tier gateway returns a real-shaped Arabic response using only the fixed model", async () => {
+  const calls: Array<{ url: string; options?: RequestInit }> = [];
+  const fetcher = (async (url: string | URL | Request, options?: RequestInit) => {
+    calls.push({ url: String(url), options });
+    return Response.json({
+      model: GROQ_FREE_MODEL,
+      choices: [{ message: { content: "اخبزي الكوكيز حسب الوقت الموضح على عبوة المنتج." } }],
+      usage: { prompt_tokens: 32, completion_tokens: 16, total_tokens: 48 },
+    });
+  }) as typeof fetch;
+  const reply = await createGroqGateway(fetcher).chat(
+    "fixture-secret", messages, "المنتجات ومعلومات الخبز العامة", AbortSignal.timeout(1000), "ar",
+  );
+  assert.equal(reply.model, GROQ_FREE_MODEL);
+  assert.equal(reply.zeroCostVerified, true);
+  assert.match(reply.reply, /[\u0600-\u06ff]/);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://api.groq.com/openai/v1/chat/completions");
+  const body = JSON.parse(String(calls[0].options?.body));
+  assert.equal(body.model, GROQ_FREE_MODEL);
+  assert.equal(body.stream, false);
+  assert.equal(body.messages.at(-1).content, messages[0].content);
+  assert.match(body.messages[0].content, /لا تطلبي هاتفاً أو عنواناً/);
+  assert.ok(!JSON.stringify(body).includes("fixture-secret"));
+  assert.equal((calls[0].options?.headers as Record<string, string>).Authorization, "Bearer fixture-secret");
+});
+test("Groq 429 honors retry-after without automatic retries or provider-message leakage", async () => {
+  let calls = 0;
+  const fetcher = (async () => {
+    calls++;
+    return Response.json({ error: { message: "fixture-secret provider rate limit" } }, {
+      status: 429, headers: { "Retry-After": "17" },
+    });
+  }) as typeof fetch;
+  await assert.rejects(
+    () => createGroqGateway(fetcher).chat("fixture-secret", messages, "", AbortSignal.timeout(1000)),
+    (error: any) => error instanceof AssistantError
+      && error.code === "rate_limit"
+      && error.status === 429
+      && error.retryAfterSeconds === 17
+      && error.stage === "generation"
+      && !error.message.includes("fixture-secret"),
+  );
+  assert.equal(calls, 1);
+});
+test("Groq daily limits, bad credentials and invalid model responses fail closed", async () => {
+  const daily = (async () => Response.json({ error: { message: "daily request limit exceeded" } }, { status: 429 })) as typeof fetch;
+  await assert.rejects(
+    () => createGroqGateway(daily).chat("fixture-secret", messages, "", AbortSignal.timeout(1000)),
+    (error: any) => error.code === "daily_limit" && error.retryAfterSeconds > 3600,
+  );
+  const unauthorized = (async () => Response.json({ error: { message: "invalid key" } }, { status: 401 })) as typeof fetch;
+  await expectFailure(
+    () => createGroqGateway(unauthorized).chat("fixture-secret", messages, "", AbortSignal.timeout(1000)),
+    "configuration",
+  );
+  const wrongModel = (async () => Response.json({
+    model: "some-other-model", choices: [{ message: { content: "إجابة عربية" } }],
+  })) as typeof fetch;
+  await expectFailure(
+    () => createGroqGateway(wrongModel).chat("fixture-secret", messages, "", AbortSignal.timeout(1000)),
+    "invalid_response",
+  );
 });
 test("account exhaustion and no eligible model make no generation request", async () => {
   const exhausted = mockFetch(result, [model], 0);

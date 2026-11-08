@@ -4,16 +4,22 @@ import { SendAssistantMessageBody, SendAssistantMessageResponse, GetAssistantSta
 import { getCatalog } from "../lib/catalog";
 import { readiness } from "../lib/cart";
 import { AssistantError, createOpenRouter, validatePrivateInput } from "../lib/assistant/openrouter";
+import { createGroqGateway } from "../lib/assistant/groq";
 import { createAssistantQuota } from "../lib/assistant/quota";
 
 const router = Router();
-const gateway = createOpenRouter();
+const openRouterGateway = createOpenRouter();
+const groqGateway = createGroqGateway();
 const quota = createAssistantQuota();
 const statusLimit = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false,
   message: { error: "يرجى الانتظار قليلاً قبل إعادة المحاولة.", code: "rate_limit", retryAfterSeconds: 60 } });
 router.get("/assistant/status", statusLimit, (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
-  res.json(GetAssistantStatusResponse.parse({ enabled: Boolean(process.env.OPENROUTER_API_KEY), dailyLimit: 50, perMinuteLimit: 20 }));
+  res.json(GetAssistantStatusResponse.parse({
+    enabled: Boolean(process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY),
+    dailyLimit: 50,
+    perMinuteLimit: 20,
+  }));
 });
 function publicText(value: unknown) {
   return String(value ?? "").replace(/(?:\+?\d[\s()-]*){7,}|https?:\/\/\S+|[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, "[محذوف]").slice(0, 1000);
@@ -43,8 +49,11 @@ router.post("/assistant/chat", async (req, res) => {
   res.once("close", close);
   const deadline = setTimeout(() => controller.abort(), 45_000);
   let release: (() => Promise<void>) | undefined;
+  let assistantProvider = "unselected";
   try {
-    if (!process.env.OPENROUTER_API_KEY) throw new AssistantError("configuration");
+    if (!process.env.GROQ_API_KEY && !process.env.OPENROUTER_API_KEY) {
+      throw new AssistantError("configuration");
+    }
     const parsed = SendAssistantMessageBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "اكتبي رسالة قصيرة، ولا تتجاوزي طول المحادثة المسموح.", code: "validation" }); return;
@@ -57,11 +66,50 @@ router.post("/assistant/chat", async (req, res) => {
     messages.forEach(m => validatePrivateInput(m.content));
     release = await quota.acquire(req.ip ?? "unknown");
     const context = await publicContext(controller.signal);
-    const result = await gateway.chat(process.env.OPENROUTER_API_KEY, messages, context, controller.signal, parsed.data.language);
+    let result;
+    if (process.env.GROQ_API_KEY) {
+      assistantProvider = "groq";
+      try {
+        result = await groqGateway.chat(
+          process.env.GROQ_API_KEY,
+          messages,
+          context,
+          controller.signal,
+          parsed.data.language,
+        );
+      } catch (error) {
+        const groqFailure = error instanceof AssistantError ? error : new AssistantError("network");
+        // Do not make a second provider request when Groq explicitly asks us to wait.
+        if (["rate_limit", "daily_limit", "timeout", "cancelled", "private_input"].includes(groqFailure.code)
+          || !process.env.OPENROUTER_API_KEY) throw groqFailure;
+        req.log.warn({ assistantCode: groqFailure.code }, "Groq unavailable; using retained OpenRouter fallback");
+        assistantProvider = "openrouter_fallback";
+        result = await openRouterGateway.chat(
+          process.env.OPENROUTER_API_KEY,
+          messages,
+          context,
+          controller.signal,
+          parsed.data.language,
+        );
+      }
+    } else {
+      assistantProvider = "openrouter";
+      result = await openRouterGateway.chat(
+        process.env.OPENROUTER_API_KEY!,
+        messages,
+        context,
+        controller.signal,
+        parsed.data.language,
+      );
+    }
     if (!controller.signal.aborted) res.json(SendAssistantMessageResponse.parse(result));
   } catch (error) {
     let failure = error instanceof AssistantError ? error : new AssistantError("network");
-    req.log.warn({ assistantCode: failure.code, upstreamStage: failure.stage }, "Assistant request unavailable");
+    req.log.warn({
+      assistantCode: failure.code,
+      upstreamStage: failure.stage,
+      assistantProvider,
+    }, "Assistant request unavailable");
     if (controller.signal.aborted && !res.destroyed) failure = new AssistantError("timeout", 504);
     if (failure.status === 429 && failure.retryAfterSeconds) {
       // Per-client quotas do not block all visitors; only upstream throttles
