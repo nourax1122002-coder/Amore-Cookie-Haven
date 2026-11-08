@@ -20,3 +20,9 @@ Hosted Supabase email/password sign-up can create an unconfirmed Auth user while
 **Why:** Amore's Auth audit logs showed a saved but unconfirmed user, an email confirmation send blocked by Supabase's hourly sending quota, and an unusable/expired one-time link.
 
 **How to apply:** When diagnosing Supabase sign-up, check Auth logs and `auth.users` confirmation status, distinguish provider 429s from app rate limits, and do not claim end-to-end sign-in works until confirmation email delivery and a real user sign-in are verified.
+
+For Amore account authentication, use Supabase only and keep it entirely free: no Brevo, Clerk, paid email service, subscription, or custom domain. Keep email confirmation enabled and never bypass Supabase's built-in email restrictions or rate limits.
+
+**Why:** The user explicitly set these provider and cost constraints for this store.
+
+**How to apply:** Explain when Supabase's default mail service prevents customer email delivery; do not add another SMTP provider or disable confirmation unless the user changes this scope.
