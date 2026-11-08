@@ -49,7 +49,7 @@ export function mapSupabaseSignUpError(error: SupabaseAuthError): HttpError {
 export function mapSupabaseSignInError(error: SupabaseAuthError): HttpError {
   const code = normalizedCode(error);
   if (code === "email_not_confirmed") {
-    return new HttpError(403, emailNotConfirmedMessage);
+    return emailNotConfirmedError();
   }
   if (error.status === 429) return new HttpError(429, genericRateLimitMessage);
   if (error.status && error.status >= 500) {
@@ -64,4 +64,8 @@ export function mapSupabaseSignInError(error: SupabaseAuthError): HttpError {
     401,
     "Email or password is incorrect. If you just registered, confirm your email first. / البريد الإلكتروني أو كلمة المرور غير صحيحة. إذا أنشأت حساباً للتو، أكّدي بريدك أولاً.",
   );
+}
+
+export function emailNotConfirmedError() {
+  return new HttpError(403, emailNotConfirmedMessage);
 }

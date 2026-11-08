@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { createSupabaseAuthClient, saveUserProfile, type UserProfileRecord } from "@workspace/db";
 import { HttpError } from "./errors";
-import { mapSupabaseSignInError, mapSupabaseSignUpError } from "./auth-errors";
+import { emailNotConfirmedError, mapSupabaseSignInError, mapSupabaseSignUpError } from "./auth-errors";
 
 const ACCESS_COOKIE = "amore_auth_access";
 const REFRESH_COOKIE = "amore_auth_refresh";
@@ -26,6 +26,10 @@ type AuthUser = {
   user_metadata?: Record<string, unknown>;
 };
 type AuthSession = { access_token: string; refresh_token: string; expires_in?: number };
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
 
 export const approvedAdminEmails = () => (process.env.ADMIN_EMAILS ?? "")
   .split(",").map(email => email.trim().toLowerCase()).filter(Boolean);
@@ -115,25 +119,32 @@ export async function getAuthenticatedUserContext(req: Request, res: Response): 
     clearSessionCookies(req, res);
     return null;
   }
+  if (!user.email_confirmed_at) {
+    clearSessionCookies(req, res);
+    return null;
+  }
   if (!resolvedAccessToken) throw authServiceUnavailable();
   return { user: await accountFromUser(user), accessToken: resolvedAccessToken };
 }
 
 export async function signInWithPassword(email: string, password: string) {
-  const result = await createSupabaseAuthClient().auth.signInWithPassword({ email, password });
+  const result = await createSupabaseAuthClient().auth.signInWithPassword({ email: normalizeEmail(email), password });
   if (result.error) throw mapSupabaseSignInError(result.error);
   if (!result.data.session || !result.data.user) throw authServiceUnavailable();
   return result.data;
 }
 
 export async function establishSession(req: Request, res: Response, user: AuthUser, session: AuthSession) {
+  if (!user.email_confirmed_at) throw emailNotConfirmedError();
+  const account = await accountFromUser(user);
   setSessionCookies(req, res, session);
-  return accountFromUser(user);
+  return account;
 }
 
 export async function signUpWithPassword(email: string, password: string, displayName: string, emailRedirectTo?: string) {
   const result = await createSupabaseAuthClient().auth.signUp({
-    email, password, options: { data: { display_name: displayName }, ...(emailRedirectTo ? { emailRedirectTo } : {}) },
+    email: normalizeEmail(email), password,
+    options: { data: { display_name: displayName }, ...(emailRedirectTo ? { emailRedirectTo } : {}) },
   });
   if (result.error) throw mapSupabaseSignUpError(result.error);
   return result.data;
@@ -142,7 +153,7 @@ export async function signUpWithPassword(email: string, password: string, displa
 export async function resendSignupConfirmation(email: string, emailRedirectTo?: string) {
   const result = await createSupabaseAuthClient().auth.resend({
     type: "signup",
-    email,
+    email: normalizeEmail(email),
     options: emailRedirectTo ? { emailRedirectTo } : undefined,
   });
   if (result.error) throw mapSupabaseSignUpError(result.error);
@@ -150,7 +161,7 @@ export async function resendSignupConfirmation(email: string, emailRedirectTo?: 
 
 export async function requestPasswordRecovery(email: string, redirectTo?: string) {
   const result = await createSupabaseAuthClient().auth.resetPasswordForEmail(
-    email,
+    normalizeEmail(email),
     redirectTo ? { redirectTo } : undefined,
   );
   if (result.error) throw mapSupabaseSignUpError(result.error);

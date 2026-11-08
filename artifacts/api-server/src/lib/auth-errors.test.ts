@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mapSupabaseSignInError, mapSupabaseSignUpError } from "./auth-errors";
+import { emailNotConfirmedError, mapSupabaseSignInError, mapSupabaseSignUpError } from "./auth-errors";
 
 test("explains Supabase confirmation email quota errors without exposing provider details", () => {
   const error = mapSupabaseSignUpError({
@@ -26,6 +26,12 @@ test("explains an unconfirmed email when Supabase returns that specific sign-in 
   });
   assert.equal(error.status, 403);
   assert.match(error.message, /latest Amore message/i);
+});
+
+test("uses the same Arabic confirmation requirement when an Auth session is unexpectedly unconfirmed", () => {
+  const error = emailNotConfirmedError();
+  assert.equal(error.status, 403);
+  assert.match(error.message, /أكّدي بريدك/);
 });
 
 test("keeps other sign-in failures generic to prevent account enumeration", () => {

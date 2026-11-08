@@ -54,8 +54,8 @@ export function AuthPage({ mode, lang, onToggleLanguage }: { mode: "sign-in" | "
           setConfirmationEmail(email.trim());
           setResendCooldown(60);
           setMessage(isArabic
-            ? "أُنشئ الحساب. تحققي من بريدك لإكمال التسجيل؛ يمكنك طلب رسالة جديدة بعد انتهاء المؤقت."
-            : "Your account was created. Confirm your email to finish; request another message after the timer ends.");
+            ? "إذا كان هذا تسجيلاً جديداً، فتحققي من رسالة التأكيد. إذا كان لديك حساب، سجّلي الدخول؛ وإذا لم يكن البريد مؤكداً، اطلبي رسالة جديدة بعد انتهاء المؤقت."
+            : "If this is a new sign-up, check your email for confirmation. If you already have an account, sign in; if it is unconfirmed, request a new message after the timer.");
         } else {
           navigate(result.user?.role === "administrator" ? "/admin" : "/user-portal");
         }
@@ -100,7 +100,7 @@ export function AuthPage({ mode, lang, onToggleLanguage }: { mode: "sign-in" | "
       <label><span className="field-label">{isArabic ? "كلمة المرور" : "Password"}</span><input className="field" type="password" autoComplete={mode === "sign-in" ? "current-password" : "new-password"} required minLength={mode === "sign-in" ? 1 : 8} maxLength={128} value={password} onChange={e => setPassword(e.target.value)}/></label>
       {error && <p className="text-xs text-red-700" role="alert">{error}</p>}
       {message && <p className="rounded-xl bg-[#f8e8ec] p-3 text-xs leading-6 text-[#5B0D1E]" role="status">{message}</p>}
-      <button disabled={pending || loading || signupComplete} className="btn-primary w-full disabled:opacity-50">{pending ? submittingText : mode === "sign-in" ? (isArabic ? "دخول" : "Sign in") : signupComplete ? (isArabic ? "تم إنشاء الحساب" : "Account created") : (isArabic ? "إنشاء الحساب" : "Create account")}<ArrowRight size={14}/></button>
+      <button disabled={pending || loading || signupComplete} className="btn-primary w-full disabled:opacity-50">{pending ? submittingText : mode === "sign-in" ? (isArabic ? "دخول" : "Sign in") : signupComplete ? (isArabic ? "تم استلام الطلب" : "Request received") : (isArabic ? "إنشاء الحساب" : "Create account")}<ArrowRight size={14}/></button>
       {mode === "sign-up" && signupComplete && <button type="button" disabled={pending || resendCooldown > 0} onClick={() => void resendConfirmationEmail()} className="btn-outline w-full disabled:opacity-50">
         {pending ? submittingText : resendCooldown > 0
           ? (isArabic ? `إعادة الإرسال بعد ${resendCooldown} ث` : `Resend in ${resendCooldown}s`)
