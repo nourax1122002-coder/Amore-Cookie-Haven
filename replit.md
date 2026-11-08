@@ -13,6 +13,7 @@ Bilingual English/Arabic store for frozen, ready-to-bake cookie dough for homes 
 - Required environment: `SUPABASE_URL` (Supabase project API URL) and `SUPABASE_SECRET_KEY` (server-only key stored in Replit Secrets), `SESSION_SECRET`, `ADMIN_EMAILS` (comma-separated approved administrator emails), managed `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`, and the connected Shopify integration. Never put actual secret values in this file.
 - Backend Shopify access uses Replit connector runtime authentication. Storefront credentials remain server-side.
 - The server uses `@supabase/supabase-js`; its secret key must never enter frontend code. Schema migrations live in `lib/db/migrations` and are applied through the Supabase MCP migration operation. All private tables have RLS enabled and no public policies; runtime access is server-only. Do not run schema changes or destructive seeds on server startup. `SUPABASE_DATABASE_URL` and `DATABASE_URL` are not used by the runtime.
+- The connected Supabase organization is currently on the Free plan, which has no scheduled database backups; follow `docs/free-record-recovery.md` for secure manual CSV export and row-level recovery. Never store customer exports in Git or enable paid retention/PITR without owner approval.
 - `node scripts/seed-shopify.mjs` is an explicit initial setup operation only. It creates the two approved products, publishes to the Replit channel and starts inventory at zero; already-published products are preserved. Do not make this a startup command.
 
 ## Stack
