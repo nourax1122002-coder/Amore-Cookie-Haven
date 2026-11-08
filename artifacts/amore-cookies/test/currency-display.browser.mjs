@@ -74,6 +74,7 @@ const store = {
 };
 const conversionAmounts = { USD: 6.44, EUR: 5.78, GBP: 4.82, SAR: 24.16 };
 const conversionRequests = [];
+const failedCurrencies = new Set();
 const apiRequests = [];
 const unexpectedApiRequests = [];
 let server;
@@ -151,6 +152,10 @@ async function mockApi(page) {
       const currency = url.searchParams.get("currency");
       const amount = Number(url.searchParams.get("amount"));
       conversionRequests.push({ currency, amount });
+      if (failedCurrencies.has(currency)) {
+        await route.fulfill({ status: 503, json: { error: "Currency conversion is temporarily unavailable." } });
+        return;
+      }
       if (!Object.hasOwn(conversionAmounts, currency)) {
         unexpectedApiRequests.push(`${method} ${path} with currency=${currency}`);
         await route.fulfill({ status: 400, json: { error: "Unexpected conversion currency." } });
@@ -222,6 +227,7 @@ async function run() {
       `${currency} conversion should be displayed for the KWD product`,
     );
   }
+  const productConversionRequests = conversionRequests.slice();
 
   await page.getByTestId("button-add-product").click();
   await page.waitForURL(/\/checkout$/);
@@ -233,20 +239,51 @@ async function run() {
   await page.getByTestId("link-cart").click();
   await page.getByTestId("cart-total-summary").getByText("2.000 KWD", { exact: true }).waitFor();
   await page.getByText("2.000 KWD", { exact: true }).first().waitFor();
+  const cartCurrency = page.getByTestId("cart-display-currency");
+  await cartCurrency.selectOption("USD");
+  await page.getByTestId("cart-total-display-price").getByText("6.44 USD", { exact: true }).waitFor();
+  await page.getByTestId("cart-line-unit-converted").getByText("6.44 USD", { exact: true }).waitFor();
+  await page.getByTestId("cart-line-total-converted").getByText("6.44 USD", { exact: true }).waitFor();
+  await page.getByTestId("cart-rate-updated").getByText("2026-11-07", { exact: false }).waitFor();
+  await page.getByText("Original amount: 2.000 KWD", { exact: true }).waitFor();
+  await cartCurrency.selectOption("SAR");
+  await page.getByTestId("cart-total-display-price").getByText("24.16 SAR", { exact: true }).waitFor();
+  await page.getByTestId("cart-line-total-converted").getByText("24.16 SAR", { exact: true }).waitFor();
+  await cartCurrency.selectOption("KWD");
+  await page.getByTestId("cart-total-display-price").getByText("2.000 KWD", { exact: true }).waitFor();
+  await page.goto(`${baseUrl}/checkout`);
+  await page.getByTestId("checkout-total").getByText("2.000 KWD", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Pay now" }).isDisabled(), true,
+    "currency display selection does not enable or change checkout");
 
   await page.goto(`${baseUrl}/products`);
   await page.getByText("KWD 2.000", { exact: true }).waitFor();
 
   assert.deepEqual(
-    conversionRequests.map(({ currency, amount }) => [currency, amount]),
+    productConversionRequests.map(({ currency, amount }) => [currency, amount]),
     Object.entries(conversionAmounts).map(([currency]) => [currency, 2]),
-    "the selector requests each supported conversion using the KWD catalog price",
+    "the product selector requests each supported conversion using the KWD catalog price",
+  );
+  failedCurrencies.add("USD");
+  await page.evaluate(() => localStorage.setItem("amore-lang", "ar"));
+  await page.goto(`${baseUrl}/cart`);
+  await page.getByTestId("cart-total-display-price").getByText("2.000 KWD", { exact: true }).waitFor();
+  await page.getByTestId("cart-display-currency").selectOption("USD");
+  await page.getByRole("alert").filter({ hasText: "تحويل العملة غير متاح مؤقتاً" }).waitFor();
+  await page.getByTestId("cart-total-display-price").getByText("2.000 KWD", { exact: true }).waitFor();
+  await page.goto(`${baseUrl}/checkout`);
+  await page.getByTestId("checkout-total").getByText("2.000 KWD", { exact: true }).waitFor();
+
+  assert.deepEqual(
+    conversionRequests.slice(-1).map(({ currency, amount }) => [currency, amount]),
+    [["USD", 2]],
+    "a failed cart estimate is handled without using a different or fixed rate",
   );
   assert.equal(apiRequests.filter(request => request.method === "POST" && request.path === "/api/cart").length, 1,
     "the test adds one fixture item to the mocked cart");
   assert.deepEqual(unexpectedApiRequests, [], "no live checkout or payment endpoint is called");
 
-  console.log("Currency browser test passed: USD, EUR, GBP, and SAR display estimates; catalog, cart, and checkout stay KWD; payment stays disabled.");
+  console.log("Currency browser test passed: product rates and cart USD/SAR estimates display; cart falls back to KWD on API failure; checkout stays KWD and payment stays disabled.");
 }
 
 try {

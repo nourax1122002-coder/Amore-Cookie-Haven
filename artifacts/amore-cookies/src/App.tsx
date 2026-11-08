@@ -71,6 +71,7 @@ const copy: Record<Lang, Record<string, string>> = {
     launch:'A little patience. Something lovely is coming.', checkoutDisabled:'Pre-launch · Checkout disabled', awaitingApproval:'Awaiting approved ingredients',
     displayCurrency:'Display price in', conversionLoading:'Loading an indicative conversion…', conversionError:'Currency conversion is temporarily unavailable. The KWD price remains unchanged.',
     conversionNote:'Approximate price for reference only. Checkout remains in KWD.', rateSources:'Rate sources and dates',
+    rateUpdated:'Rate data updated', originalKwd:'Original amount',
   },
   ar: {
     home:'الرئيسية', products:'منتجاتنا', about:'من نحن', baking:'طريقة التحضير', cafes:'للمقاهي', individuals:'للأفراد',
@@ -101,6 +102,7 @@ const copy: Record<Lang, Record<string, string>> = {
     launch:'قليل من الصبر. شيء جميل قادم.', checkoutDisabled:'قبل الإطلاق · الدفع معطل', awaitingApproval:'بانتظار اعتماد المكونات', piece:'قطعة',
     displayCurrency:'عرض السعر بعملة', conversionLoading:'جارٍ تحميل السعر التقريبي…', conversionError:'تحويل العملة غير متاح مؤقتاً. يبقى سعر الدينار الكويتي دون تغيير.',
     conversionNote:'سعر تقريبي للاسترشاد فقط. يتم الدفع بالدينار الكويتي.', rateSources:'مصادر الأسعار وتواريخها',
+    rateUpdated:'تحديث بيانات الصرف', originalKwd:'المبلغ الأصلي بالدينار',
   },
 } as const;
 
@@ -359,23 +361,57 @@ function Footer({lang,settings}:{lang:Lang;settings?:StoreSettings}) {
   </footer>;
 }
 
+function CartConvertedAmount({amount,currency,lang,testId}:{amount:number;currency:GetCurrencyConversionParams['currency'];lang:Lang;testId:string}) {
+  const c=copy[lang], safeAmount=Math.max(0.001,Math.round(amount*1000)/1000);
+  const conversion=useGetCurrencyConversion({amount:safeAmount,currency},{query:{
+    enabled:amount>0,retry:false,staleTime:86_400_000,
+  }});
+  if(amount<=0)return <span data-testid={testId}>0.00 {currency}</span>;
+  if(conversion.isError)return <span data-testid={testId} title={c.conversionError}>— {currency}</span>;
+  if(!conversion.data)return <span data-testid={testId}>… {currency}</span>;
+  return <span data-testid={testId}>{conversion.data.amount.toFixed(2)} {currency}</span>;
+}
+
 function CartPage({lang}:{lang:Lang}) {
   const c=copy[lang], q=useGetCart({query:{queryKey:getGetCartQueryKey(),refetchInterval:45000}}), cart=q.data;
   const mutation=useUpdateCart({mutation:{onSuccess:data=>queryClient.setQueryData(getGetCartQueryKey(),data)}});
   const [discountCode,setDiscountCode]=useState('');
+  const [displayCurrency,setDisplayCurrency]=useState<GetCurrencyConversionParams['currency']|'KWD'>('KWD');
+  const conversionCurrency: GetCurrencyConversionParams['currency']=displayCurrency==='KWD'?'USD':displayCurrency;
+  const conversion=useGetCurrencyConversion({
+    amount:Math.max(0.001,Math.round((cart?.total??0)*1000)/1000),currency:conversionCurrency,
+  },{query:{enabled:Boolean(cart&&displayCurrency!=='KWD'&&cart.total>0),retry:false,staleTime:86_400_000}});
   const update=(lineId:string,quantity:number)=>mutation.mutate({data:{action:quantity<=0?'remove':'update',lineId,quantity:Math.max(1,quantity)}});
   if(q.isLoading)return <LoadingBlock lang={lang}/>;
   if(q.isError)return <div className="container-wide py-20"><ErrorNotice lang={lang} onRetry={()=>q.refetch()}/></div>;
   if(!cart?.lines.length)return <div className="container-wide py-24 text-center"><div className="mx-auto w-24 h-24 bg-[#FFD6E5] rounded-full grid place-items-center text-[#5B0D1E]"><ShoppingBag size={30}/></div><h1 className="serif text-4xl text-[#5B0D1E] mt-6">{c.empty}</h1><Link href="/products" className="btn-primary mt-6">{c.continue}<ArrowRight size={15}/></Link></div>;
    return <div className="container-wide py-14 md:py-20"><span className="eyebrow">{c.bag}</span><h1 className="serif text-5xl text-[#5B0D1E] mt-3">{c.review}</h1>
-     <div className="mt-6 rounded-2xl bg-[#f8e8ec] border border-[#ead5da] p-5 flex items-center justify-between gap-4 text-[#5B0D1E]" role="status" aria-live="polite" aria-atomic="true" data-testid="cart-total-summary">
-       <span className="font-semibold text-sm">{c.total}</span>
-       <strong className="text-2xl font-semibold tabular-nums" dir="ltr">{cart.total.toFixed(3)} {lang==='ar'?'د.ك':'KWD'}</strong>
-     </div>
+      <div className="mt-6 rounded-2xl bg-[#f8e8ec] border border-[#ead5da] p-5 flex flex-wrap items-center justify-between gap-4 text-[#5B0D1E]" role="status" aria-live="polite" aria-atomic="true" data-testid="cart-total-summary">
+        <span className="font-semibold text-sm">{c.total}</span>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <label htmlFor="cart-display-currency" className="text-xs font-medium text-[#795963]">{c.displayCurrency}</label>
+          <select id="cart-display-currency" data-testid="cart-display-currency" className="field w-auto min-w-24 py-2" value={displayCurrency} onChange={event=>setDisplayCurrency(event.target.value as GetCurrencyConversionParams['currency']|'KWD')}>
+            {(['KWD','USD','SAR'] as const).map(currency=><option key={currency} value={currency}>{currency}</option>)}
+          </select>
+          <strong className="text-2xl font-semibold tabular-nums" dir="ltr" data-testid="cart-total-display-price">
+            {displayCurrency==='KWD'?`${cart.total.toFixed(3)} KWD`:cart.total<=0?`0.00 ${displayCurrency}`:!conversion.data?`${cart.total.toFixed(3)} KWD`:`${conversion.data.amount.toFixed(2)} ${displayCurrency}`}
+          </strong>
+        </div>
+      </div>
+      {displayCurrency!=='KWD'&&<div className="mt-2 text-[11px] leading-5 text-[#896a71]">
+        {conversion.isLoading&&<p role="status">{c.conversionLoading}</p>}
+        {conversion.isError&&<p role="alert" className="text-red-700">{c.conversionError}</p>}
+        <p>{c.conversionNote}</p>
+        <p>{c.originalKwd}: {cart.total.toFixed(3)} KWD</p>
+        {conversion.data&&<p data-testid="cart-rate-updated">{c.rateUpdated}: {[...new Set(conversion.data.sources.map(source=>source.date))].join(' · ')}</p>}
+      </div>}
      <p className="mt-3 text-[11px] text-[#896a71]">{c.shipping}</p>
      <p className="mt-4 text-xs text-[#896a71] max-w-2xl">{c.checkoutNote}</p>
-    <div className="grid lg:grid-cols-[1.3fr_.7fr] gap-9 mt-10 items-start"><div className="grid gap-3">{cart.lines.map(line=><div key={line.id} className="card-surface p-4 flex gap-4 items-center"><Link href={`/products/${line.handle}`} className="w-24 h-24 rounded-xl bg-[#f8e8ec] overflow-hidden shrink-0"><Picture src={line.imageUrl||images.cookie} alt={line.title} className="w-full h-full object-cover"/></Link><div className="min-w-0 flex-1"><Link href={`/products/${line.handle}`} className="font-display text-lg text-[#5B0D1E]">{line.title}</Link><p className="text-[11px] text-[#896a71] mt-1">{line.price.toFixed(3)} KWD</p><div className="flex items-center gap-2 mt-3"><button aria-label="Decrease quantity" className="w-7 h-7 rounded-full border border-[#ead5da] grid place-items-center" onClick={()=>update(line.id,line.quantity-1)}><Minus size={12}/></button><span className="text-xs w-5 text-center">{line.quantity}</span><button aria-label="Increase quantity" className="w-7 h-7 rounded-full border border-[#ead5da] grid place-items-center" onClick={()=>update(line.id,line.quantity+1)}><Plus size={12}/></button></div></div><div className="text-end"><strong className="text-sm text-[#5B0D1E]">{(line.price*line.quantity).toFixed(3)} KWD</strong><button className="block ms-auto mt-3 text-[10px] text-[#9d5367] underline" onClick={()=>mutation.mutate({data:{action:'remove',lineId:line.id}})}>{lang==='ar'?'إزالة':'Remove'}</button></div></div>)}</div>
-    <aside className="card-surface p-6 sticky top-24"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.total}</h2><form className="mt-5 flex gap-2" onSubmit={e=>{e.preventDefault();if(discountCode.trim())mutation.mutate({data:{action:'discount',code:discountCode.trim()}})}}><input aria-label={c.promo} className="field min-w-0" value={discountCode} onChange={e=>setDiscountCode(e.target.value)} placeholder={c.promo}/><button disabled={!discountCode.trim()||mutation.isPending} className="btn-outline px-4 shrink-0 disabled:opacity-50">{c.apply}</button></form>{cart.discountCodes.map(item=><p key={item.code} className={`mt-2 text-[10px] ${item.applicable?'text-[#557449]':'text-[#a34657]'}`}>{item.code} · {item.applicable?(lang==='ar'?'تم تطبيق الرمز':'Code applied'):(lang==='ar'?'الرمز غير قابل للتطبيق':'Code not applicable')}</p>)}{mutation.isError&&<p className="mt-2 text-[10px] text-red-700">{lang==='ar'?'تعذر تحديث السلة. حاولي مجدداً.':'The bag could not be updated. Please retry.'}</p>}<div className="flex justify-between mt-6 text-xs"><span>{c.subtotal}</span><span>{cart.subtotal.toFixed(3)} KWD</span></div><div className="flex justify-between mt-3 text-xs text-[#896a71]"><span>{c.discount}</span><span>{cart.discount.toFixed(3)} KWD</span></div><div className="border-t border-[#efdee2] mt-5 pt-5 flex justify-between font-semibold text-sm"><span>{c.total}</span><span>{cart.total.toFixed(3)} KWD</span></div><p className="text-[10px] leading-5 mt-4 text-[#896a71]">{c.shipping}</p>{!cart.checkoutReady&&<p className="mt-4 rounded-xl bg-[#fff1f3] p-3 text-[10px] leading-5 text-[#763246]">{c.shopBlocked}</p>}<Link href="/checkout" className={`btn-primary w-full mt-5 ${!cart.checkoutReady?'opacity-60':''}`}>{c.reviewBefore}<ArrowRight size={14}/></Link></aside></div>
+     <div className="grid lg:grid-cols-[1.3fr_.7fr] gap-9 mt-10 items-start"><div className="grid gap-3">{cart.lines.map(line=>{
+       const lineTotal=line.price*line.quantity;
+       return <div key={line.id} className="card-surface p-4 flex gap-4 items-center"><Link href={`/products/${line.handle}`} className="w-24 h-24 rounded-xl bg-[#f8e8ec] overflow-hidden shrink-0"><Picture src={line.imageUrl||images.cookie} alt={line.title} className="w-full h-full object-cover"/></Link><div className="min-w-0 flex-1"><Link href={`/products/${line.handle}`} className="font-display text-lg text-[#5B0D1E]">{line.title}</Link><p className="text-[11px] text-[#896a71] mt-1">{line.price.toFixed(3)} KWD</p>{displayCurrency!=='KWD'&&<p className="text-[10px] text-[#896a71] mt-1"><CartConvertedAmount amount={line.price} currency={displayCurrency} lang={lang} testId="cart-line-unit-converted"/></p>}<div className="flex items-center gap-2 mt-3"><button aria-label={lang==='ar'?'تقليل الكمية':'Decrease quantity'} className="w-7 h-7 rounded-full border border-[#ead5da] grid place-items-center" onClick={()=>update(line.id,line.quantity-1)}><Minus size={12}/></button><span className="text-xs w-5 text-center">{line.quantity}</span><button aria-label={lang==='ar'?'زيادة الكمية':'Increase quantity'} className="w-7 h-7 rounded-full border border-[#ead5da] grid place-items-center" onClick={()=>update(line.id,line.quantity+1)}><Plus size={12}/></button></div></div><div className="text-end"><strong className="text-sm text-[#5B0D1E]">{lineTotal.toFixed(3)} KWD</strong>{displayCurrency!=='KWD'&&<p className="text-[10px] text-[#896a71] mt-1"><CartConvertedAmount amount={lineTotal} currency={displayCurrency} lang={lang} testId="cart-line-total-converted"/></p>}<button className="block ms-auto mt-3 text-[10px] text-[#9d5367] underline" onClick={()=>mutation.mutate({data:{action:'remove',lineId:line.id}})}>{lang==='ar'?'إزالة':'Remove'}</button></div></div>;
+     })}</div>
+     <aside className="card-surface p-6 sticky top-24"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.total}</h2><form className="mt-5 flex gap-2" onSubmit={e=>{e.preventDefault();if(discountCode.trim())mutation.mutate({data:{action:'discount',code:discountCode.trim()}})}}><input aria-label={c.promo} className="field min-w-0" value={discountCode} onChange={e=>setDiscountCode(e.target.value)} placeholder={c.promo}/><button disabled={!discountCode.trim()||mutation.isPending} className="btn-outline px-4 shrink-0 disabled:opacity-50">{c.apply}</button></form>{cart.discountCodes.map(item=><p key={item.code} className={`mt-2 text-[10px] ${item.applicable?'text-[#557449]':'text-[#a34657]'}`}>{item.code} · {item.applicable?(lang==='ar'?'تم تطبيق الرمز':'Code applied'):(lang==='ar'?'الرمز غير قابل للتطبيق':'Code not applicable')}</p>)}{mutation.isError&&<p className="mt-2 text-[10px] text-red-700">{lang==='ar'?'تعذر تحديث السلة. حاولي مجدداً.':'The bag could not be updated. Please retry.'}</p>}<div className="flex justify-between mt-6 text-xs"><span>{c.subtotal}</span><span>{cart.subtotal.toFixed(3)} KWD</span></div><div className="flex justify-between mt-3 text-xs text-[#896a71]"><span>{c.discount}</span><span>{cart.discount.toFixed(3)} KWD</span></div><div className="border-t border-[#efdee2] mt-5 pt-5 flex justify-between font-semibold text-sm"><span>{c.total}</span><span>{displayCurrency==='KWD'?`${cart.total.toFixed(3)} KWD`:cart.total<=0?`0.00 ${displayCurrency}`:!conversion.data?`${cart.total.toFixed(3)} KWD`:`${conversion.data.amount.toFixed(2)} ${displayCurrency}`}</span></div><p className="text-[10px] leading-5 mt-4 text-[#896a71]">{c.shipping}</p>{!cart.checkoutReady&&<p className="mt-4 rounded-xl bg-[#fff1f3] p-3 text-[10px] leading-5 text-[#763246]">{c.shopBlocked}</p>}<Link href="/checkout" className={`btn-primary w-full mt-5 ${!cart.checkoutReady?'opacity-60':''}`}>{c.reviewBefore}<ArrowRight size={14}/></Link></aside></div>
   </div>;
 }
 function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shopCurrency:string;settings:StoreSettings}}) {
