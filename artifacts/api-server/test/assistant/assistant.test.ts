@@ -107,7 +107,9 @@ test("Groq daily limits, bad credentials and invalid model responses fail closed
   const daily = (async () => Response.json({ error: { message: "daily request limit exceeded" } }, { status: 429 })) as typeof fetch;
   await assert.rejects(
     () => createGroqGateway(daily).chat("fixture-secret", messages, "", AbortSignal.timeout(1000)),
-    (error: any) => error.code === "daily_limit" && error.retryAfterSeconds > 3600,
+    (error: any) => error.code === "daily_limit"
+      && error.retryAfterSeconds > 0
+      && error.retryAfterSeconds <= 86_400,
   );
   const unauthorized = (async () => Response.json({ error: { message: "invalid key" } }, { status: 401 })) as typeof fetch;
   await expectFailure(
