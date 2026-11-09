@@ -42,7 +42,7 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-ADMIN_EMAILS = "amore26@gmail.com"
+ADMIN_EMAILS = "nourax1122002@gmail.com"
 SUPABASE_URL = "https://fnuhkqkebztnyrdcukno.supabase.co"
 
 [nix]
