@@ -2,7 +2,8 @@ import express, { type Express, type ErrorRequestHandler } from "express";
 import cookieParser from "cookie-parser";
 import { sameOrigin } from "./middlewares/security";
 import { HttpError } from "./lib/errors";
-import pinoHttp from "pino-http";
+import { type IncomingMessage, type ServerResponse } from "http";
+import { pinoHttp } from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { sendHealthResponse } from "./routes/health";
@@ -15,14 +16,14 @@ app.use(
   pinoHttp({
     logger,
     serializers: {
-      req(req) {
+      req(req: IncomingMessage) {
         return {
           id: req.id,
           method: req.method,
           url: req.url?.split("?")[0],
         };
       },
-      res(res) {
+      res(res: ServerResponse) {
         return {
           statusCode: res.statusCode,
         };
