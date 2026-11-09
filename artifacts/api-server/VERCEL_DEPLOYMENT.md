@@ -8,14 +8,18 @@ Link the full repository so the API can resolve the workspace packages in
 - Root Directory: `artifacts/api-server`
 - Enable “Include source files outside of the Root Directory in the Build Step”
 - Framework Preset: `Express`
-- Build Command: automatic / none
-- Output Directory: automatic / none
+- Build Command: leave to the Express preset; do not override
+- Output Directory: leave blank / automatic; do not set `dist`
 - Install Command: automatic (pnpm workspace lockfile)
 
-Vercel detects the Express app exported from `src/index.ts` and serves the
-existing `/api/*` routes through one Function. Do not point Vercel at a
-standalone copy of `artifacts/api-server`; it depends on workspace packages
-outside that directory.
+Do not enter the text `N/A` as an Output Directory. If the Vercel build log says
+it is searching in `"N/A"`, disable the Output Directory override or clear that
+field; Vercel is treating the text as a literal folder name.
+
+Vercel detects the Express app exported from the root `index.ts` and serves
+the existing `/api/*` routes through one Function. The root entrypoint avoids
+confusion with generated build output. Do not point Vercel at a standalone copy
+of `artifacts/api-server`; it depends on workspace packages outside that directory.
 
 ## Environment variables
 
