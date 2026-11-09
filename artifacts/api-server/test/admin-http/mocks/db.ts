@@ -51,7 +51,7 @@ export async function createInquiry(input: Record<string, any>) {
 }
 export async function incrementSecurityCounter() { throw new Error("Unexpected security counter call"); }
 export async function deleteSecurityCounter() {}
-export async function pruneSecurityCounters() {}
+export async function pruneSecurityCounters() { state.calls.push("pruneSecurityCounters"); }
 export async function readActiveSecurityCounter() { return undefined; }
 export async function claimSecurityLease() { return true; }
 export async function releaseSecurityLease() {}
@@ -81,6 +81,13 @@ export async function saveProductRow(input: Record<string, any>) {
 export async function uploadProductImage(name: string) {
   state.calls.push("uploadImage");
   return `https://amore-project.supabase.co/storage/v1/object/public/amore-products/${name}`;
+}
+export async function createSignedProductImageUpload(name: string) {
+  state.calls.push("signImageUpload");
+  return {
+    signedUrl: `https://amore-project.supabase.co/storage/v1/object/upload/sign/amore-products/${name}?token=fictional`,
+    imageUrl: `https://amore-project.supabase.co/storage/v1/object/public/amore-products/${name}`,
+  };
 }
 export async function createCartRow() { throw new Error("Unexpected cart write in admin boundary test."); }
 export async function getCartRow() { return undefined; }

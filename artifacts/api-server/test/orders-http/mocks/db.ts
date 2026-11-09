@@ -58,6 +58,7 @@ export async function createSupabaseAuthClient() { throw new Error("Unexpected A
 export async function reserveOrderProductStock() { throw new Error("Unexpected stock reservation in orders boundary test."); }
 export async function releaseOrderProductStock() { throw new Error("Unexpected stock release in orders boundary test."); }
 export async function uploadProductImage() { throw new Error("Unexpected product image upload in orders boundary test."); }
+export async function createSignedProductImageUpload() { throw new Error("Unexpected image signing in orders boundary test."); }
 export function createSupabaseUserClient(accessToken: string) {
   return { userId: accessToken.replace("fictional.jwt.for.", "") };
 }

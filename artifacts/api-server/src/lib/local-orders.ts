@@ -234,21 +234,30 @@ export async function reconcileOrder(id: string) {
   });
 }
 let reconciling = false;
+export async function runPaymentReconciliation() {
+  if (!process.env.MYFATOORAH_API_KEY) return { enabled: false, processed: 0 };
+  if (reconciling) return { enabled: true, processed: 0 };
+  reconciling = true;
+  try {
+    const rows = await listOrdersForReconciliation(
+      ["pending", "creating", "failed", "cancelled", "review"],
+      ["reserved", "reserving", "releasing"], 10,
+    );
+    for (const row of rows) {
+      try { await reconcileOrder(row.id); } catch { /* keep held/pending; visible to the owner, never invent success */ }
+      await updateCustomerOrder(row.id, { updatedAt: new Date() });
+    }
+    return { enabled: true, processed: rows.length };
+  } finally {
+    reconciling = false;
+  }
+}
+
 export function startPaymentReconciliation() {
-  const timer = setInterval(async () => {
-    if (reconciling || !process.env.MYFATOORAH_API_KEY) return;
-    reconciling = true;
-    try {
-      const rows = await listOrdersForReconciliation(
-        ["pending", "creating", "failed", "cancelled", "review"],
-        ["reserved", "reserving", "releasing"], 10,
-      );
-      for (const row of rows) {
-        try { await reconcileOrder(row.id); } catch { /* keep held/pending; visible to the owner, never invent success */ }
-        await updateCustomerOrder(row.id, { updatedAt: new Date() });
-      }
-    } catch { /* DB/provider unavailable: leave persisted state unchanged. */ }
-    finally { reconciling = false; }
+  const timer = setInterval(() => {
+    void runPaymentReconciliation().catch(() => {
+      // DB/provider unavailable: leave persisted state unchanged.
+    });
   }, 60_000);
   timer.unref();
 }

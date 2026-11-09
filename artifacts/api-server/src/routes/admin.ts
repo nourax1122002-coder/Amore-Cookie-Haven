@@ -1,5 +1,6 @@
 import { Router, raw as rawBody } from "express";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { getInquiryCounts, listInquiries, updateInquiry } from "@workspace/db";
 import {
   GetAdminSessionResponse, GetAdminSummaryResponse, GetAdminSettingsResponse,
@@ -12,7 +13,7 @@ import { readSettings, writeSettings } from "../lib/store-settings";
 import { readiness } from "../lib/cart";
 import { HttpError } from "../lib/errors";
 import { paymentConfiguration } from "../lib/myfatoorah";
-import { uploadProductImage } from "@workspace/db";
+import { createSignedProductImageUpload, uploadProductImage } from "@workspace/db";
 
 const router = Router();
 router.use("/admin", (_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
@@ -66,6 +67,13 @@ router.get("/admin/products", async (_req, res): Promise<void> => {
 });
 router.post("/admin/products", async (req, res): Promise<void> => {
   res.json(SaveProductResponse.parse(await saveCatalogProduct(SaveProductBody.parse(req.body))));
+});
+router.post("/admin/product-images/sign", async (req, res): Promise<void> => {
+  const contentType = z.enum(["image/jpeg", "image/png", "image/webp"]).parse(req.body?.contentType);
+  const extension = contentType === "image/jpeg" ? "jpg" : contentType === "image/png" ? "png" : "webp";
+  const upload = await createSignedProductImageUpload(`${randomUUID()}.${extension}`);
+  res.setHeader("Cache-Control", "no-store");
+  res.status(201).json({ uploadUrl: upload.signedUrl, imageUrl: upload.imageUrl });
 });
 router.post("/admin/product-images", rawBody({ type: ["image/jpeg", "image/png", "image/webp"], limit: "5mb" }), async (req, res): Promise<void> => {
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new HttpError(400, "Choose a valid product image.");

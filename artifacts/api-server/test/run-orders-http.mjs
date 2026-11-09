@@ -41,6 +41,7 @@ try {
       LOG_LEVEL: "info",
       ADMIN_EMAILS: "owner@example.invalid",
       SESSION_SECRET: "fictional-test-session-secret",
+      CRON_SECRET: "fictional-test-cron-secret",
       SUPABASE_URL: "https://amore-project.supabase.co",
     },
   });

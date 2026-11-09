@@ -143,6 +143,23 @@ export async function uploadProductImage(name: string, bytes: Buffer, contentTyp
   return storage.getPublicUrl(name).data.publicUrl;
 }
 
+export async function createSignedProductImageUpload(name: string) {
+  if (!/^[a-f0-9-]{36}\.(?:jpg|png|webp)$/.test(name)) {
+    throw new Error("Invalid product image path.");
+  }
+  const storage = supabase.storage.from("amore-products");
+  const result = await storage.createSignedUploadUrl(name);
+  if (result.error) {
+    const error = new Error("Supabase product image upload signing failed.");
+    Object.assign(error, { code: result.error.name });
+    throw error;
+  }
+  return {
+    signedUrl: result.data.signedUrl,
+    imageUrl: storage.getPublicUrl(name).data.publicUrl,
+  };
+}
+
 function mapOrder(value: Record<string, unknown>) {
   return fromDatabaseRow<CustomerOrder>(value);
 }

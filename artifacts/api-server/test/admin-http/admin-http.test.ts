@@ -19,7 +19,7 @@ const targets = [
     body: { ...defaultSettings, heroTitleEn: "Fictional new title" } },
   { name: "update inquiry", method: "PATCH", path: "/api/admin/inquiries/17", body: { status: "contacted" } },
 ];
-type Target = typeof targets[number];
+type Target = { name: string; method: string; path: string; body?: unknown };
 let server: Server;
 let port: number;
 let fetchCalls = 0;
@@ -49,7 +49,7 @@ after(async () => {
   if (server) await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
 });
 
-type Options = { user?: string; origin?: string; contentType?: string | null; forwardedHost?: string; raw?: string };
+type Options = { user?: string; origin?: string; contentType?: string | null; forwardedHost?: string; raw?: string; authorization?: string };
 async function request(target: Target, options: Options = {}) {
   return new Promise<{ status: number; body: any }>((resolve, reject) => {
     const req = http.request({
@@ -60,6 +60,7 @@ async function request(target: Target, options: Options = {}) {
         ...(options.user ? { "X-Test-User": options.user } : {}),
         ...(options.origin ? { Origin: options.origin } : {}),
         ...(options.forwardedHost ? { "X-Forwarded-Host": options.forwardedHost } : {}),
+        ...(options.authorization ? { Authorization: options.authorization } : {}),
       },
     }, res => {
       let text = "";
@@ -73,7 +74,7 @@ async function request(target: Target, options: Options = {}) {
     });
     req.setTimeout(5000, () => req.destroy(new Error("Test HTTP request timed out")));
     req.on("error", reject);
-    req.end(options.raw ?? JSON.stringify(target.body));
+     req.end(options.raw ?? (target.body === undefined ? undefined : JSON.stringify(target.body)));
   });
 }
 
@@ -184,4 +185,39 @@ test("product image upload accepts only an approved administrator and returns Su
   assert.equal(response.status, 201);
   assert.match(response.body.imageUrl, /^https:\/\/amore-project\.supabase\.co\/storage\/v1\/object\/public\/amore-products\//);
   assert.ok(state.calls.includes("uploadImage"));
+});
+
+test("signed product image upload URL is only issued to an administrator", async () => {
+  const target = {
+    name: "sign product image", method: "POST", path: "/api/admin/product-images/sign",
+    body: { contentType: "image/webp" },
+  };
+  assert.equal((await request(target)).status, 401);
+  assert.equal((await request(target, { user: "visitor" })).status, 403);
+  const response = await request(target, { user: "owner", origin: "https://store.example.invalid" });
+  assert.equal(response.status, 201);
+  assert.match(response.body.uploadUrl, /^https:\/\/amore-project\.supabase\.co\/storage\/v1\/object\/upload\/sign\/amore-products\//);
+  assert.match(response.body.imageUrl, /^https:\/\/amore-project\.supabase\.co\/storage\/v1\/object\/public\/amore-products\//);
+  assert.deepEqual(state.calls, ["signImageUpload"]);
+});
+
+test("Vercel maintenance rejects requests without the scheduled-job secret", async () => {
+  const response = await request({
+    name: "maintenance", method: "GET", path: "/api/maintenance",
+  });
+  assert.equal(response.status, 401);
+  assert.deepEqual(response.body, { error: "Unauthorized." });
+  assert.deepEqual(state.calls, []);
+});
+
+test("Vercel maintenance prunes persistent counters and safely skips disabled payments", async () => {
+  const response = await request({
+    name: "maintenance", method: "GET", path: "/api/maintenance",
+  }, { authorization: "Bearer fictional-test-cron-secret" });
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, {
+    ok: true,
+    paymentReconciliation: { enabled: false, processed: 0 },
+  });
+  assert.deepEqual(state.calls, ["pruneSecurityCounters"]);
 });

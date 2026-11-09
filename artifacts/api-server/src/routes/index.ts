@@ -6,6 +6,7 @@ import paymentsRouter from "./payments";
 import assistantRouter from "./assistant";
 import authRouter from "./auth";
 import accountRouter from "./account";
+import maintenanceRouter from "./maintenance";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(authRouter);
 router.use(accountRouter);
 router.use(storefrontRouter);
 router.use(adminRouter);
+router.use(maintenanceRouter);
 
 export default router;
