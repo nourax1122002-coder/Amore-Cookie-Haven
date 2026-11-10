@@ -8,7 +8,8 @@ Link the full repository so the API can resolve the workspace packages in
 - Root Directory: `artifacts/api-server`
 - Enable “Include source files outside of the Root Directory in the Build Step”
 - Framework Preset: `Express`
-- Build Command: leave to the Express preset; do not override
+- Build Command: set by `vercel.json` to `pnpm run vercel-build`; keep the
+  dashboard override disabled
 - Output Directory: leave blank / automatic; do not set `dist`
 - Install Command: automatic (pnpm workspace lockfile)
 
@@ -16,9 +17,10 @@ Do not enter the text `N/A` as an Output Directory. If the Vercel build log says
 it is searching in `"N/A"`, disable the Output Directory override or clear that
 field; Vercel is treating the text as a literal folder name.
 
-Vercel runs the package's `vercel-build` script. It type-checks both projects,
-builds the Vite storefront into `artifacts/api-server/public` with `/` as its
-base URL, then creates the API esbuild bundle. The Express preset serves files
+The `vercel.json` build command runs the package's `vercel-build` script before
+the Express Function is packaged. It type-checks both projects, builds the Vite
+storefront into `artifacts/api-server/public` with `/` as its base URL, then
+creates the API esbuild bundle. The Express preset serves files
 from `public/**` through Vercel's CDN; `vercel.json` includes the generated
 the entire generated `public/**` tree in the `index.mjs` Function through the
 supported `functions["index.mjs"].includeFiles` setting. Express serves the
