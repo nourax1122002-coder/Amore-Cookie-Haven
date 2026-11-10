@@ -3,6 +3,7 @@
 
 # No need to store the pnpm store twice.
 .local
+artifacts/api-server/public/
 
 # Private database recovery exports must never be deployed.
 /recovery-exports/

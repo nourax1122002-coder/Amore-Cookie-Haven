@@ -16,13 +16,21 @@ Do not enter the text `N/A` as an Output Directory. If the Vercel build log says
 it is searching in `"N/A"`, disable the Output Directory override or clear that
 field; Vercel is treating the text as a literal folder name.
 
-Vercel runs the package's `vercel-build` script, which performs the API
-TypeScript checks and then creates the esbuild bundle. It detects the Express
-app through the root `index.mjs`, which exports that bundle from `dist/`.
-This avoids a second TypeScript emit by Vercel after the checked bundle has
-already been produced. Replit continues to start `src/index.ts` as before.
-Do not point Vercel at a standalone copy of `artifacts/api-server`; it depends
-on workspace packages outside that directory.
+Vercel runs the package's `vercel-build` script. It type-checks both projects,
+builds the Vite storefront into `artifacts/api-server/public` with `/` as its
+base URL, then creates the API esbuild bundle. The Express preset serves files
+from `public/**` through Vercel's CDN; `vercel.json` includes the generated
+`public/index.html` in the Function so the Express SPA fallback can serve
+client-side routes such as `/products` and `/checkout`. The fallback excludes
+`/api/*`, which continues through the existing Express API routes.
+
+Vercel detects the Express app through the root `index.mjs`, which exports the
+bundle from `dist/`. This avoids a second TypeScript emit by Vercel after the
+checked bundle has already been produced. The Replit storefront continues to
+build into its existing `artifacts/amore-cookies/dist/public` directory and the
+API workflow continues to start `src/index.ts`. Do not point Vercel at a
+standalone copy of `artifacts/api-server`; it depends on workspace packages
+outside that directory.
 
 ## Environment variables
 
@@ -65,9 +73,10 @@ preserved without passing image bytes through the Function.
 
 ## Pre-deployment checks
 
-Run the workspace `pnpm run validate`, then build the API with
-`pnpm --filter @workspace/api-server run build`. Verify `/api/healthz`, the
-storefront, auth, account, assistant, currency, cart, checkout, admin image
-signing, and payment routes in a Vercel Preview deployment. The current
-Replit workflows remain unchanged; no production deployment is performed by
-these code changes.
+Run `pnpm run validate`, then run
+`pnpm --filter @workspace/api-server run vercel-build`. The latter also runs a
+local routing smoke test for the homepage, SPA routes, static assets, and
+`/api/healthz`. Verify `/api/products`, auth, account, assistant, currency,
+cart, checkout, admin image signing, and payment routes in a Vercel Preview
+deployment before changing Production. The current Replit workflows remain
+unchanged; no production deployment is performed by these code changes.
