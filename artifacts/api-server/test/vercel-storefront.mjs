@@ -3,9 +3,11 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import express from "express";
 
+const projectDirectory = process.cwd();
+const publicDirectory = resolve(projectDirectory, "public");
 process.env.VERCEL = "1";
+process.chdir(resolve(projectDirectory, "dist"));
 const { default: app } = await import("../index.mjs");
-const publicDirectory = resolve("public");
 const indexHtml = await readFile(resolve(publicDirectory, "index.html"), "utf8");
 const scriptPath = indexHtml.match(/src="([^"]+\.js)"/)?.[1];
 const stylePath = indexHtml.match(/href="([^"]+\.css)"/)?.[1];
@@ -63,6 +65,7 @@ try {
     "Vercel storefront smoke test passed: homepage, SPA routes, static assets, and /api/healthz.",
   );
 } finally {
+  process.chdir(projectDirectory);
   await new Promise((resolveClose, reject) => {
     server.close((error) => (error ? reject(error) : resolveClose()));
   });

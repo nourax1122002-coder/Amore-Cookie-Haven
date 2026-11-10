@@ -9,8 +9,25 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { sendHealthResponse } from "./routes/health";
 
-// Vercel's project root is artifacts/api-server, where its public assets live.
-const frontendIndexPath = resolve(process.cwd(), "public/index.html");
+const bundledDirectory = (globalThis as typeof globalThis & { __dirname?: string }).__dirname;
+const frontendIndexPath = resolve(
+  process.env.VERCEL && bundledDirectory ? bundledDirectory : process.cwd(),
+  process.env.VERCEL && bundledDirectory ? "../public/index.html" : "public/index.html",
+);
+
+if (process.env.VERCEL) {
+  const supabaseUrl = process.env.SUPABASE_URL?.trim();
+  const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY?.trim();
+  logger.info(
+    {
+      supabaseUrlPresent: Boolean(supabaseUrl),
+      supabaseUrlValid: Boolean(supabaseUrl && /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(supabaseUrl)),
+      supabaseSecretKeyPresent: Boolean(supabaseSecretKey),
+      supabaseSecretKeyFormatValid: Boolean(supabaseSecretKey?.startsWith("sb_secret_")),
+    },
+    "Supabase runtime configuration status",
+  );
+}
 
 const app: Express = express();
 app.set("trust proxy", 1);
@@ -74,7 +91,14 @@ const errors: ErrorRequestHandler = (err, req, res, _next) => {
     res.status(400).json({ error: "Please check the submitted fields. / يرجى التحقق من البيانات المدخلة." }); return;
   }
   // Do not log request bodies, upstream payloads, customer PII or secrets.
-  req.log.error({ errorType: err?.name ?? "Error" }, "API request failed");
+  const code = err && typeof err === "object" && "code" in err ? err.code : undefined;
+  const safeCode = typeof code === "string" && /^[A-Z0-9_]{1,40}$/.test(code) ? code : undefined;
+  req.log.error({
+    errorType: err instanceof Error ? err.name : "Error",
+    ...(safeCode ? { errorCode: safeCode } : {}),
+    method: req.method,
+    path: req.path,
+  }, "API request failed");
   res.status(503).json({ error: "The store service is temporarily unavailable. Please try again. / خدمة المتجر غير متاحة مؤقتاً. يرجى المحاولة مجدداً." });
 };
 app.use(errors);

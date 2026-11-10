@@ -46,6 +46,10 @@ Preview:
 - `GROQ_API_KEY` (for the current AI provider)
 - `OPENROUTER_API_KEY` (optional fallback)
 
+`SUPABASE_URL` is the project API origin (`https://<project-ref>.supabase.co`).
+`SUPABASE_DATABASE_URL` is a PostgreSQL connection string and is not a
+replacement for that API URL; the server uses the Supabase JS API client.
+
 Keep secret values locked. Do not add payment credentials or enable live
 payments as part of this migration. Vercel provides its own runtime port; do
 not set `PORT` for the Vercel deployment.

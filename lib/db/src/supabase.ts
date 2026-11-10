@@ -2,14 +2,35 @@ import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 let client: SupabaseClient | undefined;
+export type SupabaseConfigurationCode =
+  | "SUPABASE_URL_MISSING"
+  | "SUPABASE_URL_INVALID"
+  | "SUPABASE_SECRET_KEY_MISSING"
+  | "SUPABASE_SECRET_KEY_INVALID";
+
+export class SupabaseConfigurationError extends Error {
+  readonly code: SupabaseConfigurationCode;
+
+  constructor(code: SupabaseConfigurationCode) {
+    const message = code.startsWith("SUPABASE_URL")
+      ? "Supabase project API URL is missing or invalid."
+      : "Supabase secret API key is missing or invalid.";
+    super(message);
+    this.name = "SupabaseConfigurationError";
+    this.code = code;
+  }
+}
+
 function supabaseCredentials() {
   const url = process.env.SUPABASE_URL?.trim();
   const key = process.env.SUPABASE_SECRET_KEY?.trim();
-  if (!url || !/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)) {
-    throw new Error("A valid SUPABASE_URL is required for the database client.");
+  if (!url) throw new SupabaseConfigurationError("SUPABASE_URL_MISSING");
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)) {
+    throw new SupabaseConfigurationError("SUPABASE_URL_INVALID");
   }
-  if (!key?.startsWith("sb_secret_")) {
-    throw new Error("SUPABASE_SECRET_KEY must be a Supabase secret API key.");
+  if (!key) throw new SupabaseConfigurationError("SUPABASE_SECRET_KEY_MISSING");
+  if (!key.startsWith("sb_secret_")) {
+    throw new SupabaseConfigurationError("SUPABASE_SECRET_KEY_INVALID");
   }
   return { url, key };
 }
