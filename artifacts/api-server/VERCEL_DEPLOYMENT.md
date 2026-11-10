@@ -18,9 +18,11 @@ it is searching in `"N/A"`, disable the Output Directory override or clear that
 field; Vercel is treating the text as a literal folder name.
 
 The `vercel.json` build command runs the package's `vercel-build` script before
-the Express Function is packaged. It type-checks both projects, builds the Vite
-storefront into `artifacts/api-server/public` with `/` as its base URL, then
-creates the API esbuild bundle. The Express preset serves files
+the Express Function is packaged. That script first builds the root TypeScript
+project references, including `lib/db` and `lib/api-zod`, then type-checks the
+API and storefront. It builds the Vite storefront into
+`artifacts/api-server/public` with `/` as its base URL, then creates the API
+esbuild bundle. The Express preset serves files
 from `public/**` through Vercel's CDN; `vercel.json` includes the generated
 the entire generated `public/**` tree in the `index.mjs` Function through the
 supported `functions["index.mjs"].includeFiles` setting. Express serves the
