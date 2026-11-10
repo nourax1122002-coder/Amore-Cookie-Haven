@@ -1,6 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "includeFiles": ["public/index.html"],
+  "functions": {
+    "index.mjs": {
+      "includeFiles": "public/index.html"
+    }
+  },
   "crons": [
     {
       "path": "/api/maintenance",

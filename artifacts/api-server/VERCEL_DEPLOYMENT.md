@@ -20,9 +20,10 @@ Vercel runs the package's `vercel-build` script. It type-checks both projects,
 builds the Vite storefront into `artifacts/api-server/public` with `/` as its
 base URL, then creates the API esbuild bundle. The Express preset serves files
 from `public/**` through Vercel's CDN; `vercel.json` includes the generated
-`public/index.html` in the Function so the Express SPA fallback can serve
-client-side routes such as `/products` and `/checkout`. The fallback excludes
-`/api/*`, which continues through the existing Express API routes.
+`public/index.html` in the `index.mjs` Function through the supported
+`functions["index.mjs"].includeFiles` setting, so the Express SPA fallback can
+serve client-side routes such as `/products` and `/checkout`. The fallback
+excludes `/api/*`, which continues through the existing Express API routes.
 
 Vercel detects the Express app through the root `index.mjs`, which exports the
 bundle from `dist/`. This avoids a second TypeScript emit by Vercel after the
