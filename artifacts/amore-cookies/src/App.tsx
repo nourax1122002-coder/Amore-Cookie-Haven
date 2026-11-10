@@ -12,13 +12,11 @@ import {
 import type { Cart, Inquiry, Product, ProductInput, StoreSettings, TrackingResult, GetCurrencyConversionParams } from '@workspace/api-client-react';
 import { OrderDetails } from '@/components/order-status';
 import { PaymentResult, LocalOrdersAdmin } from '@/components/payments';
-import { DeliveryLocationPicker } from '@/components/delivery-location-picker';
 import { SafeAssistantWidget } from '@/components/assistant-widget';
 import { AuthPage, PasswordRecoveryPage } from '@/components/auth-pages';
 import { MyFavoritesPage, MyOrdersPage, UserPortalPage } from '@/components/account-pages';
 import { FavoriteButton } from '@/components/favorite-button';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
-import type { DeliveryLocation } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { uploadAdminProductImage } from '@/lib/admin-product-image-upload';
 import { Toaster } from '@/components/ui/toaster';
@@ -465,29 +463,27 @@ function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shop
   const [provider,setProvider]=useState<'myfatoorah'|'stripe'>('myfatoorah');
   const [displayCurrency,setDisplayCurrency]=useDisplayCurrency();
   const [address,setAddress]=useState({area:'',block:'',street:'',house:''});
-  const [deliveryLocation,setDeliveryLocation]=useState<DeliveryLocation|null>(null);
   const [requestKey]=useState(()=>crypto.randomUUID());
   const availability=useGetPaymentAvailability({query:{refetchInterval:60000}});
   const stripeAvailable=availability.data?.stripeTestEnabled===true;
   const myfatoorahAvailable=Boolean(store?.checkoutReady&&availability.data?.enabled);
-  const stripeReady=Boolean(stripeAvailable&&cart?.checkoutReady&&cart.lines.length);
+  const stripeReady=Boolean(stripeAvailable&&typeof availability.data?.shippingFils==='number'&&cart?.checkoutReady&&cart.lines.length);
   const myfatoorahReady=Boolean(myfatoorahAvailable&&cart?.checkoutReady&&cart.lines.length);
   useEffect(()=>{
     if(stripeReady&&provider!=='stripe')setProvider('stripe');
     else if(!stripeReady&&myfatoorahReady&&provider!=='myfatoorah')setProvider('myfatoorah');
   },[stripeReady,myfatoorahReady,provider]);
   const paymentReady=provider==='stripe'?stripeReady:myfatoorahReady;
-  const ready=paymentReady&&Boolean(deliveryLocation);
+  const ready=paymentReady;
   const subtotal=cart?.lines.reduce((sum,line)=>sum+Math.round(line.price*1000)*line.quantity,0)??0;
-  const shipping=provider==='stripe'?availability.data?.stripeTestShippingFils:availability.data?.shippingFils;
+  const shipping=availability.data?.shippingFils;
   const checkoutTotalKwd=(subtotal+(shipping??0))/1000;
   const conversionCurrency:GetCurrencyConversionParams['currency']=displayCurrency==='KWD'?'USD':displayCurrency;
   const totalConversion=useGetCurrencyConversion({
     amount:Math.max(0.001,Math.round(checkoutTotalKwd*1000)/1000),currency:conversionCurrency,
   },{query:{enabled:Boolean(displayCurrency!=='KWD'&&checkoutTotalKwd>0),retry:false,staleTime:86_400_000}});
   return <div className="container-wide py-14 md:py-20"><span className="eyebrow">{c.checkout}</span><p className="mt-4 text-xs text-[#896a71] max-w-2xl">{provider==='stripe'?(lang==='ar'?'وضع اختبار Stripe فقط؛ لا تُخصم أي مبالغ حقيقية. تتم المعالجة في صفحة Stripe الآمنة.':'Stripe Test Mode only. No real payments are processed; checkout opens on Stripe’s secure page.'):(lang==='ar'?'تتم معالجة الدفع بأمان عبر ماي فاتورة. لا نجمع بيانات بطاقتك في الموقع.':'Payments are processed securely by MyFatoorah. We never collect your card details.')}</p>
-    {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={e=>{e.preventDefault();if(!ready||!deliveryLocation||Object.values(address).some(value=>!value.trim()))return;start.mutate({data:{requestKey,lang,provider,address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim(),location:deliveryLocation},phone:phone.trim(),note:note||undefined}},{onSuccess:r=>{window.location.assign(r.url)}})}}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
-      <div inert={start.isPending}><DeliveryLocationPicker lang={lang} value={deliveryLocation} onChange={setDeliveryLocation}/></div>
+     {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={e=>{e.preventDefault();if(!ready||Object.values(address).some(value=>!value.trim()))return;start.mutate({data:{requestKey,lang,provider,address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim()},phone:phone.trim(),note:note||undefined}},{onSuccess:r=>{window.location.assign(r.url)}})}}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
       <fieldset className="grid sm:grid-cols-2 gap-5">
         <legend className="field-label mb-3">{lang==='ar'?'عنوان التوصيل':'Delivery address'}</legend>
         {([
@@ -504,7 +500,7 @@ function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shop
          {myfatoorahAvailable&&<label className="flex items-start gap-3 text-xs leading-5 text-[#5B0D1E]"><input className="mt-1 accent-[#5B0D1E]" type="radio" name="payment-provider" value="myfatoorah" checked={provider==='myfatoorah'} onChange={()=>setProvider('myfatoorah')}/><span><strong>MyFatoorah</strong><span className="block text-[#795963]">{lang==='ar'?'الدفع عبر إعدادات المتجر الحالية.':'Use the store’s existing payment setup.'}</span></span></label>}
        </fieldset>}
        <div className="rounded-xl bg-[#f8e8ec] p-4 text-xs leading-6 text-[#795963]">{provider==='stripe'?(lang==='ar'?'سيتم تأكيد طلب الاختبار فقط بعد وصول حدث Stripe موقّع والتحقق من بياناته.':'The test order is confirmed only after a signed Stripe event is verified.'):(lang==='ar'?'تظهر طرق الدفع المفعّلة لحساب المتجر في صفحة ماي فاتورة الآمنة.':'Available methods appear on MyFatoorah’s secure payment page.')}{provider==='myfatoorah'&&availability.data?.methods.length?<p dir="ltr" className="mt-2">{availability.data.methods.join(' · ')}</p>:null}</div>
-       {!paymentReady&&<p role="status" className="rounded-xl bg-[#fff1f3] p-4 text-xs leading-6 text-[#763246]">{provider==='stripe'?(lang==='ar'?'وضع اختبار Stripe غير جاهز حالياً؛ تحققي من إعداد مفاتيح الاختبار ورسوم التوصيل في Supabase.':'Stripe Test Mode is not ready. Check the test keys and test delivery amount in Supabase.'):(lang==='ar'?'الدفع الحقيقي غير مفعّل بعد. بانتظار اعتماد حساب التاجر والرسوم وإعدادات التوصيل.':'Live payments are not enabled yet. Merchant approval, accepted fees and delivery configuration are required.')}</p>}
+        {!paymentReady&&<p role="status" className="rounded-xl bg-[#fff1f3] p-4 text-xs leading-6 text-[#763246]">{provider==='stripe'?(lang==='ar'?'وضع اختبار Stripe غير جاهز حالياً؛ تحققي من مفاتيح الاختبار ورسوم التوصيل المهيأة.':'Stripe Test Mode is not ready. Check the test key and configured delivery charge.'):(lang==='ar'?'الدفع الحقيقي غير مفعّل بعد. بانتظار اعتماد حساب التاجر والرسوم وإعدادات التوصيل.':'Live payments are not enabled yet. Merchant approval, accepted fees and delivery configuration are required.')}</p>}
       {start.isError&&<p role="alert" className="text-xs text-red-700">{start.error.message || (lang==='ar'?'تعذر بدء الدفع. لا تعيدي الدفع إذا كانت هناك عملية قيد التحقق.':'Checkout could not be started. Do not pay again while a payment is being verified.')}</p>}
        <button disabled={!ready||start.isPending} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:provider==='stripe'?(lang==='ar'?'متابعة إلى Stripe للاختبار':'Continue to Stripe test checkout'):c.checkout}<ExternalLink size={14}/></button>
       </form><aside className="card-surface p-6 h-fit"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.bag}</h2>

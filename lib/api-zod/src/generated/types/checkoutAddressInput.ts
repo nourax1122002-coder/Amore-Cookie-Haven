@@ -6,8 +6,5 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { DeliveryAddressInput } from './deliveryAddressInput';
-import type { DeliveryLocation } from './deliveryLocation';
 
-export type CheckoutAddressInput = DeliveryAddressInput & {
-  location: DeliveryLocation;
-};
+export type CheckoutAddressInput = DeliveryAddressInput;

@@ -154,13 +154,14 @@ test("ambiguous provider POST is never retried as another invoice; held stock st
   assert.equal(row.paymentStatus, "review"); assert.equal(row.stockStatus, "reserved");
   await assert.rejects(localCheckout(req, body)); assert.equal(fixture.invoiceCalls, 1);
 });
-test("new orders require finite, in-range numeric coordinates and retain all address fields", () => {
-  const address = { area: " Fixture ", block: "1", street: "2", house: "3", location };
+test("address-only checkout is accepted; optional coordinates are validated and retained", () => {
+  const address = { area: " Fixture ", block: "1", street: "2", house: "3" };
   assert.deepEqual(checkoutAddress(address), { ...address, area: "Fixture" });
+  assert.deepEqual(checkoutAddress({ ...address, location }), { ...address, area: "Fixture", location });
   for (const point of [undefined, null, {}, {latitude: 91,longitude: 48}, {latitude:29,longitude:181},
     {latitude:NaN,longitude:48}, {latitude:Infinity,longitude:48}, {latitude:"29.3",longitude:48},
     {latitude:"",longitude:48}, {latitude:29,longitude:null}]) {
-    assert.throws(() => checkoutAddress({ ...address, location: point }));
+    if (point !== undefined) assert.throws(() => checkoutAddress({ ...address, location: point }));
   }
   assert.throws(() => checkoutAddress({ ...address, area: " " }));
   assert.deepEqual(checkoutAddress({...address, location:{latitude:0,longitude:0}}).location, {latitude:0,longitude:0});

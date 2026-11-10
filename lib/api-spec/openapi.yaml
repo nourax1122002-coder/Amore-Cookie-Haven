@@ -719,10 +719,6 @@ components:
     CheckoutAddressInput:
       allOf:
         - { $ref: "#/components/schemas/DeliveryAddressInput" }
-        - type: object
-          required: [location]
-          properties:
-            location: { $ref: "#/components/schemas/DeliveryLocation" }
     DeliveryAddressInput:
       type: object
       required: [area, block, street, house]
@@ -815,7 +811,7 @@ components:
         productId: { type: string, format: uuid }
     PaymentAvailability:
       type: object
-      required: [enabled, shippingFils, methods, stripeTestEnabled, stripeTestShippingFils]
+      required: [enabled, shippingFils, methods, stripeTestEnabled]
       properties:
         enabled: { type: boolean }
         shippingFils: { type: [integer, "null"] }
@@ -823,7 +819,6 @@ components:
           type: array
           items: { type: string }
         stripeTestEnabled: { type: boolean }
-        stripeTestShippingFils: { type: [integer, "null"] }
     OrderFulfillmentInput:
       type: object
       required: [stage]

@@ -2,14 +2,12 @@ import { HttpError } from "./errors";
 
 export type StripeTestAvailability = {
   stripeTestEnabled: boolean;
-  stripeTestShippingFils: number | null;
 };
 
 type StripeFunctionResponse = {
   url?: unknown;
   status?: unknown;
   stripeTestEnabled?: unknown;
-  stripeTestShippingFils?: unknown;
 };
 
 function functionUrl(): string | null {
@@ -54,15 +52,9 @@ async function callStripeFunction(
 export async function stripeTestAvailability(): Promise<StripeTestAvailability> {
   try {
     const result = await callStripeFunction("availability");
-    return {
-      stripeTestEnabled: result.stripeTestEnabled === true,
-      stripeTestShippingFils: typeof result.stripeTestShippingFils === "number"
-        && Number.isSafeInteger(result.stripeTestShippingFils)
-        && result.stripeTestShippingFils >= 0
-        ? result.stripeTestShippingFils : null,
-    };
+    return { stripeTestEnabled: result.stripeTestEnabled === true };
   } catch {
-    return { stripeTestEnabled: false, stripeTestShippingFils: null };
+    return { stripeTestEnabled: false };
   }
 }
 

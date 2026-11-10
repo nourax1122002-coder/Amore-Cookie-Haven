@@ -288,12 +288,6 @@ export const startCheckoutBodyAddressOneLocationLatitudeMax = 90;
 export const startCheckoutBodyAddressOneLocationLongitudeMin = -180;
 export const startCheckoutBodyAddressOneLocationLongitudeMax = 180;
 
-export const startCheckoutBodyAddressTwoLocationLatitudeMin = -90;
-export const startCheckoutBodyAddressTwoLocationLatitudeMax = 90;
-
-export const startCheckoutBodyAddressTwoLocationLongitudeMin = -180;
-export const startCheckoutBodyAddressTwoLocationLongitudeMax = 180;
-
 
 
 export const StartCheckoutBody = zod.object({
@@ -311,13 +305,8 @@ export const StartCheckoutBody = zod.object({
   "location": zod.object({
   "latitude": zod.number().min(startCheckoutBodyAddressOneLocationLatitudeMin).max(startCheckoutBodyAddressOneLocationLatitudeMax),
   "longitude": zod.number().min(startCheckoutBodyAddressOneLocationLongitudeMin).max(startCheckoutBodyAddressOneLocationLongitudeMax)
-})
-}).and(zod.object({
-  "location": zod.object({
-  "latitude": zod.number().min(startCheckoutBodyAddressTwoLocationLatitudeMin).max(startCheckoutBodyAddressTwoLocationLatitudeMax),
-  "longitude": zod.number().min(startCheckoutBodyAddressTwoLocationLongitudeMin).max(startCheckoutBodyAddressTwoLocationLongitudeMax)
-})
-})).optional()
+}).optional()
+}).optional()
 })
 
 export const StartCheckoutResponse = zod.object({
@@ -329,8 +318,7 @@ export const GetPaymentAvailabilityResponse = zod.object({
   "enabled": zod.boolean(),
   "shippingFils": zod.number().int().nullable(),
   "methods": zod.array(zod.string()),
-  "stripeTestEnabled": zod.boolean(),
-  "stripeTestShippingFils": zod.number().int().nullable()
+  "stripeTestEnabled": zod.boolean()
 })
 
 

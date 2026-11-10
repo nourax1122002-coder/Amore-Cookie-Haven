@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test:payments": "node test/run-payments.mjs",
+    "test:delivery-address": "esbuild src/lib/delivery-address.test.ts --bundle --platform=node --format=esm --outfile=/tmp/amore-delivery-address.test.mjs && node --test /tmp/amore-delivery-address.test.mjs",
     "test:stripe": "esbuild src/lib/stripe-functions.test.ts --bundle --platform=node --format=esm --outfile=/tmp/amore-stripe-functions.test.mjs && node --test /tmp/amore-stripe-functions.test.mjs",
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
@@ -22,7 +23,7 @@
     "test:auth": "node test/run-auth.mjs",
     "test:auth-email-limit": "esbuild src/lib/auth-email-limit.test.ts --bundle --platform=node --format=cjs --outfile=/tmp/amore-auth-email-limit.test.cjs && node --test /tmp/amore-auth-email-limit.test.cjs",
     "test:assistant": "node test/run-assistant.mjs",
-    "test": "pnpm run test:orders && pnpm run test:orders:http && pnpm run test:admin:http && pnpm run test:tracking:shared && pnpm run test:payments && pnpm run test:stripe && pnpm run test:assistant && pnpm run test:currency && pnpm run test:auth-errors && pnpm run test:auth && pnpm run test:auth-email-limit"
+    "test": "pnpm run test:orders && pnpm run test:orders:http && pnpm run test:admin:http && pnpm run test:tracking:shared && pnpm run test:delivery-address && pnpm run test:payments && pnpm run test:stripe && pnpm run test:assistant && pnpm run test:currency && pnpm run test:auth-errors && pnpm run test:auth && pnpm run test:auth-email-limit"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

@@ -296,6 +296,12 @@ async function run() {
   await page.getByTestId("cart-rate").getByText(`1 KWD ≈ ${expectedConversionRates.SAR.toFixed(2)} SAR`, { exact: false }).waitFor();
   await page.goto(`${baseUrl}/checkout`);
   await page.getByTestId("checkout-total").getByText("2.000 KWD", { exact: true }).waitFor();
+  assert.equal(await page.locator('[data-testid="delivery-location-picker"]').count(), 0,
+    "checkout no longer renders the map location picker");
+  for (const field of ["area", "block", "street", "house"]) {
+    assert.equal(await page.locator(`input[name="${field}"]`).isVisible(), true,
+      `checkout still requires the ${field} address field`);
+  }
   const checkoutCurrency = page.getByTestId("checkout-display-currency");
   assert.equal(await checkoutCurrency.inputValue(), "SAR",
     "the selected display currency carries from the bag into checkout");

@@ -72,8 +72,7 @@ export async function paymentAvailability() {
     catch { myfatoorahEnabled = false; }
   }
   return { enabled: myfatoorahEnabled, shippingFils: config.shippingFils,
-    methods: myfatoorahEnabled ? methods : [],
-    stripeTestEnabled: stripe.stripeTestEnabled, stripeTestShippingFils: stripe.stripeTestShippingFils };
+    methods: myfatoorahEnabled ? methods : [], stripeTestEnabled: stripe.stripeTestEnabled };
 }
 function resultUrl(order: CustomerOrder, origin = paymentConfiguration().origin) {
   const state = order.paymentStatus === "paid" ? "success" : order.paymentStatus === "failed" ? "failure"
@@ -102,13 +101,14 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
   const config = paymentConfiguration();
   const settings = await readSettings();
   const stripe = provider === "stripe" ? await stripeTestAvailability() : null;
-  if (provider === "stripe" && (!stripe?.stripeTestEnabled || stripe.stripeTestShippingFils === null)) {
+  if (provider === "stripe" && (!stripe?.stripeTestEnabled || config.shippingFils === null)) {
     throw new HttpError(503, "Stripe Test Mode is not configured. / وضع اختبار Stripe غير مهيأ.");
   }
   if (provider === "myfatoorah" && (!config.ready || !settings.checkoutEnabled)) {
     throw new HttpError(503, "Live payments are awaiting merchant approval and configuration. / الدفع الحقيقي بانتظار اعتماد حساب التاجر وإكمال الإعدادات.");
   }
-  const shippingFils = provider === "stripe" ? stripe!.stripeTestShippingFils! : config.shippingFils!;
+  const shippingFils = config.shippingFils;
+  if (shippingFils === null) throw new HttpError(503, "Delivery pricing is not configured. / رسوم التوصيل غير مهيأة.");
   const origin = provider === "stripe" ? requestOrigin(req, config.origin) : config.origin;
   const phone = normalizePhone(body.phone ?? "");
   if (!phone || !phone.startsWith("965") || phone.length !== 11) throw new HttpError(400, "Enter a Kuwait phone number. / يرجى إدخال رقم هاتف كويتي صحيح.");

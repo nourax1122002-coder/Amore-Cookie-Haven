@@ -335,9 +335,7 @@ export interface DeliveryAddressInput {
   location?: DeliveryLocation;
 }
 
-export type CheckoutAddressInput = DeliveryAddressInput & {
-  location: DeliveryLocation;
-};
+export type CheckoutAddressInput = DeliveryAddressInput;
 
 export interface CheckoutInput {
   requestKey?: string;
@@ -509,8 +507,6 @@ export interface PaymentAvailability {
   shippingFils: number | null;
   methods: string[];
   stripeTestEnabled: boolean;
-  /** @nullable */
-  stripeTestShippingFils: number | null;
 }
 
 export type OrderFulfillmentInputStage = typeof OrderFulfillmentInputStage[keyof typeof OrderFulfillmentInputStage];
