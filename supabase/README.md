@@ -15,13 +15,11 @@ This project uses Supabase Edge Functions for Stripe session creation and webhoo
    `supabase/config.toml` disables platform JWT verification only for these two functions. `stripe-checkout` then requires the Supabase server key in the `apikey` header; `stripe-webhook` requires Stripe's signed raw request body.
 3. In **Supabase Dashboard → Project → Edge Functions → Secrets**, set:
    - `STRIPE_SECRET_KEY` — Stripe **test** secret key, beginning `sk_test_`.
-   - `STRIPE_PUBLISHABLE_KEY` — Stripe **test** publishable key, beginning `pk_test_`.
    - `STRIPE_WEBHOOK_SECRET` — signing secret for the Stripe **test-mode** webhook endpoint, beginning `whsec_`.
-   - `STRIPE_TEST_SHIPPING_FILS` — delivery charge in integer KWD fils, for example `1250` means KWD 1.250. Use the store's approved test delivery amount.
 4. In Stripe's dashboard, while **Test mode** is selected, add a webhook endpoint pointing to the Supabase `stripe-webhook` function URL. Subscribe to `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `payment_intent.payment_failed`, and `charge.refunded`. Copy that endpoint's test signing secret into `STRIPE_WEBHOOK_SECRET`.
-5. Configure the Vercel/Replit API runtime with its existing `SUPABASE_URL` and `SUPABASE_SECRET_KEY` values. The server sends the Supabase key only in the `apikey` header to the protected checkout function; it is never returned to the browser.
+5. The API uses the existing `SUPABASE_URL` and `SUPABASE_SECRET_KEY` values in Replit/Vercel. The server sends the Supabase key only in the `apikey` header to the protected checkout function; it is never returned to the browser. No existing environment variables need to be changed.
 
-The checkout function rejects keys that are not `sk_test_` and `pk_test_`, and rejects any Stripe event with `livemode: true`. It verifies KWD totals from the saved order, confirms the Stripe session against the order before recording payment, and records refunds only from signed test webhook events. No function, migration, secret, or production deployment is applied automatically by this change.
+The checkout function rejects keys that are not `sk_test_` and rejects any Stripe event with `livemode: true`. Stripe-hosted Checkout does not need a browser publishable key. The function verifies KWD totals against the order's server-saved item and delivery amounts, confirms the Stripe session against the order before recording payment, and records refunds only from signed test webhook events. No function, migration, secret, or production deployment is applied automatically by this change.
 
 ## Local verification
 

@@ -39,9 +39,8 @@ function supabaseSecretKey(): string {
 
 function stripeSettings() {
   const secretKey = Deno.env.get("STRIPE_SECRET_KEY")?.trim() ?? "";
-  const publishableKey = Deno.env.get("STRIPE_PUBLISHABLE_KEY")?.trim() ?? "";
   const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET")?.trim() ?? "";
-  return { ready: hasStripeTestKeys({ secretKey, publishableKey, webhookSecret }), secretKey, webhookSecret };
+  return { ready: hasStripeTestKeys({ secretKey, webhookSecret }), secretKey, webhookSecret };
 }
 
 function getStripe(secretKey: string) {
@@ -120,6 +119,7 @@ async function markPaymentPaid(
     payment_status: "paid",
     fulfillment_status: nextFulfillment,
     stripe_payment_intent_id: paymentIntentId,
+    paid_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }).eq("id", order.id).eq("stripe_checkout_session_id", session.id)
     .in("payment_status", ["creating", "pending", "failed"]);

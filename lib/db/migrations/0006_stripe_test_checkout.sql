@@ -4,7 +4,8 @@ alter table public.customer_orders
   add column if not exists stripe_payment_intent_id text,
   add column if not exists stripe_charge_id text,
   add column if not exists stripe_refunded_amount_fils integer not null default 0
-    check (stripe_refunded_amount_fils >= 0);
+    check (stripe_refunded_amount_fils >= 0),
+  add column if not exists paid_at timestamptz;
 
 alter table public.orders
   add column if not exists payment_provider text,
@@ -12,7 +13,8 @@ alter table public.orders
   add column if not exists stripe_payment_intent_id text,
   add column if not exists stripe_charge_id text,
   add column if not exists stripe_refunded_amount_fils integer not null default 0
-    check (stripe_refunded_amount_fils >= 0);
+    check (stripe_refunded_amount_fils >= 0),
+  add column if not exists paid_at timestamptz;
 
 create unique index if not exists customer_orders_stripe_session_unique
   on public.customer_orders (stripe_checkout_session_id)
@@ -37,7 +39,7 @@ begin
     id, user_id, number, payment_status, fulfillment_status,
     total_fils, currency, items, created_at, updated_at,
     payment_provider, stripe_checkout_session_id, stripe_payment_intent_id,
-    stripe_charge_id, stripe_refunded_amount_fils
+    stripe_charge_id, stripe_refunded_amount_fils, paid_at
   ) values (
     new.id, new.user_id, new.number, new.payment_status, new.fulfillment_status,
     new.total_fils, new.currency,
@@ -46,7 +48,7 @@ begin
       from jsonb_array_elements(new.items) item
     ), '[]'::jsonb),
     new.created_at, new.updated_at, new.payment_provider, new.stripe_checkout_session_id,
-    new.stripe_payment_intent_id, new.stripe_charge_id, new.stripe_refunded_amount_fils
+    new.stripe_payment_intent_id, new.stripe_charge_id, new.stripe_refunded_amount_fils, new.paid_at
   )
   on conflict (id) do update set
     user_id = excluded.user_id,
@@ -61,7 +63,8 @@ begin
     stripe_checkout_session_id = excluded.stripe_checkout_session_id,
     stripe_payment_intent_id = excluded.stripe_payment_intent_id,
     stripe_charge_id = excluded.stripe_charge_id,
-    stripe_refunded_amount_fils = excluded.stripe_refunded_amount_fils;
+    stripe_refunded_amount_fils = excluded.stripe_refunded_amount_fils,
+    paid_at = excluded.paid_at;
   return new;
 end;
 $$;
@@ -71,6 +74,6 @@ create trigger sync_amore_account_order_after_change
   after insert or update of user_id, number, payment_status, fulfillment_status,
     total_fils, currency, items, created_at, updated_at, payment_provider,
     stripe_checkout_session_id, stripe_payment_intent_id, stripe_charge_id,
-    stripe_refunded_amount_fils
+    stripe_refunded_amount_fils, paid_at
   on public.customer_orders
   for each row execute function public.sync_amore_account_order();

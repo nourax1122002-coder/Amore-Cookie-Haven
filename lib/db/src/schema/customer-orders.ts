@@ -34,6 +34,7 @@ export const customerOrdersTable = pgTable("customer_orders", {
   stripePaymentIntentId: text("stripe_payment_intent_id").unique(),
   stripeChargeId: text("stripe_charge_id"),
   stripeRefundedAmountFils: integer("stripe_refunded_amount_fils").notNull().default(0),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
   stockStatus: text("stock_status").notNull().default("unreserved"),
   stockPlan: jsonb("stock_plan").$type<StockQuantity[]>(),
   releasePlan: jsonb("release_plan").$type<StockQuantity[]>(),

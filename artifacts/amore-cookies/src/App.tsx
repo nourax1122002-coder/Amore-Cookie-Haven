@@ -419,6 +419,7 @@ function CartPage({lang}:{lang:Lang}) {
   const mutation=useUpdateCart({mutation:{onSuccess:data=>queryClient.setQueryData(getGetCartQueryKey(),data)}});
   const [discountCode,setDiscountCode]=useState('');
   const [displayCurrency,setDisplayCurrency]=useDisplayCurrency();
+  const paymentNotice=new URLSearchParams(window.location.search).get('payment');
   const conversionCurrency: GetCurrencyConversionParams['currency']=displayCurrency==='KWD'?'USD':displayCurrency;
   const conversion=useGetCurrencyConversion({
     amount:Math.max(0.001,Math.round((cart?.total??0)*1000)/1000),currency:conversionCurrency,
@@ -428,6 +429,7 @@ function CartPage({lang}:{lang:Lang}) {
   if(q.isError)return <div className="container-wide py-20"><ErrorNotice lang={lang} onRetry={()=>q.refetch()}/></div>;
   if(!cart?.lines.length)return <div className="container-wide py-24 text-center"><div className="mx-auto w-24 h-24 bg-[#FFD6E5] rounded-full grid place-items-center text-[#5B0D1E]"><ShoppingBag size={30}/></div><h1 className="serif text-4xl text-[#5B0D1E] mt-6">{c.empty}</h1><Link href="/products" className="btn-primary mt-6">{c.continue}<ArrowRight size={15}/></Link></div>;
    return <div className="container-wide py-14 md:py-20"><span className="eyebrow">{c.bag}</span><h1 className="serif text-5xl text-[#5B0D1E] mt-3">{c.review}</h1>
+       {(paymentNotice==='cancelled'||paymentNotice==='failed')&&<p className="mt-5 rounded-xl bg-[#fff1f3] border border-[#ead5da] p-4 text-sm leading-6 text-[#763246]" role="status" data-testid="stripe-payment-notice">{lang==='ar'?'لم يكتمل الدفع، وتم الاحتفاظ بمنتجاتك في السلة. يمكنك المحاولة مرة أخرى.':'Payment was not completed. Your items are still in your cart; you can try again.'}</p>}
       <div className="mt-6 rounded-2xl bg-[#f8e8ec] border border-[#ead5da] p-5 flex flex-wrap items-center justify-between gap-4 text-[#5B0D1E]" role="status" aria-live="polite" aria-atomic="true" data-testid="cart-total-summary">
         <span className="font-semibold text-sm">{c.total}</span>
         <div className="flex flex-wrap items-center justify-end gap-3">
@@ -460,7 +462,7 @@ function CartPage({lang}:{lang:Lang}) {
 function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shopCurrency:string;settings:StoreSettings}}) {
   const c=copy[lang], cartQ=useGetCart({query:{queryKey:getGetCartQueryKey()}}), cart=cartQ.data;
   const start=useStartCheckout();const [phone,setPhone]=useState(''),[note,setNote]=useState('');
-  const [provider,setProvider]=useState<'myfatoorah'|'stripe'>('stripe');
+  const [provider,setProvider]=useState<'myfatoorah'|'stripe'>('myfatoorah');
   const [displayCurrency,setDisplayCurrency]=useDisplayCurrency();
   const [address,setAddress]=useState({area:'',block:'',street:'',house:''});
   const [deliveryLocation,setDeliveryLocation]=useState<DeliveryLocation|null>(null);
@@ -471,8 +473,8 @@ function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shop
   const stripeReady=Boolean(stripeAvailable&&cart?.checkoutReady&&cart.lines.length);
   const myfatoorahReady=Boolean(myfatoorahAvailable&&cart?.checkoutReady&&cart.lines.length);
   useEffect(()=>{
-    if(stripeReady&&!myfatoorahReady&&provider!=='stripe')setProvider('stripe');
-    else if(myfatoorahReady&&!stripeReady&&provider!=='myfatoorah')setProvider('myfatoorah');
+    if(stripeReady&&provider!=='stripe')setProvider('stripe');
+    else if(!stripeReady&&myfatoorahReady&&provider!=='myfatoorah')setProvider('myfatoorah');
   },[stripeReady,myfatoorahReady,provider]);
   const paymentReady=provider==='stripe'?stripeReady:myfatoorahReady;
   const ready=paymentReady&&Boolean(deliveryLocation);

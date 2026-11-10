@@ -2,9 +2,9 @@ import {
   constantTimeEqual,
   hasStripeTestKeys,
   nextPaymentStatus,
-  parseShippingFils,
   sha256Hex,
   validStripeEventMode,
+  validStoredKwdTotals,
 } from "./stripe-domain.ts";
 import Stripe from "stripe";
 
@@ -12,27 +12,23 @@ Deno.test("only test Stripe API keys are accepted", () => {
   const webhookSecret = "whsec_test_fixture";
   if (!hasStripeTestKeys({
     secretKey: "sk_test_fixture",
-    publishableKey: "pk_test_fixture",
     webhookSecret,
   })) throw new Error("Valid test keys were rejected");
   if (hasStripeTestKeys({
     secretKey: "sk_live_fixture",
-    publishableKey: "pk_live_fixture",
     webhookSecret,
   })) throw new Error("Live keys were accepted");
-  if (hasStripeTestKeys({
-    secretKey: "sk_test_fixture",
-    publishableKey: "pk_live_fixture",
-    webhookSecret,
-  })) throw new Error("A live publishable key was accepted");
 });
 
-Deno.test("shipping amount accepts only integer fils", () => {
-  if (parseShippingFils("1250") !== 1250 || parseShippingFils("0") !== 0) {
-    throw new Error("Valid shipping fils were rejected");
+Deno.test("KWD totals match the server-saved integer shipping amount", () => {
+  if (!validStoredKwdTotals(12_500, 1_250, 13_750)) {
+    throw new Error("Valid stored KWD totals were rejected");
   }
-  if (parseShippingFils("1.250") !== null || parseShippingFils("-5") !== null || parseShippingFils(undefined) !== null) {
-    throw new Error("Invalid shipping fils were accepted");
+  if (validStoredKwdTotals(12_500, 1_250, 15_000)) {
+    throw new Error("A total not matching the stored shipping was accepted");
+  }
+  if (validStoredKwdTotals(12_500.5, 1_250, 13_750.5)) {
+    throw new Error("Fractional fils were accepted");
   }
 });
 

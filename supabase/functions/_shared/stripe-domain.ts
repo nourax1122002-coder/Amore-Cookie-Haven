@@ -1,26 +1,21 @@
 export type StripeTestKeys = {
   secretKey: string;
-  publishableKey: string;
   webhookSecret: string;
-  shippingFils: number;
 };
 
-export function hasStripeTestKeys(keys: Omit<StripeTestKeys, "shippingFils">): boolean {
+export function hasStripeTestKeys(keys: Pick<StripeTestKeys, "secretKey" | "webhookSecret">): boolean {
   return keys.secretKey.startsWith("sk_test_")
     && !keys.secretKey.startsWith("sk_live_")
-    && keys.publishableKey.startsWith("pk_test_")
-    && !keys.publishableKey.startsWith("pk_live_")
     && keys.webhookSecret.startsWith("whsec_");
 }
 
-export function parseShippingFils(value: string | undefined): number | null {
-  if (!value || !/^\d{1,7}$/.test(value)) return null;
-  const amount = Number(value);
-  return Number.isSafeInteger(amount) ? amount : null;
+export function isSafeFils(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 2_000_000_000;
 }
 
-export function isSafeFils(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+export function validStoredKwdTotals(subtotalFils: unknown, shippingFils: unknown, totalFils: unknown): boolean {
+  return isSafeFils(subtotalFils) && isSafeFils(shippingFils) && isSafeFils(totalFils)
+    && subtotalFils + shippingFils === totalFils;
 }
 
 export async function sha256Hex(value: string): Promise<string> {

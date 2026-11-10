@@ -17,6 +17,7 @@ export const ordersTable = pgTable("orders", {
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   stripeChargeId: text("stripe_charge_id"),
   stripeRefundedAmountFils: integer("stripe_refunded_amount_fils").notNull().default(0),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
 });

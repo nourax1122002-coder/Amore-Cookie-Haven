@@ -4,7 +4,6 @@ import {
   constantTimeEqual,
   hasStripeTestKeys,
   isSafeFils,
-  parseShippingFils,
   sha256Hex,
 } from "../_shared/stripe-domain.ts";
 
@@ -63,14 +62,11 @@ function isInternalRequest(req: Request): boolean {
 function stripeTestSettings() {
   const keys = {
     secretKey: Deno.env.get("STRIPE_SECRET_KEY")?.trim() ?? "",
-    publishableKey: Deno.env.get("STRIPE_PUBLISHABLE_KEY")?.trim() ?? "",
     webhookSecret: Deno.env.get("STRIPE_WEBHOOK_SECRET")?.trim() ?? "",
   };
-  const shippingFils = parseShippingFils(Deno.env.get("STRIPE_TEST_SHIPPING_FILS"));
   return {
-    ready: hasStripeTestKeys(keys) && shippingFils !== null,
+    ready: hasStripeTestKeys(keys),
     keys,
-    shippingFils,
   };
 }
 
@@ -105,10 +101,10 @@ async function loadAuthorizedOrder(
   return constantTimeEqual(order.token_hash, tokenHash) ? order : null;
 }
 
-function makeLineItems(order: CheckoutOrder, shippingFils: number): Stripe.Checkout.SessionCreateParams.LineItem[] {
+function makeLineItems(order: CheckoutOrder): Stripe.Checkout.SessionCreateParams.LineItem[] {
   if (order.currency !== "KWD" || !Array.isArray(order.items) || order.items.length === 0
     || !isSafeFils(order.subtotal_fils) || !isSafeFils(order.shipping_fils)
-    || !isSafeFils(order.total_fils) || order.shipping_fils !== shippingFils) {
+    || !isSafeFils(order.total_fils)) {
     throw new Error("Order totals are invalid");
   }
   let calculatedSubtotal = 0;
@@ -128,15 +124,15 @@ function makeLineItems(order: CheckoutOrder, shippingFils: number): Stripe.Check
     };
   });
   if (!Number.isSafeInteger(calculatedSubtotal) || calculatedSubtotal !== order.subtotal_fils
-    || calculatedSubtotal + shippingFils !== order.total_fils) {
+    || calculatedSubtotal + order.shipping_fils !== order.total_fils) {
     throw new Error("Order total does not match its stored items");
   }
-  if (shippingFils > 0) {
+  if (order.shipping_fils > 0) {
     lines.push({
       quantity: 1,
       price_data: {
         currency: "kwd",
-        unit_amount: shippingFils,
+        unit_amount: order.shipping_fils,
         product_data: { name: "Delivery" },
       },
     });
@@ -146,7 +142,7 @@ function makeLineItems(order: CheckoutOrder, shippingFils: number): Stripe.Check
 
 async function createSession(input: Record<string, unknown>) {
   const settings = stripeTestSettings();
-  if (!settings.ready || settings.shippingFils === null) return respond(503, { error: "Stripe Test Mode is not configured." });
+  if (!settings.ready) return respond(503, { error: "Stripe Test Mode is not configured." });
   const orderId = input.orderId;
   const token = input.token;
   if (typeof orderId !== "string" || typeof token !== "string" || !isSafeOrigin(input.origin)) {
@@ -194,7 +190,7 @@ async function createSession(input: Record<string, unknown>) {
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     currency: "kwd",
-    line_items: makeLineItems(order, settings.shippingFils),
+    line_items: makeLineItems(order),
     client_reference_id: order.id,
     metadata: { order_id: order.id, payment_mode: "test" },
     payment_intent_data: { metadata: { order_id: order.id, payment_mode: "test" } },
@@ -292,10 +288,10 @@ Deno.serve(async req => {
           const supabase = getSupabaseAdmin();
           const [customerOrders, accountOrders] = await Promise.all([
             supabase.from("customer_orders").select(
-              "payment_provider,stripe_checkout_session_id,stripe_payment_intent_id,stripe_charge_id,stripe_refunded_amount_fils",
+              "payment_provider,stripe_checkout_session_id,stripe_payment_intent_id,stripe_charge_id,stripe_refunded_amount_fils,paid_at",
             ).limit(0),
             supabase.from("orders").select(
-              "payment_provider,stripe_checkout_session_id,stripe_payment_intent_id,stripe_charge_id,stripe_refunded_amount_fils",
+              "payment_provider,stripe_checkout_session_id,stripe_payment_intent_id,stripe_charge_id,stripe_refunded_amount_fils,paid_at",
             ).limit(0),
           ]);
           schemaReady = !customerOrders.error && !accountOrders.error;
@@ -305,7 +301,6 @@ Deno.serve(async req => {
       }
       return respond(200, {
         stripeTestEnabled: settings.ready && schemaReady,
-        stripeTestShippingFils: settings.shippingFils,
         mode: "test",
       });
     }
