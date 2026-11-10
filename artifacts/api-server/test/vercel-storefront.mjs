@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import express from "express";
 
 const projectDirectory = process.cwd();
 const publicDirectory = resolve(projectDirectory, "public");
@@ -18,10 +17,7 @@ assert.ok(stylePath, "Vite stylesheet must be referenced");
 assert.ok(scriptPath.startsWith("/"), "Vite assets must use the Vercel root path");
 assert.ok(stylePath.startsWith("/"), "Vite assets must use the Vercel root path");
 
-const deployment = express();
-deployment.use(express.static(publicDirectory));
-deployment.use(app);
-const server = deployment.listen(0, "127.0.0.1");
+const server = app.listen(0, "127.0.0.1");
 
 try {
   await new Promise((resolveListening, reject) => {
@@ -57,12 +53,17 @@ try {
   assert.equal(logo.status, 200);
   assert.match(logo.headers.get("content-type") ?? "", /image\/png/);
 
+  const favicon = await fetch(new URL("/favicon.ico", baseUrl));
+  assert.equal(favicon.status, 200);
+  assert.match(favicon.headers.get("content-type") ?? "", /image\/svg\+xml/);
+  assert.match(await favicon.text(), /<svg[\s>]/);
+
   const health = await fetch(new URL("/api/healthz", baseUrl));
   assert.equal(health.status, 200);
   assert.deepEqual(await health.json(), { status: "ok" });
 
   console.log(
-    "Vercel storefront smoke test passed: homepage, SPA routes, static assets, and /api/healthz.",
+    "Vercel storefront smoke test passed: homepage, SPA routes, static assets, favicon, and /api/healthz.",
   );
 } finally {
   process.chdir(projectDirectory);
