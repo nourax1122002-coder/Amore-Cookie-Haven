@@ -1,5 +1,6 @@
 import express, { type Express, type ErrorRequestHandler } from "express";
 import { resolve } from "node:path";
+import { existsSync } from "node:fs";
 import cookieParser from "cookie-parser";
 import { sameOrigin } from "./middlewares/security";
 import { HttpError } from "./lib/errors";
@@ -10,10 +11,20 @@ import { logger } from "./lib/logger";
 import { sendHealthResponse } from "./routes/health";
 
 const bundledDirectory = (globalThis as typeof globalThis & { __dirname?: string }).__dirname;
-const frontendIndexPath = resolve(
-  process.env.VERCEL && bundledDirectory ? bundledDirectory : process.cwd(),
-  process.env.VERCEL && bundledDirectory ? "../public/index.html" : "public/index.html",
-);
+const publicDirectoryCandidates = [
+  ...(bundledDirectory
+    ? [
+        { source: "bundle-parent", path: resolve(bundledDirectory, "../public") },
+        { source: "bundle-root", path: resolve(bundledDirectory, "public") },
+      ]
+    : []),
+  { source: "working-directory", path: resolve(process.cwd(), "public") },
+];
+const selectedPublicDirectory =
+  publicDirectoryCandidates.find(({ path }) => existsSync(resolve(path, "index.html"))) ??
+  publicDirectoryCandidates[0];
+const publicDirectory = selectedPublicDirectory.path;
+const frontendIndexPath = resolve(publicDirectory, "index.html");
 
 if (process.env.VERCEL) {
   const supabaseUrl = process.env.SUPABASE_URL?.trim();
@@ -26,6 +37,15 @@ if (process.env.VERCEL) {
       supabaseSecretKeyFormatValid: Boolean(supabaseSecretKey?.startsWith("sb_secret_")),
     },
     "Supabase runtime configuration status",
+  );
+  logger.info(
+    {
+      publicDirectorySource: selectedPublicDirectory.source,
+      storefrontIndexPresent: existsSync(frontendIndexPath),
+      storefrontAssetsPresent: existsSync(resolve(publicDirectory, "assets")),
+      brandLogoPresent: existsSync(resolve(publicDirectory, "logo.svg")),
+    },
+    "Vercel storefront file status",
   );
 }
 
@@ -52,6 +72,17 @@ app.use(
     },
   }),
 );
+if (process.env.VERCEL) {
+  // Serve the generated Vite files from the Function bundle too. This avoids
+  // relying on Vercel's static-file routing for files generated during build.
+  app.use(express.static(publicDirectory, { index: false, fallthrough: true }));
+  app.get("/favicon.ico", (_req, res, next) => {
+    res.type("image/svg+xml");
+    res.sendFile(resolve(publicDirectory, "logo.svg"), (error) => {
+      if (error) next(error);
+    });
+  });
+}
 // Replit's deployment health probe may reach the service after stripping its
 // /api artifact prefix. Keep the service root healthy as well as /api itself.
 const sendFrontend = (
@@ -93,9 +124,17 @@ const errors: ErrorRequestHandler = (err, req, res, _next) => {
   // Do not log request bodies, upstream payloads, customer PII or secrets.
   const code = err && typeof err === "object" && "code" in err ? err.code : undefined;
   const safeCode = typeof code === "string" && /^[A-Z0-9_]{1,40}$/.test(code) ? code : undefined;
+  const errorPath = err && typeof err === "object" && "path" in err ? err.path : undefined;
+  const missingAsset =
+    safeCode === "ENOENT" &&
+    typeof errorPath === "string" &&
+    errorPath.startsWith(`${publicDirectory}/`)
+      ? errorPath.slice(publicDirectory.length + 1)
+      : undefined;
   req.log.error({
     errorType: err instanceof Error ? err.name : "Error",
     ...(safeCode ? { errorCode: safeCode } : {}),
+    ...(missingAsset ? { missingAsset } : {}),
     method: req.method,
     path: req.path,
   }, "API request failed");
