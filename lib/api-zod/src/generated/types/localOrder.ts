@@ -6,6 +6,7 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { DeliveryAddressInput } from './deliveryAddressInput';
+import type { LocalOrderPaymentProvider } from './localOrderPaymentProvider';
 import type { OrderStatus } from './orderStatus';
 
 export type LocalOrder = OrderStatus & {
@@ -17,4 +18,5 @@ export type LocalOrder = OrderStatus & {
   shipping: string;
   stockStatus: string;
   invoiceId: string;
+  paymentProvider: LocalOrderPaymentProvider;
 };

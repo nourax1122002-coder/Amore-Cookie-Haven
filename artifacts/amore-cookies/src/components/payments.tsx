@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Link } from "wouter";
 import {
-  useGetPaymentOrder, useListLocalOrders, useReconcileLocalOrder, useUpdateLocalOrder,
-  getGetCartQueryKey, getListLocalOrdersQueryKey, type LocalOrder,
+  getGetCartQueryKey, getGetPaymentOrderQueryKey, getListLocalOrdersQueryKey,
+  useCancelStripeCheckout, useGetPaymentOrder, useListLocalOrders, useReconcileLocalOrder,
+  useUpdateLocalOrder, type LocalOrder,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { OrderDetails } from "./order-status";
@@ -12,13 +13,27 @@ export function PaymentResult({ lang }: { lang: Lang }) {
   const ar = lang === "ar";
   const params = new URLSearchParams(window.location.search);
   const id = params.get("order") ?? "", token = params.get("token") ?? "";
+  const provider = params.get("provider") === "stripe" ? "stripe" : "myfatoorah";
+  const stripeCancellation = provider === "stripe" && window.location.pathname.endsWith("/payment/cancelled");
   const valid = /^[a-f0-9-]{36}$/.test(id) && /^[a-f0-9]{64}$/.test(token);
   const qc = useQueryClient();
+  const cancelAttempted = useRef(false);
+  const cancelStripe = useCancelStripeCheckout();
   const q = useGetPaymentOrder({ id, token }, { query: {
     enabled: valid, retry: false, refetchInterval: query =>
-      query.state.data?.financialStatus === "PAID" ? false : 10000,
+      ["PAID", "FAILED", "CANCELLED", "REFUNDED", "PARTIALLY_REFUNDED"].includes(query.state.data?.financialStatus ?? "") ? false : 10000,
   } });
   const status = q.data?.financialStatus;
+  useEffect(() => {
+    if (!valid || !stripeCancellation || cancelAttempted.current) return;
+    cancelAttempted.current = true;
+    cancelStripe.mutate({ data: { orderId: id, token } }, {
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: getGetPaymentOrderQueryKey({ id, token }) });
+        void qc.invalidateQueries({ queryKey: getGetCartQueryKey() });
+      },
+    });
+  }, [valid, stripeCancellation, id, token, qc, cancelStripe.mutate]);
   useEffect(() => {
     document.querySelector('meta[name="robots"]')?.setAttribute("content", "noindex, nofollow");
     const oldTitle = document.title;
@@ -29,13 +44,19 @@ export function PaymentResult({ lang }: { lang: Lang }) {
   const title = !valid || q.isError ? (ar ? "تعذر التحقق من الطلب" : "Unable to verify this order")
     : q.isLoading ? (ar ? "جارٍ التحقق من الدفع" : "Checking payment")
     : status === "PAID" ? (ar ? "تم الدفع بنجاح" : "Payment confirmed")
+    : status === "REFUNDED" ? (ar ? "تم رد المبلغ" : "Payment refunded")
+    : status === "PARTIALLY_REFUNDED" ? (ar ? "تم رد جزء من المبلغ" : "Part of the payment was refunded")
     : status === "FAILED" ? (ar ? "لم تنجح محاولة الدفع" : "Payment attempt failed")
     : status === "CANCELLED" ? (ar ? "تم إلغاء محاولة الدفع" : "Payment attempt cancelled")
     : (ar ? "الدفع قيد التحقق" : "Payment verification pending");
   return <section className="container-wide py-16 max-w-3xl">
     <span className="eyebrow">Amore Cookies</span><h1 className="serif text-4xl text-[#5B0D1E] mt-4" role="status">{title}</h1>
     <p className="mt-5 text-sm leading-7 text-[#795963]">{status === "PAID"
-      ? (ar ? "تأكدنا من عملية الدفع لدى ماي فاتورة. احتفظي برقم الطلب للمتابعة." : "Your payment was verified with MyFatoorah. Keep your order number for tracking.")
+      ? (provider === "stripe"
+        ? (ar ? "تأكدنا من دفعة الاختبار عبر حدث Stripe موقّع. لم تُحصّل أي أموال حقيقية." : "The Stripe test payment was confirmed by a signed event. No real money was charged.")
+        : (ar ? "تأكدنا من عملية الدفع لدى ماي فاتورة. احتفظي برقم الطلب للمتابعة." : "Your payment was verified with MyFatoorah. Keep your order number for tracking."))
+      : status === "REFUNDED" || status === "PARTIALLY_REFUNDED"
+        ? (ar ? "وصل تأكيد الاسترداد من مزود الدفع. لم تُعدّل بيانات الطلب الأصلية." : "The provider confirmed the refund. The original order details were preserved.")
       : (ar ? "لا تُعتبر زيارة هذه الصفحة إثباتاً للدفع. نعتمد فقط الحالة المؤكدة من مزود الدفع. لا تعيدي الدفع إذا كانت العملية قيد التحقق." : "Opening this page is not proof of payment. Only the provider-verified status counts. Do not pay again while verification is pending.")}</p>
     {q.data&&<div className="mt-7"><OrderDetails order={q.data} lang={lang}/></div>}
     {valid&&<button className="btn-outline mt-6" disabled={q.isFetching} onClick={()=>q.refetch()}>{ar?'تحديث الحالة':'Refresh status'}</button>}
@@ -57,10 +78,12 @@ function LocalOrderCard({ order, lang, refresh }: { order: LocalOrder; lang: Lan
       ? <p className="text-xs text-[#795963]" data-testid="admin-delivery-location">{ar?'موقع التوصيل المؤكد':'Confirmed delivery point'}: <span dir="ltr">{order.address.location.latitude.toFixed(6)}, {order.address.location.longitude.toFixed(6)}</span></p>
       : <p className="text-xs text-[#795963]">{ar?'طلب سابق بدون إحداثيات':'Historical order without coordinates'}</p>}
     {order.note&&<p className="text-xs">{order.note}</p>}
+    <p className="text-xs text-[#795963]">{ar?'مزود الدفع':'Payment provider'}: {order.paymentProvider==='stripe'?'Stripe Test Mode':'MyFatoorah'}</p>
     <p className="text-xs text-[#795963]">{ar?'التوصيل':'Delivery'}: {order.shipping} KWD · {ar?'حالة المخزون':'Inventory'}: {order.stockStatus}</p>
     <div className="flex flex-wrap gap-3">
       {order.financialStatus==='PAID'&&order.stockStatus==='reserved'&&stage&&<button className="btn-primary" disabled={update.isPending} onClick={()=>update.mutate({id:order.id,data:{stage:stage as 'preparing'|'out_for_delivery'|'delivered'}},{onSuccess:refresh})}>{label[stage]}</button>}
-      {order.financialStatus!=='PAID'&&<button className="btn-outline" disabled={reconcile.isPending} onClick={()=>reconcile.mutate({id:order.id},{onSuccess:refresh})}>{ar?'التحقق من الدفع':'Recheck payment'}</button>}
+      {order.paymentProvider!=='stripe'&&!['PAID','REFUNDED','PARTIALLY_REFUNDED'].includes(order.financialStatus)&&<button className="btn-outline" disabled={reconcile.isPending} onClick={()=>reconcile.mutate({id:order.id},{onSuccess:refresh})}>{ar?'التحقق من الدفع':'Recheck payment'}</button>}
+      {order.paymentProvider==='stripe'&&!['PAID','REFUNDED','PARTIALLY_REFUNDED','CANCELLED','FAILED'].includes(order.financialStatus)&&<p className="text-xs text-[#795963]">{ar?'دفعة Stripe للاختبار؛ الحالة تصل عبر webhook موثّق.':'Stripe test payment; status arrives through the verified webhook.'}</p>}
     </div>
     {(update.isError||reconcile.isError)&&<p role="alert" className="text-xs text-red-700">{update.error?.message||reconcile.error?.message}</p>}
   </article>;
@@ -70,8 +93,8 @@ export function LocalOrdersAdmin({ lang }: { lang: Lang }) {
   const q = useListLocalOrders({ query: { refetchInterval: 30000 } });
   const refresh = () => { qc.invalidateQueries({ queryKey: getListLocalOrdersQueryKey() }); };
   return <section className="grid gap-5">
-    <div className="flex justify-between gap-4 items-center"><h2 className="font-display text-2xl text-[#5B0D1E]">{ar?'طلبات أموري ومدفوعات ماي فاتورة':'Amore orders & MyFatoorah payments'}</h2><button className="btn-outline" onClick={()=>q.refetch()}>{ar?'تحديث':'Refresh'}</button></div>
-    <p className="text-xs leading-6 text-[#795963]">{ar?'الطلبات الجديدة تُدار هنا. تأكيد الدفع آلي بعد التحقق من ماي فاتورة ولا يمكن تحديده يدوياً.':'New orders are managed here. Payment is confirmed automatically through MyFatoorah verification and cannot be set manually.'}</p>
+    <div className="flex justify-between gap-4 items-center"><h2 className="font-display text-2xl text-[#5B0D1E]">{ar?'طلبات أموري ومدفوعاتها':'Amore orders & payments'}</h2><button className="btn-outline" onClick={()=>q.refetch()}>{ar?'تحديث':'Refresh'}</button></div>
+    <p className="text-xs leading-6 text-[#795963]">{ar?'تُحفظ الطلبات في Supabase. يتم تأكيد الدفع من مزود الخدمة فقط ولا يمكن تحديده يدوياً.':'Orders are stored in Supabase. Payment is confirmed only by the provider and cannot be set manually.'}</p>
     {q.isLoading&&<p>{ar?'جارٍ التحميل…':'Loading…'}</p>}
     {q.isError&&<p role="alert">{ar?'تعذر تحميل الطلبات.':'Orders could not be loaded.'}</p>}
     {q.data?.length===0&&<p className="card-surface p-6 text-sm">{ar?'لا توجد طلبات محلية بعد.':'No local orders yet.'}</p>}

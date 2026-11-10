@@ -179,6 +179,20 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/OrderStatus" }
+  /payments/stripe/cancel:
+    post:
+      operationId: cancelStripeCheckout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StripeCheckoutCancelInput" }
+      responses:
+        "200":
+          description: Stripe test Checkout cancellation status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StripeCheckoutCancelResult" }
   /admin/local-orders:
     get:
       operationId: listLocalOrders
@@ -682,8 +696,20 @@ components:
         email: { type: string, format: email }
         phone: { type: string, maxLength: 30 }
         note: { type: string, maxLength: 2000 }
+        provider: { type: string, enum: [myfatoorah, stripe] }
         address:
           $ref: "#/components/schemas/CheckoutAddressInput"
+    StripeCheckoutCancelInput:
+      type: object
+      required: [orderId, token]
+      properties:
+        orderId: { type: string, format: uuid }
+        token: { type: string, pattern: "^[a-f0-9]{64}$" }
+    StripeCheckoutCancelResult:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [cancelled, pending, paid, partially_refunded, refunded] }
     DeliveryLocation:
       type: object
       required: [latitude, longitude]
@@ -789,13 +815,15 @@ components:
         productId: { type: string, format: uuid }
     PaymentAvailability:
       type: object
-      required: [enabled, shippingFils, methods]
+      required: [enabled, shippingFils, methods, stripeTestEnabled, stripeTestShippingFils]
       properties:
         enabled: { type: boolean }
         shippingFils: { type: [integer, "null"] }
         methods:
           type: array
           items: { type: string }
+        stripeTestEnabled: { type: boolean }
+        stripeTestShippingFils: { type: [integer, "null"] }
     OrderFulfillmentInput:
       type: object
       required: [stage]
@@ -810,7 +838,7 @@ components:
       allOf:
         - { $ref: "#/components/schemas/OrderStatus" }
         - type: object
-          required: [id, phone, address, note, subtotal, shipping, stockStatus, invoiceId]
+          required: [id, phone, address, note, subtotal, shipping, stockStatus, invoiceId, paymentProvider]
           properties:
             id: { type: string }
             phone: { type: string }
@@ -820,6 +848,7 @@ components:
             shipping: { type: string }
             stockStatus: { type: string }
             invoiceId: { type: string }
+            paymentProvider: { type: string, enum: [myfatoorah, stripe] }
     AuthUser:
       type: object
       required: [id, email, displayName, emailVerified, role]

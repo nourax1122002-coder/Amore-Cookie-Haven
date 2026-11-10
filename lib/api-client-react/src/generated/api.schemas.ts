@@ -290,6 +290,14 @@ export const CheckoutInputLang = {
   en: 'en',
 } as const;
 
+export type CheckoutInputProvider = typeof CheckoutInputProvider[keyof typeof CheckoutInputProvider];
+
+
+export const CheckoutInputProvider = {
+  myfatoorah: 'myfatoorah',
+  stripe: 'stripe',
+} as const;
+
 export interface DeliveryLocation {
   /**
      * @minimum -90
@@ -339,7 +347,29 @@ export interface CheckoutInput {
   phone?: string;
   /** @maxLength 2000 */
   note?: string;
+  provider?: CheckoutInputProvider;
   address?: CheckoutAddressInput;
+}
+
+export interface StripeCheckoutCancelInput {
+  orderId: string;
+  /** @pattern ^[a-f0-9]{64}$ */
+  token: string;
+}
+
+export type StripeCheckoutCancelResultStatus = typeof StripeCheckoutCancelResultStatus[keyof typeof StripeCheckoutCancelResultStatus];
+
+
+export const StripeCheckoutCancelResultStatus = {
+  cancelled: 'cancelled',
+  pending: 'pending',
+  paid: 'paid',
+  partially_refunded: 'partially_refunded',
+  refunded: 'refunded',
+} as const;
+
+export interface StripeCheckoutCancelResult {
+  status: StripeCheckoutCancelResultStatus;
 }
 
 export interface InquiryInput {
@@ -478,6 +508,9 @@ export interface PaymentAvailability {
   /** @nullable */
   shippingFils: number | null;
   methods: string[];
+  stripeTestEnabled: boolean;
+  /** @nullable */
+  stripeTestShippingFils: number | null;
 }
 
 export type OrderFulfillmentInputStage = typeof OrderFulfillmentInputStage[keyof typeof OrderFulfillmentInputStage];
@@ -497,6 +530,14 @@ export interface OperationResult {
   ok: boolean;
 }
 
+export type LocalOrderPaymentProvider = typeof LocalOrderPaymentProvider[keyof typeof LocalOrderPaymentProvider];
+
+
+export const LocalOrderPaymentProvider = {
+  myfatoorah: 'myfatoorah',
+  stripe: 'stripe',
+} as const;
+
 export type LocalOrder = OrderStatus & {
   id: string;
   phone: string;
@@ -506,6 +547,7 @@ export type LocalOrder = OrderStatus & {
   shipping: string;
   stockStatus: string;
   invoiceId: string;
+  paymentProvider: LocalOrderPaymentProvider;
 };
 
 export type AuthUserRole = typeof AuthUserRole[keyof typeof AuthUserRole];

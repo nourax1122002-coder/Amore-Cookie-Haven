@@ -18,6 +18,10 @@ import {
 } from "./myfatoorah";
 import { reserveStock, releaseStock, stockLock } from "./order-stock";
 import { getAuthenticatedUser } from "./auth";
+import {
+  cancelStripeTestCheckout, createStripeTestCheckout, stripeTestAvailability,
+  safeStripeTestCheckoutUrl,
+} from "./stripe-functions";
 
 export const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 function receiptToken(id: string) {
@@ -59,22 +63,58 @@ export async function enabledMethods() {
 export async function paymentAvailability() {
   const config = paymentConfiguration();
   const settings = await readSettings();
-  return { enabled: config.ready && settings.checkoutEnabled, shippingFils: config.shippingFils,
-    methods: config.ready && settings.checkoutEnabled ? await enabledMethods() : [] };
+  const stripe = await stripeTestAvailability();
+  const myfatoorahConfigured = config.ready && settings.checkoutEnabled;
+  let methods: string[] = [];
+  let myfatoorahEnabled = myfatoorahConfigured;
+  if (myfatoorahConfigured) {
+    try { methods = await enabledMethods(); }
+    catch { myfatoorahEnabled = false; }
+  }
+  return { enabled: myfatoorahEnabled, shippingFils: config.shippingFils,
+    methods: myfatoorahEnabled ? methods : [],
+    stripeTestEnabled: stripe.stripeTestEnabled, stripeTestShippingFils: stripe.stripeTestShippingFils };
 }
-function resultUrl(order: CustomerOrder) {
+function resultUrl(order: CustomerOrder, origin = paymentConfiguration().origin) {
   const state = order.paymentStatus === "paid" ? "success" : order.paymentStatus === "failed" ? "failure"
     : order.paymentStatus === "cancelled" ? "cancelled" : "pending";
-  return `${paymentConfiguration().origin}/payment/${state}?order=${order.id}&token=${receiptToken(order.id)}`;
+  const provider = order.paymentProvider === "stripe" ? "&provider=stripe" : "";
+  return `${origin}/payment/${state}?order=${order.id}&token=${receiptToken(order.id)}${provider}`;
+}
+function requestOrigin(req: Request, fallback: string) {
+  const origin = req.get("origin");
+  try {
+    const parsed = new URL(origin || fallback);
+    const local = ["localhost", "127.0.0.1"].includes(parsed.hostname);
+    const replitHost = parsed.hostname.endsWith(".replit.dev") || parsed.hostname.endsWith(".replit.app");
+    const vercelHost = parsed.hostname.endsWith(".vercel.app");
+    const configuredOrigin = Boolean(fallback) && parsed.origin === fallback;
+    if ((!local && parsed.protocol !== "https:") || (local && !["http:", "https:"].includes(parsed.protocol))
+      || (!local && !replitHost && !vercelHost && !configuredOrigin)
+      || parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) throw new Error();
+    return parsed.origin;
+  } catch {
+    throw new HttpError(400, "The secure checkout origin could not be verified.");
+  }
 }
 export async function localCheckout(req: Request, body: ReturnType<typeof StartCheckoutBody.parse>, res?: Response) {
+  const provider = body.provider ?? "myfatoorah";
   const config = paymentConfiguration();
-  if (!config.ready || !(await readSettings()).checkoutEnabled) throw new HttpError(503, "Live payments are awaiting merchant approval and configuration. / الدفع الحقيقي بانتظار اعتماد حساب التاجر وإكمال الإعدادات.");
+  const settings = await readSettings();
+  const stripe = provider === "stripe" ? await stripeTestAvailability() : null;
+  if (provider === "stripe" && (!stripe?.stripeTestEnabled || stripe.stripeTestShippingFils === null)) {
+    throw new HttpError(503, "Stripe Test Mode is not configured. / وضع اختبار Stripe غير مهيأ.");
+  }
+  if (provider === "myfatoorah" && (!config.ready || !settings.checkoutEnabled)) {
+    throw new HttpError(503, "Live payments are awaiting merchant approval and configuration. / الدفع الحقيقي بانتظار اعتماد حساب التاجر وإكمال الإعدادات.");
+  }
+  const shippingFils = provider === "stripe" ? stripe!.stripeTestShippingFils! : config.shippingFils!;
+  const origin = provider === "stripe" ? requestOrigin(req, config.origin) : config.origin;
   const phone = normalizePhone(body.phone ?? "");
   if (!phone || !phone.startsWith("965") || phone.length !== 11) throw new HttpError(400, "Enter a Kuwait phone number. / يرجى إدخال رقم هاتف كويتي صحيح.");
   const address = checkoutAddress(body.address);
   if (!body.requestKey) throw new HttpError(400, "Checkout reference is missing. Refresh the page.");
-  await enabledMethods(); // Never create a payable invoice with missing required methods.
+  if (provider === "myfatoorah") await enabledMethods(); // Never create an invoice without the approved methods.
   const id = cartId(req);
   const cart = await rawCart(id);
   if (!id || !cart?.lines.nodes.length) throw new HttpError(409, "Your bag is empty. / السلة فارغة.");
@@ -91,17 +131,20 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
     return { variantId, quantity, title: product.title, unitFils };
   });
   const subtotalFils = items.reduce((sum, item) => sum + item.unitFils * item.quantity, 0);
-  const totalFils = subtotalFils + config.shippingFils!;
+  const totalFils = subtotalFils + shippingFils;
   if (!Number.isSafeInteger(totalFils) || totalFils > 2_000_000_000) throw new HttpError(409, "Invalid order total.");
   const cartHash = digest(id);
-  const requestHash = digest(JSON.stringify({ cartHash, items, address, phone, note: body.note ?? "", totalFils }));
+  const requestPayload = { cartHash, items, address, phone, note: body.note ?? "", totalFils };
+  const requestHash = digest(JSON.stringify(provider === "stripe" ? { ...requestPayload, provider } : requestPayload));
   return stockLock(async () => {
     // Prevent another invoice for the same cart, including a double-click/new tab.
     let order = await getLatestOrderForCart(cartHash);
     if (order && !(order.stockStatus === "released" && order.paymentStatus !== "paid")) {
       if (order.requestHash !== requestHash) throw new HttpError(409, "This bag already has a payment attempt. Review its order before starting again. / للسلة محاولة دفع مسجلة؛ راجعي طلبك قبل إنشاء محاولة جديدة.");
-      if (order.paymentStatus === "paid") return { url: resultUrl(order) };
-      if (order.paymentUrl && order.expiresAt > new Date() && order.stockStatus === "reserved") return { url: safePaymentUrl(order.paymentUrl) };
+       if (order.paymentStatus === "paid") return { url: resultUrl(order, provider === "stripe" ? origin : undefined) };
+       if (order.paymentUrl && order.expiresAt > new Date() && order.stockStatus === "reserved") {
+         return { url: order.paymentProvider === "stripe" ? safeStripeTestCheckoutUrl(order.paymentUrl) : safePaymentUrl(order.paymentUrl) };
+       }
       // Unknown POST outcome: NEVER create another invoice automatically.
       throw new HttpError(409, "This payment needs review. Do not pay again. / هذه العملية تحتاج مراجعة، لا تعيدي الدفع.");
     }
@@ -113,7 +156,8 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
     order = await insertCustomerOrder({
       id: orderId, number: `AM-${randomUUID().replaceAll("-", "").slice(0, 16).toUpperCase()}`,
       cartHash, requestKey: body.requestKey!, requestHash, tokenHash: digest(receiptToken(orderId)),
-      phone, address, note: body.note ?? "", items, subtotalFils, shippingFils: config.shippingFils!, totalFils,
+       phone, address, note: body.note ?? "", items, subtotalFils, shippingFils, totalFils,
+       ...(provider === "stripe" ? { paymentProvider: "stripe" as const } : {}),
       userId: account?.id ?? null,
       expiresAt: new Date(Date.now() + 30 * 60_000),
     });
@@ -123,6 +167,12 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
     const state = `order=${order.id}&token=${receiptToken(order.id)}`;
     await updateCustomerOrder(order.id, { paymentStatus: "creating", updatedAt: new Date() });
     try {
+      if (provider === "stripe") {
+        const url = await createStripeTestCheckout({
+          orderId: order.id, token: receiptToken(order.id), origin, lang: body.lang ?? "en",
+        });
+        return { url };
+      }
       const payment = await myfatoorahRequest<{ InvoiceId: string; PaymentURL: string }>("/v3/payments", {
         Order: { Amount: totalFils / 1000, Currency: "KWD", ExternalIdentifier: order.id },
         PaymentExpiry: order.expiresAt.toISOString(), OperationType: "PAY", NotificationOption: "LINK",
@@ -170,6 +220,14 @@ export async function callbackResult(id: string, token: string, paymentId: strin
   await authorizedOrder(id, token);
   return resultUrl(await verifyPayment(id, paymentId));
 }
+export async function cancelStripeOrder(id: string, token: string) {
+  const order = await authorizedOrder(id, token);
+  if (order.paymentProvider !== "stripe") throw new HttpError(404, "Order not found.");
+  if (["paid", "partially_refunded", "refunded"].includes(order.paymentStatus)) {
+    return { status: order.paymentStatus };
+  }
+  return cancelStripeTestCheckout({ orderId: id, token });
+}
 export async function localTracking(number: string, phone: string) {
   const order = await getCustomerOrderByNumber(number.replace(/^#/, "").toUpperCase());
   const matched = order && phoneMatches(phone, order.phone);
@@ -180,7 +238,8 @@ export async function localOrderList() {
   const rows = await listCustomerOrders(100);
   return rows.map(order => ({ id: order.id, ...orderSummary(order), phone: order.phone, address: order.address, note: order.note,
     subtotal: (order.subtotalFils / 1000).toFixed(3), shipping: (order.shippingFils / 1000).toFixed(3),
-    stockStatus: order.stockStatus, invoiceId: order.invoiceId ?? "" }));
+    stockStatus: order.stockStatus, invoiceId: order.invoiceId ?? "",
+    paymentProvider: order.paymentProvider ?? "myfatoorah" }));
 }
 export async function updateFulfillment(id: string, stage: string) {
   const order = await findOrder(id);
@@ -194,6 +253,9 @@ export async function updateFulfillment(id: string, stage: string) {
 // Never release stock solely because a callback said "failed" or time elapsed.
 export async function reconcileOrder(id: string) {
   let order = await findOrder(id);
+  if (order.paymentProvider === "stripe") {
+    throw new HttpError(409, "Stripe Test Mode payments are verified by signed webhooks. Refresh the order status.");
+  }
   if (order.paymentStatus === "paid" || order.stockStatus === "released") return;
   if (!order.invoiceId && order.paymentStatus === "pending") {
     // No provider POST was started. Finish a durable ambiguous stock write with

@@ -2,13 +2,13 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import {
-  GetPaymentAvailabilityResponse, GetPaymentOrderResponse, ListLocalOrdersResponse,
-  UpdateLocalOrderBody,
+  CancelStripeCheckoutBody, CancelStripeCheckoutResponse, GetPaymentAvailabilityResponse,
+  GetPaymentOrderResponse, ListLocalOrdersResponse, UpdateLocalOrderBody,
 } from "@workspace/api-zod";
 import { requireAdmin } from "../middlewares/security";
 import {
   authorizedOrder, callbackResult, localOrderList, orderSummary, paymentAvailability,
-  reconcileOrder, updateFulfillment, verifyPayment,
+  cancelStripeOrder, reconcileOrder, updateFulfillment, verifyPayment,
   digest,
 } from "../lib/local-orders";
 import { webhookSchema, validWebhookSignature } from "../lib/myfatoorah";
@@ -19,6 +19,10 @@ const router = Router();
 const publicLimit = rateLimit({ windowMs: 60_000, limit: 40, standardHeaders: "draft-8", legacyHeaders: false });
 router.use("/payments", (_req, res, next) => { res.setHeader("Cache-Control", "no-store"); res.setHeader("Referrer-Policy", "no-referrer"); next(); });
 router.get("/payments/availability", publicLimit, async (_req, res) => { res.json(GetPaymentAvailabilityResponse.parse(await paymentAvailability())); });
+router.post("/payments/stripe/cancel", publicLimit, async (req, res) => {
+  const input = CancelStripeCheckoutBody.parse(req.body);
+  res.json(CancelStripeCheckoutResponse.parse(await cancelStripeOrder(input.orderId, input.token)));
+});
 router.get("/payments/order", publicLimit, async (req, res) => {
   const order = await authorizedOrder(String(req.query.id ?? ""), String(req.query.token ?? ""));
   if (order.paymentStatus === "paid" && cartId(req) && digest(cartId(req)!) === order.cartHash) {

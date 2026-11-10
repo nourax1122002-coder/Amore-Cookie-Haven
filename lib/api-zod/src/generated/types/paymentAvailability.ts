@@ -11,4 +11,7 @@ export interface PaymentAvailability {
   /** @nullable */
   shippingFils: number | null;
   methods: string[];
+  stripeTestEnabled: boolean;
+  /** @nullable */
+  stripeTestShippingFils: number | null;
 }

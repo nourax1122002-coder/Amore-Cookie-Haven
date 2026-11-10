@@ -460,22 +460,31 @@ function CartPage({lang}:{lang:Lang}) {
 function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shopCurrency:string;settings:StoreSettings}}) {
   const c=copy[lang], cartQ=useGetCart({query:{queryKey:getGetCartQueryKey()}}), cart=cartQ.data;
   const start=useStartCheckout();const [phone,setPhone]=useState(''),[note,setNote]=useState('');
+  const [provider,setProvider]=useState<'myfatoorah'|'stripe'>('stripe');
   const [displayCurrency,setDisplayCurrency]=useDisplayCurrency();
   const [address,setAddress]=useState({area:'',block:'',street:'',house:''});
   const [deliveryLocation,setDeliveryLocation]=useState<DeliveryLocation|null>(null);
   const [requestKey]=useState(()=>crypto.randomUUID());
   const availability=useGetPaymentAvailability({query:{refetchInterval:60000}});
-  const paymentReady=Boolean(store?.checkoutReady&&availability.data?.enabled&&cart?.checkoutReady&&cart.lines.length);
+  const stripeAvailable=availability.data?.stripeTestEnabled===true;
+  const myfatoorahAvailable=Boolean(store?.checkoutReady&&availability.data?.enabled);
+  const stripeReady=Boolean(stripeAvailable&&cart?.checkoutReady&&cart.lines.length);
+  const myfatoorahReady=Boolean(myfatoorahAvailable&&cart?.checkoutReady&&cart.lines.length);
+  useEffect(()=>{
+    if(stripeReady&&!myfatoorahReady&&provider!=='stripe')setProvider('stripe');
+    else if(myfatoorahReady&&!stripeReady&&provider!=='myfatoorah')setProvider('myfatoorah');
+  },[stripeReady,myfatoorahReady,provider]);
+  const paymentReady=provider==='stripe'?stripeReady:myfatoorahReady;
   const ready=paymentReady&&Boolean(deliveryLocation);
   const subtotal=cart?.lines.reduce((sum,line)=>sum+Math.round(line.price*1000)*line.quantity,0)??0;
-  const shipping=availability.data?.shippingFils;
+  const shipping=provider==='stripe'?availability.data?.stripeTestShippingFils:availability.data?.shippingFils;
   const checkoutTotalKwd=(subtotal+(shipping??0))/1000;
   const conversionCurrency:GetCurrencyConversionParams['currency']=displayCurrency==='KWD'?'USD':displayCurrency;
   const totalConversion=useGetCurrencyConversion({
     amount:Math.max(0.001,Math.round(checkoutTotalKwd*1000)/1000),currency:conversionCurrency,
   },{query:{enabled:Boolean(displayCurrency!=='KWD'&&checkoutTotalKwd>0),retry:false,staleTime:86_400_000}});
-  return <div className="container-wide py-14 md:py-20"><span className="eyebrow">{c.checkout}</span><p className="mt-4 text-xs text-[#896a71] max-w-2xl">{lang==='ar'?'تتم معالجة الدفع بأمان عبر ماي فاتورة. لا نجمع بيانات بطاقتك في الموقع.':'Payments are processed securely by MyFatoorah. We never collect your card details.'}</p>
-    {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={e=>{e.preventDefault();if(!ready||!deliveryLocation||Object.values(address).some(value=>!value.trim()))return;start.mutate({data:{requestKey,lang,address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim(),location:deliveryLocation},phone:phone.trim(),note:note||undefined}},{onSuccess:r=>{window.location.assign(r.url)}})}}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
+  return <div className="container-wide py-14 md:py-20"><span className="eyebrow">{c.checkout}</span><p className="mt-4 text-xs text-[#896a71] max-w-2xl">{provider==='stripe'?(lang==='ar'?'وضع اختبار Stripe فقط؛ لا تُخصم أي مبالغ حقيقية. تتم المعالجة في صفحة Stripe الآمنة.':'Stripe Test Mode only. No real payments are processed; checkout opens on Stripe’s secure page.'):(lang==='ar'?'تتم معالجة الدفع بأمان عبر ماي فاتورة. لا نجمع بيانات بطاقتك في الموقع.':'Payments are processed securely by MyFatoorah. We never collect your card details.')}</p>
+    {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={e=>{e.preventDefault();if(!ready||!deliveryLocation||Object.values(address).some(value=>!value.trim()))return;start.mutate({data:{requestKey,lang,provider,address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim(),location:deliveryLocation},phone:phone.trim(),note:note||undefined}},{onSuccess:r=>{window.location.assign(r.url)}})}}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
       <div inert={start.isPending}><DeliveryLocationPicker lang={lang} value={deliveryLocation} onChange={setDeliveryLocation}/></div>
       <fieldset className="grid sm:grid-cols-2 gap-5">
         <legend className="field-label mb-3">{lang==='ar'?'عنوان التوصيل':'Delivery address'}</legend>
@@ -488,10 +497,14 @@ function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shop
       </fieldset>
       <label><span className="field-label">{c.phone} *</span><input className="field" name="phone" type="tel" required minLength={8} maxLength={30} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)}/></label>
       <label><span className="field-label">{c.note}</span><textarea className="field min-h-28" maxLength={2000} value={note} onChange={e=>setNote(e.target.value)}/></label>
-      <div className="rounded-xl bg-[#f8e8ec] p-4 text-xs leading-6 text-[#795963]">{lang==='ar'?'تظهر طرق الدفع المفعّلة لحساب المتجر في صفحة ماي فاتورة الآمنة.':'Available methods appear on MyFatoorah’s secure payment page.'}{availability.data?.methods.length?<p dir="ltr" className="mt-2">{availability.data.methods.join(' · ')}</p>:null}</div>
-      {!paymentReady&&<p role="status" className="rounded-xl bg-[#fff1f3] p-4 text-xs leading-6 text-[#763246]">{lang==='ar'?'الدفع الحقيقي غير مفعّل بعد. بانتظار اعتماد حساب التاجر والرسوم وإعدادات التوصيل.':'Live payments are not enabled yet. Merchant approval, accepted fees and delivery configuration are required.'}</p>}
+       {(stripeAvailable||myfatoorahAvailable)&&<fieldset className="rounded-xl border border-[#efdee2] p-4 grid gap-3"><legend className="field-label px-1">{lang==='ar'?'طريقة الدفع':'Payment method'}</legend>
+         {stripeAvailable&&<label className="flex items-start gap-3 text-xs leading-5 text-[#5B0D1E]"><input className="mt-1 accent-[#5B0D1E]" type="radio" name="payment-provider" value="stripe" checked={provider==='stripe'} onChange={()=>setProvider('stripe')}/><span><strong>Stripe · {lang==='ar'?'وضع الاختبار':'Test Mode'}</strong><span className="block text-[#795963]">{lang==='ar'?'اختبار فقط؛ لن يتم تحصيل مبلغ حقيقي.':'Test checkout only; no real charge.'}</span></span></label>}
+         {myfatoorahAvailable&&<label className="flex items-start gap-3 text-xs leading-5 text-[#5B0D1E]"><input className="mt-1 accent-[#5B0D1E]" type="radio" name="payment-provider" value="myfatoorah" checked={provider==='myfatoorah'} onChange={()=>setProvider('myfatoorah')}/><span><strong>MyFatoorah</strong><span className="block text-[#795963]">{lang==='ar'?'الدفع عبر إعدادات المتجر الحالية.':'Use the store’s existing payment setup.'}</span></span></label>}
+       </fieldset>}
+       <div className="rounded-xl bg-[#f8e8ec] p-4 text-xs leading-6 text-[#795963]">{provider==='stripe'?(lang==='ar'?'سيتم تأكيد طلب الاختبار فقط بعد وصول حدث Stripe موقّع والتحقق من بياناته.':'The test order is confirmed only after a signed Stripe event is verified.'):(lang==='ar'?'تظهر طرق الدفع المفعّلة لحساب المتجر في صفحة ماي فاتورة الآمنة.':'Available methods appear on MyFatoorah’s secure payment page.')}{provider==='myfatoorah'&&availability.data?.methods.length?<p dir="ltr" className="mt-2">{availability.data.methods.join(' · ')}</p>:null}</div>
+       {!paymentReady&&<p role="status" className="rounded-xl bg-[#fff1f3] p-4 text-xs leading-6 text-[#763246]">{provider==='stripe'?(lang==='ar'?'وضع اختبار Stripe غير جاهز حالياً؛ تحققي من إعداد مفاتيح الاختبار ورسوم التوصيل في Supabase.':'Stripe Test Mode is not ready. Check the test keys and test delivery amount in Supabase.'):(lang==='ar'?'الدفع الحقيقي غير مفعّل بعد. بانتظار اعتماد حساب التاجر والرسوم وإعدادات التوصيل.':'Live payments are not enabled yet. Merchant approval, accepted fees and delivery configuration are required.')}</p>}
       {start.isError&&<p role="alert" className="text-xs text-red-700">{start.error.message || (lang==='ar'?'تعذر بدء الدفع. لا تعيدي الدفع إذا كانت هناك عملية قيد التحقق.':'Checkout could not be started. Do not pay again while a payment is being verified.')}</p>}
-      <button disabled={!ready||start.isPending} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:c.checkout}<ExternalLink size={14}/></button>
+       <button disabled={!ready||start.isPending} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:provider==='stripe'?(lang==='ar'?'متابعة إلى Stripe للاختبار':'Continue to Stripe test checkout'):c.checkout}<ExternalLink size={14}/></button>
       </form><aside className="card-surface p-6 h-fit"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.bag}</h2>
       <label htmlFor="checkout-display-currency" className="mt-5 grid gap-2 text-xs font-medium text-[#795963]">{c.displayCurrency}
         <select id="checkout-display-currency" data-testid="checkout-display-currency" className="field w-full py-2" value={displayCurrency} onChange={event=>setDisplayCurrency(event.target.value as DisplayCurrency)}>
@@ -499,7 +512,7 @@ function CheckoutPage({lang,store}:{lang:Lang;store?:{checkoutReady:boolean;shop
         </select>
       </label>
       {cart.lines.map(line=><div key={line.id} className="py-4 border-b border-[#efdee2] text-xs"><div className="flex justify-between gap-4"><span>{line.title} × {line.quantity}</span><strong>{(line.price*line.quantity).toFixed(3)} KWD</strong></div>{displayCurrency!=='KWD'&&<p className="mt-2 text-end text-[#795963]" data-testid={`checkout-line-total-converted-${line.id}`}><CartConvertedAmount amount={line.price*line.quantity} currency={displayCurrency} lang={lang} testId={`checkout-line-total-value-${line.id}`}/></p>}</div>)}
-      <div className="flex justify-between pt-5 text-sm"><span>{lang==='ar'?'التوصيل':'Delivery'}</span><span>{shipping==null?(lang==='ar'?'بانتظار الاعتماد':'Awaiting approval'):`${(shipping/1000).toFixed(3)} KWD`}</span></div>
+       <div className="flex justify-between pt-5 text-sm"><span>{lang==='ar'?'التوصيل':'Delivery'}</span><span>{shipping==null?(lang==='ar'?'بانتظار الاعتماد':'Awaiting approval'):`${(shipping/1000).toFixed(3)} KWD`}</span></div>
       <div className="flex justify-between pt-5 font-semibold text-sm"><span>{c.total}</span><span data-testid="checkout-total">{checkoutTotalKwd.toFixed(3)} KWD</span></div>
       {displayCurrency!=='KWD'&&<div className="mt-3 rounded-xl bg-[#fff7f8] p-3 text-[11px] leading-5 text-[#795963]">
         {totalConversion.isLoading&&<p role="status">{c.conversionLoading}</p>}

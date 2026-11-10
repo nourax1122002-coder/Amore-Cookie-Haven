@@ -302,6 +302,7 @@ export const StartCheckoutBody = zod.object({
   "email": zod.string().email().optional(),
   "phone": zod.string().max(startCheckoutBodyPhoneMax).optional(),
   "note": zod.string().max(startCheckoutBodyNoteMax).optional(),
+  "provider": zod.enum(['myfatoorah', 'stripe']).optional(),
   "address": zod.object({
   "area": zod.string().min(1).max(startCheckoutBodyAddressOneAreaMax),
   "block": zod.string().min(1).max(startCheckoutBodyAddressOneBlockMax),
@@ -327,7 +328,9 @@ export const StartCheckoutResponse = zod.object({
 export const GetPaymentAvailabilityResponse = zod.object({
   "enabled": zod.boolean(),
   "shippingFils": zod.number().int().nullable(),
-  "methods": zod.array(zod.string())
+  "methods": zod.array(zod.string()),
+  "stripeTestEnabled": zod.boolean(),
+  "stripeTestShippingFils": zod.number().int().nullable()
 })
 
 
@@ -349,6 +352,19 @@ export const GetPaymentOrderResponse = zod.object({
   "title": zod.string(),
   "quantity": zod.number().int()
 }))
+})
+
+
+export const cancelStripeCheckoutBodyTokenRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const CancelStripeCheckoutBody = zod.object({
+  "orderId": zod.string().uuid(),
+  "token": zod.string().regex(cancelStripeCheckoutBodyTokenRegExp)
+})
+
+export const CancelStripeCheckoutResponse = zod.object({
+  "status": zod.enum(['cancelled', 'pending', 'paid', 'partially_refunded', 'refunded'])
 })
 
 
@@ -398,7 +414,8 @@ export const ListLocalOrdersResponseItem = zod.object({
   "subtotal": zod.string(),
   "shipping": zod.string(),
   "stockStatus": zod.string(),
-  "invoiceId": zod.string()
+  "invoiceId": zod.string(),
+  "paymentProvider": zod.enum(['myfatoorah', 'stripe'])
 }))
 export const ListLocalOrdersResponse = zod.array(ListLocalOrdersResponseItem)
 

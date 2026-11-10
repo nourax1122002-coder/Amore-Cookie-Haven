@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test:payments": "node test/run-payments.mjs",
+    "test:stripe": "esbuild src/lib/stripe-functions.test.ts --bundle --platform=node --format=esm --outfile=/tmp/amore-stripe-functions.test.mjs && node --test /tmp/amore-stripe-functions.test.mjs",
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "vercel-build": "pnpm --dir ../.. run typecheck:libs && pnpm run typecheck && pnpm --filter @workspace/amore-cookies run typecheck && PORT=18441 BASE_PATH=/ VERCEL_BUILD=1 pnpm --filter @workspace/amore-cookies run build:vercel && pnpm run build && pnpm run test:vercel-storefront",
@@ -21,7 +22,7 @@
     "test:auth": "node test/run-auth.mjs",
     "test:auth-email-limit": "esbuild src/lib/auth-email-limit.test.ts --bundle --platform=node --format=cjs --outfile=/tmp/amore-auth-email-limit.test.cjs && node --test /tmp/amore-auth-email-limit.test.cjs",
     "test:assistant": "node test/run-assistant.mjs",
-    "test": "pnpm run test:orders && pnpm run test:orders:http && pnpm run test:admin:http && pnpm run test:tracking:shared && pnpm run test:payments && pnpm run test:assistant && pnpm run test:currency && pnpm run test:auth-errors && pnpm run test:auth && pnpm run test:auth-email-limit"
+    "test": "pnpm run test:orders && pnpm run test:orders:http && pnpm run test:admin:http && pnpm run test:tracking:shared && pnpm run test:payments && pnpm run test:stripe && pnpm run test:assistant && pnpm run test:currency && pnpm run test:auth-errors && pnpm run test:auth && pnpm run test:auth-email-limit"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
