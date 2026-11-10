@@ -16,10 +16,13 @@ Do not enter the text `N/A` as an Output Directory. If the Vercel build log says
 it is searching in `"N/A"`, disable the Output Directory override or clear that
 field; Vercel is treating the text as a literal folder name.
 
-Vercel detects the Express app exported from the root `index.ts` and serves
-the existing `/api/*` routes through one Function. The root entrypoint avoids
-confusion with generated build output. Do not point Vercel at a standalone copy
-of `artifacts/api-server`; it depends on workspace packages outside that directory.
+Vercel runs the package's `vercel-build` script, which performs the API
+TypeScript checks and then creates the esbuild bundle. It detects the Express
+app through the root `index.mjs`, which exports that bundle from `dist/`.
+This avoids a second TypeScript emit by Vercel after the checked bundle has
+already been produced. Replit continues to start `src/index.ts` as before.
+Do not point Vercel at a standalone copy of `artifacts/api-server`; it depends
+on workspace packages outside that directory.
 
 ## Environment variables
 
