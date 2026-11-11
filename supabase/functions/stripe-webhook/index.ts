@@ -2,10 +2,13 @@ import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import {
   hasStripeTestKeys,
-  isSafeFils,
   nextPaymentStatus,
   validStripeEventMode,
 } from "../_shared/stripe-domain.ts";
+import {
+  convertKwdFilsToUsdMinor,
+  KWD_USD_RATE_SOURCE,
+} from "../_shared/kwd-usd-settlement.ts";
 
 const headers = { "content-type": "application/json", "cache-control": "no-store" };
 type WebhookOrder = {
@@ -18,6 +21,12 @@ type WebhookOrder = {
   total_fils: number;
   stripe_checkout_session_id: string | null;
   stripe_payment_intent_id: string | null;
+  stripe_payment_currency: string | null;
+  stripe_payment_amount_minor: number | string | null;
+  stripe_exchange_rate: number | string | null;
+  stripe_exchange_rate_source: string | null;
+  stripe_exchange_rate_updated_at: string | null;
+  stripe_refunded_amount_minor: number | string;
 };
 
 function respond(status: number, payload: unknown) {
@@ -85,6 +94,54 @@ async function getOrderById(supabase: ReturnType<typeof getSupabase>, id: string
   return data as WebhookOrder | null;
 }
 
+function safeUsdMinor(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 2_000_000_000;
+}
+
+function storedUsdAmount(order: WebhookOrder): number | null {
+  const value = typeof order.stripe_payment_amount_minor === "number"
+    ? order.stripe_payment_amount_minor
+    : Number(order.stripe_payment_amount_minor);
+  return safeUsdMinor(value) && value > 0 ? value : null;
+}
+
+function storedExchangeRate(order: WebhookOrder): number | null {
+  const value = typeof order.stripe_exchange_rate === "number"
+    ? order.stripe_exchange_rate
+    : Number(order.stripe_exchange_rate);
+  return Number.isFinite(value) && value >= 0.1 && value <= 10 ? value : null;
+}
+
+function hasValidUsdSettlement(order: WebhookOrder): boolean {
+  const amount = storedUsdAmount(order);
+  const rate = storedExchangeRate(order);
+  const updatedAt = order.stripe_exchange_rate_updated_at
+    ? Date.parse(order.stripe_exchange_rate_updated_at)
+    : Number.NaN;
+  const rateAge = Date.now() - updatedAt;
+  try {
+    return order.currency === "KWD" && order.stripe_payment_currency === "USD"
+      && amount !== null && rate !== null
+      && order.stripe_exchange_rate_source === KWD_USD_RATE_SOURCE
+      && Number.isFinite(updatedAt) && rateAge >= -5 * 60_000 && rateAge <= 48 * 60 * 60 * 1000
+      && convertKwdFilsToUsdMinor(order.total_fils, rate) === amount;
+  } catch {
+    return false;
+  }
+}
+
+function validSessionMetadata(session: Stripe.Checkout.Session, order: WebhookOrder): boolean {
+  const rate = storedExchangeRate(order);
+  return rate !== null && session.metadata?.order_id === order.id
+    && session.metadata.original_currency === "KWD"
+    && session.metadata.original_total_fils === String(order.total_fils)
+    && session.metadata.stripe_payment_currency === "USD"
+    && session.metadata.stripe_payment_amount_minor === String(storedUsdAmount(order))
+    && session.metadata.exchange_rate === rate.toFixed(10)
+    && session.metadata.exchange_rate_source === KWD_USD_RATE_SOURCE
+    && session.metadata.exchange_rate_updated_at === order.stripe_exchange_rate_updated_at;
+}
+
 async function markPaymentFailed(
   supabase: ReturnType<typeof getSupabase>,
   orderId: string,
@@ -108,9 +165,9 @@ async function markPaymentPaid(
     : session.payment_intent?.id ?? null;
   if (session.livemode !== false || session.id !== order.stripe_checkout_session_id
     || session.status !== "complete" || session.payment_status !== "paid"
-    || session.currency !== "kwd" || session.amount_total !== order.total_fils
-    || session.client_reference_id !== order.id || session.metadata?.order_id !== order.id
-    || !paymentIntentId || order.currency !== "KWD" || order.payment_provider !== "stripe") {
+    || session.currency !== "usd" || session.amount_total !== storedUsdAmount(order)
+    || session.client_reference_id !== order.id || !validSessionMetadata(session, order)
+    || !hasValidUsdSettlement(order) || !paymentIntentId || order.payment_provider !== "stripe") {
     throw new Error("Stripe test payment does not match the saved order");
   }
   if (["refunded", "partially_refunded"].includes(order.payment_status)) return;
@@ -135,26 +192,27 @@ async function markRefund(
   const paymentIntentId = typeof charge.payment_intent === "string"
     ? charge.payment_intent
     : charge.payment_intent?.id;
-  if (charge.livemode !== false || charge.currency !== "kwd" || !paymentIntentId
-    || !isSafeFils(charge.amount_refunded)) {
+  if (charge.livemode !== false || charge.currency !== "usd" || !paymentIntentId
+    || !safeUsdMinor(charge.amount_refunded) || charge.amount_refunded < 1) {
     throw new Error("Invalid Stripe test refund event");
   }
   const { data, error } = await supabase.from("customer_orders").select("*")
     .eq("stripe_payment_intent_id", paymentIntentId).maybeSingle();
   if (error || !data) throw new Error("Stripe refund has no matching order");
   const order = data as WebhookOrder;
-  if (order.payment_provider !== "stripe" || order.currency !== "KWD"
-    || charge.amount !== order.total_fils || charge.amount_refunded > order.total_fils) {
+  const paymentAmount = storedUsdAmount(order);
+  if (order.payment_provider !== "stripe" || !hasValidUsdSettlement(order)
+    || charge.amount !== paymentAmount || charge.amount_refunded > paymentAmount!) {
     throw new Error("Stripe test refund does not match the saved order");
   }
   const paymentStatus = nextPaymentStatus(
-    "refunded", order.payment_status, charge.amount_refunded, order.total_fils,
+    "refunded", order.payment_status, charge.amount_refunded, paymentAmount!,
   );
   if (paymentStatus === order.payment_status && order.payment_status !== "partially_refunded") return;
   const { error: updateError } = await supabase.from("customer_orders").update({
     payment_status: paymentStatus,
     stripe_charge_id: charge.id,
-    stripe_refunded_amount_fils: charge.amount_refunded,
+    stripe_refunded_amount_minor: charge.amount_refunded,
     updated_at: new Date().toISOString(),
   }).eq("id", order.id).eq("stripe_payment_intent_id", paymentIntentId)
     .in("payment_status", ["paid", "partially_refunded", "refunded"]);
@@ -180,20 +238,39 @@ async function processEvent(stripe: Stripe, event: Stripe.Event) {
     case "checkout.session.async_payment_failed": {
       const session = await stripe.checkout.sessions.retrieve((event.data.object as Stripe.Checkout.Session).id);
       if (session.livemode !== false || !session.metadata?.order_id) throw new Error("Invalid Stripe test session");
-      await markPaymentFailed(supabase, session.metadata.order_id, session.id);
+      const order = await getOrderById(supabase, session.metadata.order_id);
+      if (!order || session.currency !== "usd" || session.amount_total !== storedUsdAmount(order)
+        || !hasValidUsdSettlement(order) || !validSessionMetadata(session, order)) {
+        throw new Error("Failed Stripe test session does not match the saved order");
+      }
+      await markPaymentFailed(supabase, order.id, session.id);
       return;
     }
     case "checkout.session.expired": {
       const session = await stripe.checkout.sessions.retrieve((event.data.object as Stripe.Checkout.Session).id);
       if (session.livemode !== false || !session.metadata?.order_id) throw new Error("Invalid Stripe test session");
-      await expireOrder(supabase, session.metadata.order_id, session.id);
+      const order = await getOrderById(supabase, session.metadata.order_id);
+      if (!order || session.id !== order.stripe_checkout_session_id || session.currency !== "usd"
+        || session.amount_total !== storedUsdAmount(order) || !hasValidUsdSettlement(order)
+        || !validSessionMetadata(session, order)) {
+        throw new Error("Expired Stripe test session does not match the saved order");
+      }
+      await expireOrder(supabase, order.id, session.id);
       return;
     }
     case "payment_intent.payment_failed": {
       const intent = event.data.object as Stripe.PaymentIntent;
-      if (intent.currency !== "kwd" || !intent.metadata.order_id) throw new Error("Invalid Stripe test payment intent");
+      if (intent.currency !== "usd" || !intent.metadata.order_id) throw new Error("Invalid Stripe test payment intent");
       const order = await getOrderById(supabase, intent.metadata.order_id);
-      if (!order || order.payment_provider !== "stripe" || intent.amount !== order.total_fils) {
+      if (!order || order.payment_provider !== "stripe" || !hasValidUsdSettlement(order)
+        || intent.amount !== storedUsdAmount(order)
+        || intent.metadata.original_currency !== "KWD"
+        || intent.metadata.original_total_fils !== String(order.total_fils)
+        || intent.metadata.stripe_payment_currency !== "USD"
+        || intent.metadata.stripe_payment_amount_minor !== String(storedUsdAmount(order))
+        || intent.metadata.exchange_rate_source !== KWD_USD_RATE_SOURCE
+        || intent.metadata.exchange_rate !== storedExchangeRate(order)?.toFixed(10)
+        || intent.metadata.exchange_rate_updated_at !== order.stripe_exchange_rate_updated_at) {
         throw new Error("Stripe test payment intent does not match the saved order");
       }
       const { error } = await supabase.from("customer_orders").update({

@@ -77,7 +77,7 @@ const copy: Record<Lang, Record<string, string>> = {
     step1:'Heat the oven', step1t:'Preheat to 175°C.', step2:'Bake from frozen', step2t:'Place cookies in the oven for 10–12 minutes at 150°C.', step3:'Let them rest', step3t:'Take them out and let them cool outside the oven before serving.',
     ingredients:'Ingredients', storage:'Storage & baking', awaiting:'Ingredients awaiting approval.', wholesale:'A good thing for your café.', wholesaleText:'Tell us a little about your café and what you have in mind. We’ll be in touch to explore a fit.',
     inquiry:'Start a café conversation', browse:'Browse the collection', all:'All cookies', details:'Discover this dough', add:'Add to bag', shopBlocked:'Stripe Test Mode checkout is not ready yet. Only test payments will be accepted.', piece:'pieces',
-    checkoutNote:'Prices are in KWD. Live payment opens only after the merchant account, fees and delivery settings are approved.',
+    checkoutNote:'Prices and order records stay in KWD. Stripe Test Mode displays the converted USD payment amount; no real payments are processed.',
     empty:'Your bag is waiting for something lovely.', continue:'Continue browsing', subtotal:'Subtotal', discount:'Discount', total:'Total', shipping:'Shipping is calculated at checkout.',
     review:'Review your bag', checkout:'Pay now', email:'Email', phone:'Phone', note:'Order note (optional)', promo:'Discount code', apply:'Apply code',
     notReady:'Checkout is not available yet. Your bag is saved; please check back later.', policies:'Policies', tracking:'Track an order',
@@ -95,7 +95,7 @@ const copy: Record<Lang, Record<string, string>> = {
     trackingUnavailable:'Order tracking is not available right now. Please try again later.', noProducts:'The collection is being prepared.',
     launch:'A little patience. Something lovely is coming.', checkoutDisabled:'Stripe Test Mode setup pending', awaitingApproval:'Awaiting approved ingredients',
     displayCurrency:'Display price in', conversionLoading:'Loading an indicative conversion…', conversionError:'Currency conversion is temporarily unavailable. The KWD price remains unchanged.',
-    conversionNote:'Approximate price for reference only. Checkout remains in KWD.', rateSources:'Rate sources and dates',
+    conversionNote:'Indicative display conversion only. Order records remain in KWD; Stripe Test Mode uses its own saved USD conversion.', rateSources:'Rate sources and dates',
     rateUpdated:'Rate data updated', rateLabel:'Indicative exchange rate', originalKwd:'Original amount',
   },
   ar: {
@@ -109,7 +109,7 @@ const copy: Record<Lang, Record<string, string>> = {
     step1:'سخّني الفرن', step1t:'سخّني الفرن مسبقاً إلى ١٧٥°م.', step2:'اخبزي العجينة', step2t:'ضعي الكوكيز في الفرن لمدة ١٠–١٢ دقيقة على ١٥٠°م.', step3:'اتركيها ترتاح', step3t:'أخرجي الكوكيز واتركيه يبرد خارج الفرن قبل التقديم.',
     ingredients:'المكونات', storage:'الحفظ والخبز', awaiting:'المكونات بانتظار الاعتماد.', wholesale:'حلاوة تناسب مقهاك.', wholesaleText:'أخبرينا قليلاً عن مقهاك وما تفكرين به. سنتواصل معك لاستكشاف فرص التعاون.',
     inquiry:'ابدئي محادثة للمقاهي', browse:'تصفحي المجموعة', all:'كل الكوكيز', details:'اكتشفي العجينة', add:'أضيفي إلى السلة', shopBlocked:'الدفع التجريبي عبر Stripe غير جاهز بعد. لن تُقبل إلا مدفوعات الاختبار.',
-    checkoutNote:'الأسعار بالدينار الكويتي. يتاح الدفع الحقيقي بعد اعتماد حساب التاجر والرسوم وإعدادات التوصيل.',
+    checkoutNote:'تبقى الأسعار وسجلات الطلب بالدينار الكويتي. يعرض Stripe التجريبي مبلغ الدفع المحوّل إلى الدولار، دون تحصيل أموال حقيقية.',
     empty:'سلتك تنتظر شيئاً لذيذاً.', continue:'تابعي التصفح', subtotal:'المجموع الفرعي', discount:'الخصم', total:'الإجمالي', shipping:'تُحسب رسوم التوصيل في صفحة الدفع.',
     review:'راجعي سلتك', checkout:'الدفع الآن', email:'البريد الإلكتروني', phone:'رقم الهاتف', note:'ملاحظة الطلب (اختياري)', promo:'رمز الخصم', apply:'تطبيق الرمز',
     notReady:'الدفع غير متاح حالياً. سلتك محفوظة، يرجى العودة لاحقاً.', policies:'السياسات', tracking:'تتبع طلب', orderNumber:'رقم الطلب', track:'تحققي من حالة الطلب',
@@ -126,7 +126,7 @@ const copy: Record<Lang, Record<string, string>> = {
     trackingUnavailable:'تتبع الطلب غير متاح حالياً. يرجى المحاولة لاحقاً.', noProducts:'المجموعة قيد التحضير.',
     launch:'قليل من الصبر. شيء جميل قادم.', checkoutDisabled:'إعداد دفع Stripe التجريبي قيد الإكمال', awaitingApproval:'بانتظار اعتماد المكونات', piece:'قطعة',
     displayCurrency:'عرض السعر بعملة', conversionLoading:'جارٍ تحميل السعر التقريبي…', conversionError:'تحويل العملة غير متاح مؤقتاً. يبقى سعر الدينار الكويتي دون تغيير.',
-    conversionNote:'سعر تقريبي للاسترشاد فقط. يتم الدفع بالدينار الكويتي.', rateSources:'مصادر الأسعار وتواريخها',
+    conversionNote:'تحويل استرشادي للعرض فقط. تبقى سجلات الطلب بالدينار، ويستخدم Stripe التجريبي تحويله المحفوظ إلى الدولار.', rateSources:'مصادر الأسعار وتواريخها',
     rateUpdated:'تحديث بيانات الصرف', rateLabel:'سعر الصرف التقريبي', originalKwd:'المبلغ الأصلي بالدينار',
   },
 } as const;
@@ -476,10 +476,13 @@ function CheckoutPage({lang}:{lang:Lang}) {
   const stripeAvailable=availability.data?.stripeTestEnabled===true;
   const stripeReady=Boolean(stripeAvailable&&typeof availability.data?.shippingFils==='number'&&cart?.checkoutReady&&cart.lines.length);
    const ready=stripeReady;
-  const currencyUnavailable=Boolean(start.isError&&start.error?.message.includes('cannot accept KWD'));
+   const currencyUnavailable=Boolean(start.isError&&start.error?.message.includes('cannot accept USD'));
+   const rateUnavailable=Boolean(start.isError&&start.error?.message.includes('exchange rate is temporarily unavailable'));
   const reviewRequired=Boolean(start.isError&&(start.error?.message.includes('This payment needs review')||currencyUnavailable));
   const checkoutError=phoneError||(start.isError?(reviewRequired
-    ?(currencyUnavailable?(lang==='ar'?'حساب Stripe لا يدعم الدينار الكويتي حالياً. لا تعيدي المحاولة حتى يتم تفعيل KWD.':'This Stripe account does not currently support KWD. Do not retry until KWD is enabled.'):(lang==='ar'?'محاولة الدفع تحتاج إلى مراجعة. لا تعيدي المحاولة حتى يتم التحقق من الطلب.':'This payment attempt needs review. Do not retry until the order has been checked.'))
+     ?(currencyUnavailable?(lang==='ar'?'حساب Stripe لا يدعم الدولار لمدفوعات الاختبار حالياً. لم تُنشأ عملية دفع، ويبقى الطلب بالدينار.':'This Stripe account cannot accept USD test payments. No payment was created; the order remains in KWD.'):(lang==='ar'?'محاولة الدفع تحتاج إلى مراجعة. لا تعيدي المحاولة حتى يتم التحقق من الطلب.':'This payment attempt needs review. Do not retry until the order has been checked.'))
+     :rateUnavailable
+       ?(lang==='ar'?'سعر الصرف المجاني للدولار غير متاح أو يحتاج إلى تحديث. لم تُنشأ جلسة دفع؛ حاولي مجدداً بعد قليل.':'The free KWD/USD rate is unavailable or outdated. No payment session was created; please retry shortly.')
     :start.error?.message?.includes('Kuwait phone number')
       ?(lang==='ar'?'أدخلي رقم هاتف كويتي من 8 أرقام، أو أضيفي مفتاح الدولة +965.':'Enter an 8-digit Kuwait number, or include the +965 country code.')
       :start.error?.message|| (lang==='ar'?'تعذر بدء الدفع. لا تعيدي الدفع إذا كانت هناك عملية قيد التحقق.':'Checkout could not be started. Do not pay again while a payment is being verified.')):'');
@@ -503,9 +506,9 @@ function CheckoutPage({lang}:{lang:Lang}) {
       </fieldset>
        <label><span className="field-label">{c.phone} *</span><input className="field" name="phone" type="tel" required minLength={8} maxLength={30} autoComplete="tel" value={phone} onChange={e=>{setPhone(e.target.value);setPhoneError('')}}/><span className="mt-1 block text-[11px] leading-5 text-[#896a71]">{lang==='ar'?'للتوصيل داخل الكويت: 8 أرقام، أو اكتبي +965 قبل الرقم.':'For Kuwait delivery: enter 8 digits or prefix the number with +965.'}</span></label>
       <label><span className="field-label">{c.note}</span><textarea className="field min-h-28" maxLength={2000} value={note} onChange={e=>setNote(e.target.value)}/></label>
-         <p role="status" className={`rounded-xl p-4 text-xs leading-6 ${ready?'bg-[#edf6ec] text-[#42643c]':'bg-[#fff1f3] text-[#763246]'}`}>{ready?(lang==='ar'?'وضع Stripe التجريبي مُعدّ. يجب أن يدعم الحساب عملة KWD قبل إنشاء صفحة الدفع.':'Stripe Test Mode is configured. The account must support KWD before a hosted payment page can be created.'):(lang==='ar'?'الدفع التجريبي غير جاهز بعد. يلزم إعداد مفاتيح Stripe التجريبية ورسوم التوصيل.':'Test checkout is not ready yet. Stripe test credentials and the delivery fee must be configured.')}</p>
+          <p role="status" className={`rounded-xl p-4 text-xs leading-6 ${ready?'bg-[#edf6ec] text-[#42643c]':'bg-[#fff1f3] text-[#763246]'}`}>{ready?(lang==='ar'?'الدفع التجريبي عبر صفحة Stripe الآمنة؛ سيُحوّل إجمالي الطلب إلى USD بسعر يومي موثوق، مع بقاء الأسعار والسجلات الأصلية بـ KWD.':'Stripe hosted Test Mode is ready. The order is converted to USD using a fresh daily rate; catalog prices and order records remain in KWD.'):(lang==='ar'?'الدفع التجريبي غير جاهز بعد. يلزم إعداد مفاتيح Stripe التجريبية ورسوم التوصيل.':'Test checkout is not ready yet. Stripe test credentials and the delivery fee must be configured.')}</p>
        {checkoutError&&<p role="alert" className="text-xs text-red-700">{checkoutError}</p>}
-         <button disabled={!ready||start.isPending||reviewRequired} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:reviewRequired?(currencyUnavailable?(lang==='ar'?'تفعيل KWD مطلوب':'KWD setup required'):(lang==='ar'?'محاولة الدفع قيد المراجعة':'Payment attempt under review')):(lang==='ar'?'الدفع التجريبي عبر Stripe':'Pay with Stripe Test Mode')}<ExternalLink size={14}/></button>
+          <button disabled={!ready||start.isPending||reviewRequired} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:reviewRequired?(currencyUnavailable?(lang==='ar'?'الدولار غير مدعوم':'USD not supported'):(lang==='ar'?'محاولة الدفع قيد المراجعة':'Payment attempt under review')):(lang==='ar'?'الدفع التجريبي عبر Stripe':'Pay with Stripe Test Mode')}<ExternalLink size={14}/></button>
       </form><aside className="card-surface p-6 h-fit"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.bag}</h2>
       <label htmlFor="checkout-display-currency" className="mt-5 grid gap-2 text-xs font-medium text-[#795963]">{c.displayCurrency}
         <select id="checkout-display-currency" data-testid="checkout-display-currency" className="field w-full py-2" value={displayCurrency} onChange={event=>setDisplayCurrency(event.target.value as DisplayCurrency)}>

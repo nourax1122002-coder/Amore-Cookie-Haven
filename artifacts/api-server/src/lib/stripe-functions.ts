@@ -51,10 +51,16 @@ async function callStripeFunction(
   }
   const result = await response.json().catch(() => null) as StripeFunctionResponse | null;
   if (!response.ok || !result) {
-    if (response.status === 422 && result?.error === "stripe_currency_not_enabled") {
+    if (response.status === 422 && result?.error === "stripe_usd_currency_not_enabled") {
       throw new HttpError(
         422,
-        "Stripe Test Mode cannot accept KWD for this account. Ask the Stripe account owner to enable KWD. / حساب Stripe لا يدعم KWD حالياً. يرجى تفعيل الدينار الكويتي في حساب Stripe.",
+        "This Stripe account cannot accept USD test payments. The order remains in KWD and no payment was created. / حساب Stripe لا يدعم مدفوعات USD التجريبية. بقي الطلب بالدينار ولم تُنشأ عملية دفع.",
+      );
+    }
+    if (response.status === 503 && result?.error === "usd_exchange_rate_unavailable") {
+      throw new HttpError(
+        503,
+        "The free KWD/USD exchange rate is temporarily unavailable or outdated. No Stripe session was created; please retry shortly. / سعر الصرف المجاني بين الدينار والدولار غير متاح مؤقتاً أو يحتاج إلى تحديث. لم تُنشأ جلسة دفع؛ حاولي مجدداً بعد قليل.",
       );
     }
     throw new HttpError(response.status === 404 ? 503 : response.status, "Stripe Test Mode could not complete the request. / تعذر إكمال الطلب بوضع اختبار Stripe.");

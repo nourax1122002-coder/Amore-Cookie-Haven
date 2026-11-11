@@ -127,6 +127,13 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
        if (order.paymentUrl && order.expiresAt > new Date() && order.stockStatus === "reserved") {
           return { url: safeStripeTestCheckoutUrl(order.paymentUrl) };
        }
+        if (order.paymentStatus === "creating" && order.expiresAt > new Date()
+          && order.stockStatus === "reserved") {
+          const url = await createStripeTestCheckout({
+            orderId: order.id, token: receiptToken(order.id), origin, lang: body.lang ?? "en",
+          });
+          return { url };
+        }
       // Unknown POST outcome: NEVER create another invoice automatically.
       throw new HttpError(409, "This payment needs review. Do not pay again. / هذه العملية تحتاج مراجعة، لا تعيدي الدفع.");
     }
@@ -158,7 +165,12 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
     } catch (error) {
       // Keep stock reserved after an ambiguous API result; a signed webhook may
       // still confirm that Stripe created and completed the session.
-      await updateCustomerOrder(order.id, { paymentStatus: "review", updatedAt: new Date() });
+      const rateUnavailable = error instanceof HttpError
+        && error.message.includes("No Stripe session was created");
+      await updateCustomerOrder(order.id, {
+        paymentStatus: rateUnavailable ? "creating" : "review",
+        updatedAt: new Date(),
+      });
       throw error;
     }
   });

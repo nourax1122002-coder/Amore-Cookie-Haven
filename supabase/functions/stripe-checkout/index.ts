@@ -30,7 +30,7 @@ type CheckoutOrder = {
   stripe_checkout_session_id: string | null;
   stripe_payment_intent_id: string | null;
   stripe_payment_currency: string | null;
-  stripe_payment_amount_minor: number | null;
+  stripe_payment_amount_minor: number | string | null;
   stripe_exchange_rate: number | string | null;
   stripe_exchange_rate_source: string | null;
   stripe_exchange_rate_updated_at: string | null;
@@ -205,24 +205,28 @@ function parseStoredRate(value: number | string | null): number | null {
 
 function validStoredSettlement(order: CheckoutOrder) {
   const rate = parseStoredRate(order.stripe_exchange_rate);
+  const amountMinor = order.stripe_payment_amount_minor === null
+    ? null
+    : typeof order.stripe_payment_amount_minor === "number"
+    ? order.stripe_payment_amount_minor
+    : Number(order.stripe_payment_amount_minor);
   const updatedAt = order.stripe_exchange_rate_updated_at
     ? Date.parse(order.stripe_exchange_rate_updated_at)
     : Number.NaN;
   const age = Date.now() - updatedAt;
   const fieldsPresent = order.stripe_payment_currency === "USD"
-    && Number.isSafeInteger(order.stripe_payment_amount_minor)
-    && order.stripe_payment_amount_minor !== null
+    && Number.isSafeInteger(amountMinor) && amountMinor !== null && amountMinor > 0
     && typeof order.stripe_exchange_rate_source === "string"
     && order.stripe_exchange_rate_source === KWD_USD_RATE_SOURCE
     && rate !== null && rate >= 0.1 && rate <= 10
     && Number.isFinite(updatedAt) && age >= -5 * 60_000 && age <= 48 * 60 * 60 * 1000;
   if (!fieldsPresent) return null;
   try {
-    if (convertKwdFilsToUsdMinor(order.total_fils, rate) !== order.stripe_payment_amount_minor) return null;
+    if (convertKwdFilsToUsdMinor(order.total_fils, rate) !== amountMinor) return null;
   } catch {
     return null;
   }
-  return { rate, updatedAt: new Date(updatedAt).toISOString(), amountMinor: order.stripe_payment_amount_minor };
+  return { rate, updatedAt: new Date(updatedAt).toISOString(), amountMinor };
 }
 
 async function persistSettlement(
@@ -231,7 +235,7 @@ async function persistSettlement(
   rate: number,
   updatedAt: string,
   amountMinor: number,
-) {
+): Promise<{ rate: number; updatedAt: string; amountMinor: number }> {
   const { data, error } = await supabase.from("customer_orders").update({
     stripe_payment_currency: "USD",
     stripe_payment_amount_minor: amountMinor,
@@ -242,21 +246,35 @@ async function persistSettlement(
   }).eq("id", order.id).is("stripe_checkout_session_id", null)
     .is("stripe_payment_amount_minor", null)
     .in("payment_status", ["creating", "pending"])
-    .select("id").maybeSingle();
-  if (error) throw new Error("Unable to save the USD test settlement.");
-  if (data) return;
-
-  const { data: saved, error: readError } = await supabase.from("customer_orders")
     .select("stripe_payment_currency,stripe_payment_amount_minor,stripe_exchange_rate,stripe_exchange_rate_source,stripe_exchange_rate_updated_at")
-    .eq("id", order.id).maybeSingle();
+    .maybeSingle();
+  if (error) throw new Error("Unable to save the USD test settlement.");
+  let saved = data;
+  if (!saved) {
+    const result = await supabase.from("customer_orders")
+      .select("stripe_payment_currency,stripe_payment_amount_minor,stripe_exchange_rate,stripe_exchange_rate_source,stripe_exchange_rate_updated_at")
+      .eq("id", order.id).maybeSingle();
+    if (result.error) throw new Error("Unable to read the saved USD test settlement.");
+    saved = result.data;
+  }
   const savedAmount = typeof saved?.stripe_payment_amount_minor === "number"
     ? saved.stripe_payment_amount_minor
     : Number(saved?.stripe_payment_amount_minor);
-  if (readError || !saved || saved.stripe_payment_currency !== "USD"
-    || savedAmount !== amountMinor
-    || saved.stripe_exchange_rate_source !== KWD_USD_RATE_SOURCE) {
+  const savedRate = parseStoredRate(saved?.stripe_exchange_rate ?? null);
+  const savedUpdatedAt = typeof saved?.stripe_exchange_rate_updated_at === "string"
+    ? saved.stripe_exchange_rate_updated_at
+    : "";
+  const validatedTimestamp = Date.parse(savedUpdatedAt);
+  if (!saved || saved.stripe_payment_currency !== "USD" || savedAmount < 1
+    || !Number.isSafeInteger(savedAmount) || savedRate === null
+    || saved.stripe_exchange_rate_source !== KWD_USD_RATE_SOURCE
+    || !Number.isFinite(validatedTimestamp)
+    || Date.now() - validatedTimestamp > 48 * 60 * 60 * 1000
+    || Date.now() - validatedTimestamp < -5 * 60_000
+    || convertKwdFilsToUsdMinor(order.total_fils, savedRate) !== savedAmount) {
     throw new Error("The USD settlement changed during checkout.");
   }
+  return { rate: savedRate, updatedAt: new Date(validatedTimestamp).toISOString(), amountMinor: savedAmount };
 }
 
 async function createSession(input: Record<string, unknown>) {
@@ -279,10 +297,13 @@ async function createSession(input: Record<string, unknown>) {
   const existingId = order.stripe_checkout_session_id;
   if (existingId) {
     const existing = await stripe.checkout.sessions.retrieve(existingId);
+    const settlement = validStoredSettlement(order);
     if (existing.livemode !== false || existing.mode !== "payment"
       || existing.metadata?.order_id !== order.id || existing.client_reference_id !== order.id
-      || existing.currency !== "usd" || existing.amount_total !== order.stripe_payment_amount_minor
-      || !validStoredSettlement(order)) {
+      || existing.currency !== "usd" || existing.amount_total !== settlement?.amountMinor
+      || !settlement
+      || existing.metadata.original_total_fils !== String(order.total_fils)
+      || existing.metadata.stripe_payment_amount_minor !== String(settlement.amountMinor)) {
       return respond(409, { error: "Stripe session does not match this test order." });
     }
     if (existing.status === "open" && existing.url) return respond(200, { url: existing.url, mode: "test" });
@@ -321,8 +342,7 @@ async function createSession(input: Record<string, unknown>) {
       return respond(503, { error: "usd_exchange_rate_unavailable" });
     }
     const amountMinor = convertKwdFilsToUsdMinor(order.total_fils, quote.rate);
-    await persistSettlement(supabase, order, quote.rate, quote.updatedAt, amountMinor);
-    settlement = { rate: quote.rate, updatedAt: quote.updatedAt, amountMinor };
+    settlement = await persistSettlement(supabase, order, quote.rate, quote.updatedAt, amountMinor);
   }
   const lang = input.lang === "ar" ? "ar" : "en";
   // Use the persisted rate timestamp for the hosted checkout description.
