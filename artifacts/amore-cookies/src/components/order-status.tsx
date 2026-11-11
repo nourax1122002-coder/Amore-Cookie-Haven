@@ -1,4 +1,5 @@
 import type { OrderStatus } from "@workspace/api-client-react";
+import { formatCurrencyAmount, useCurrency } from "@/lib/currency-context";
 
 const stages: Record<string, [string, string]> = {
   received: ["Received", "تم الاستلام"],
@@ -24,6 +25,10 @@ const payments: Record<string, [string, string]> = {
 
 export function OrderDetails({ order, lang }: { order: OrderStatus; lang: "en" | "ar" }) {
   const ar = lang === "ar";
+  const { currency, formatAmount } = useCurrency();
+  const total = order.currency === "KWD"
+    ? formatAmount(order.total, "KWD", lang)
+    : formatCurrencyAmount(Number(order.total), order.currency, lang);
   return <article className="card-surface p-5 text-sm">
     <div className="flex flex-wrap justify-between gap-3">
       <strong dir="ltr">{order.number}</strong>
@@ -35,7 +40,12 @@ export function OrderDetails({ order, lang }: { order: OrderStatus; lang: "en" |
       <div><dt className="inline">{ar ? "تنفيذ الطلب: " : "Fulfillment: "}</dt><dd className="inline" dir="ltr">{order.fulfillmentStatus}</dd></div>
     </dl>
     <ul className="mt-4 grid gap-2">{order.items.map((item, i) => <li key={i} className="flex justify-between gap-4 text-xs"><span>{item.title}</span><span>× {item.quantity}</span></li>)}</ul>
-    <p className="mt-4 font-semibold" dir="ltr">{order.total} {order.currency}</p>
+    <p className="mt-4 font-semibold" dir="ltr">{total}</p>
+    {order.currency === "KWD" && currency !== "KWD" && (
+      <p className="mt-1 text-[10px] text-[#896a71]" dir="ltr">
+        {ar ? "المبلغ الأصلي" : "Original amount"}: {formatCurrencyAmount(Number(order.total), "KWD", lang)}
+      </p>
+    )}
     <p className="mt-3 text-[11px] leading-5 text-[#795963]">{ar ? "المصدر: متجر أموري. تظهر الحالة المسجلة فقط؛ الشحن لا يعني اكتمال التوصيل." : "Source: Amore Cookies. Only the recorded status is shown; shipped does not mean delivered."}</p>
   </article>;
 }

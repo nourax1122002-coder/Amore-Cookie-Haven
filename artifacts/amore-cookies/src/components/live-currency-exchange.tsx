@@ -1,11 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import {
-  LIVE_CURRENCY_CODES,
-  parseLiveCurrencyRates,
-  type LiveCurrencyCode,
-  type LiveCurrencyRate,
-} from "./live-currency-rates";
+import { LIVE_CURRENCY_CODES, type LiveCurrencyCode } from "./live-currency-rates";
+import { useCurrency } from "@/lib/currency-context";
 
 const FRANKFURTER_V2_URL =
   "https://api.frankfurter.dev/v2/rates?base=KWD&quotes=USD,EUR,GBP,SAR";
@@ -18,7 +13,7 @@ const text = {
     refreshing: "Refreshing…",
     unavailable: "Unavailable",
     loading: "Loading live rates…",
-    failed: "Live exchange rates could not be loaded. Please try again.",
+    failed: "Live exchange rates could not be loaded. Prices remain in KWD.",
     refreshFailed: "Refresh failed. Showing the last successfully loaded rates.",
     source: "Source: Frankfurter V2",
   },
@@ -29,7 +24,7 @@ const text = {
     refreshing: "جارٍ التحديث…",
     unavailable: "غير متاح",
     loading: "جارٍ تحميل الأسعار المباشرة…",
-    failed: "تعذر تحميل أسعار الصرف المباشرة. يرجى المحاولة مجدداً.",
+    failed: "تعذر تحميل أسعار الصرف المباشرة. تبقى الأسعار بالدينار.",
     refreshFailed: "تعذر التحديث. تظهر آخر أسعار تم تحميلها بنجاح.",
     source: "المصدر: Frankfurter V2",
   },
@@ -65,43 +60,7 @@ function formatTime(date: Date, lang: "en" | "ar") {
 
 export function LiveCurrencyExchange({ lang }: { lang: "en" | "ar" }) {
   const labels = text[lang];
-  const [rates, setRates] = useState<Partial<Record<LiveCurrencyCode, LiveCurrencyRate>>>({});
-  const [latestDate, setLatestDate] = useState<string | null>(null);
-  const [lastChecked, setLastChecked] = useState<Date | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-  const activeRequest = useRef<AbortController | null>(null);
-
-  const refresh = useCallback(async () => {
-    activeRequest.current?.abort();
-    const controller = new AbortController();
-    activeRequest.current = controller;
-    setLoading(true);
-    setFailed(false);
-    try {
-      const response = await fetch(FRANKFURTER_V2_URL, {
-        cache: "no-store",
-        headers: { accept: "application/json" },
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new Error(`Frankfurter V2 returned HTTP ${response.status}.`);
-      const parsed = parseLiveCurrencyRates(await response.json());
-      if (controller.signal.aborted) return;
-      setRates(parsed.rates);
-      setLatestDate(parsed.latestDate);
-      setLastChecked(new Date());
-    } catch {
-      if (!controller.signal.aborted) setFailed(true);
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-      if (activeRequest.current === controller) activeRequest.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-    return () => activeRequest.current?.abort();
-  }, [refresh]);
+  const { rates, latestDate, lastChecked, loading, error: failed, refresh } = useCurrency();
 
   const hasRates = Object.keys(rates).length > 0;
   const dateLabel = latestDate ? formatDate(latestDate, lang) : null;

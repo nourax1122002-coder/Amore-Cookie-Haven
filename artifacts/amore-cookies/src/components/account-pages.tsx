@@ -23,6 +23,7 @@ import {
 import type { AccountFavorite, AccountOrder, Product } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
+import { formatCurrencyAmount, useCurrency } from "@/lib/currency-context";
 
 type Lang = "en" | "ar";
 
@@ -272,6 +273,7 @@ export function MyOrdersPage({ lang }: { lang: Lang }) {
 
 function OrderCard({ order, lang }: { order: AccountOrder; lang: Lang }) {
   const c = words[lang];
+  const { currency, formatAmount } = useCurrency();
   const ar = lang === "ar";
   const date = new Date(order.createdAt);
   const dateText = Number.isNaN(date.getTime()) ? order.createdAt : date.toLocaleDateString(ar ? "ar-KW" : "en-KW", { day: "numeric", month: "short", year: "numeric" });
@@ -297,7 +299,16 @@ function OrderCard({ order, lang }: { order: AccountOrder; lang: Lang }) {
     </ul>
     <div className="mt-5 flex items-center justify-between border-t border-[#f0e1e4] pt-4">
       <span className="text-xs text-[#795963]">{c.total}</span>
-      <strong className="text-sm text-[#5B0D1E]" dir="ltr">{formatKwd(order.total, order.currency)}</strong>
+      <div className="text-end">
+        <strong className="text-sm text-[#5B0D1E]" dir="ltr">
+          {order.currency === "KWD" ? formatAmount(order.total, "KWD", lang) : formatCurrencyAmount(Number(order.total), order.currency, lang)}
+        </strong>
+        {order.currency === "KWD" && currency !== "KWD" && (
+          <p className="mt-1 text-[10px] text-[#896a71]" dir="ltr">
+            {formatCurrencyAmount(Number(order.total), "KWD", lang)}
+          </p>
+        )}
+      </div>
     </div>
   </article>;
 }
@@ -309,11 +320,6 @@ function StatusLine({ label, value, lang }: { label: string; value: string; lang
   return <div className="flex justify-between gap-3 rounded-xl bg-[#fff8f8] px-3 py-2 text-xs">
     <span className="text-[#795963]">{label}</span><span className="font-semibold text-[#5B0D1E]" dir="auto">{displayValue}</span>
   </div>;
-}
-
-function formatKwd(value: number | string, currency: string) {
-  const amount = typeof value === "number" ? value.toFixed(3) : value;
-  return `${amount} ${currency || "KWD"}`;
 }
 
 export function MyFavoritesPage({ lang }: { lang: Lang }) {
@@ -390,6 +396,7 @@ function FavoriteCard({ favorite, lang, status, removePending, cartPending, onRe
 }) {
   const ar = lang === "ar";
   const c = words[lang];
+  const { currency, formatAmount } = useCurrency();
   const product = favorite.product;
   const title = ar ? (product.titleAr || product.title) : product.title;
   const available = product.available && product.stock > 0 && Boolean(product.variantId);
@@ -411,7 +418,10 @@ function FavoriteCard({ favorite, lang, status, removePending, cartPending, onRe
     <div className="p-4 sm:p-5">
       <Link href={`/products/${product.handle}`} className="font-display text-xl leading-tight text-[#5B0D1E] hover:text-[#9d5367]">{title}</Link>
       <div className="mt-2 flex items-center justify-between gap-3">
-        <span className="text-sm font-semibold text-[#5B0D1E]" dir="ltr">{formatKwd(product.price, product.currency)}</span>
+        <span className="text-sm font-semibold text-[#5B0D1E]" dir="ltr">{formatAmount(product.price, product.currency || "KWD", lang)}</span>
+        {product.currency === "KWD" && currency !== "KWD" && (
+          <span className="text-[10px] text-[#896a71]" dir="ltr">{formatCurrencyAmount(product.price, "KWD", lang)}</span>
+        )}
         {!available && <span className="text-[10px] text-[#9d5367]">{c.unavailable}</span>}
       </div>
       <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">

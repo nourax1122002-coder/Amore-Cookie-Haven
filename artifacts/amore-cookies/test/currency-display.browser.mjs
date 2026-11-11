@@ -72,26 +72,62 @@ const store = {
   launchMessage: "Payments are disabled in this browser test.",
   shopCurrency: "KWD",
 };
-const conversionAmounts = { USD: 6.44, EUR: 5.78, GBP: 4.82, SAR: 24.16 };
 const conversionRates = { USD: 3.22, EUR: 2.89, GBP: 2.41, SAR: 12.08 };
-let expectedConversionAmounts = conversionAmounts;
 let expectedConversionRates = conversionRates;
-const conversionRequests = [];
-const failedCurrencies = new Set();
 const apiRequests = [];
 const unexpectedApiRequests = [];
 const liveCurrencyApiOrigin = process.env.CURRENCY_LIVE_API_ORIGIN;
+let exchangeRequests = 0;
+let failExchangeRates = false;
+let missingCurrency = null;
+let authUser = null;
 let server;
 let browser;
 
-async function fetchLiveConversion(amount, currency) {
-  const target = new URL(`/api/currency-conversion?amount=${amount}&currency=${currency}`, liveCurrencyApiOrigin);
+async function fetchLiveRates() {
+  const target = new URL(
+    "/v2/rates?base=KWD&quotes=USD,EUR,GBP,SAR",
+    liveCurrencyApiOrigin,
+  );
   const response = await fetch(target, { headers: { accept: "application/json" } });
-  const data = await response.json();
-  if (!response.ok || !Number.isFinite(data.amount) || data.currency !== currency) {
-    throw new Error(`Live ${currency} conversion failed with HTTP ${response.status}: ${JSON.stringify(data)}`);
+  const rows = await response.json();
+  if (!response.ok || !Array.isArray(rows)) {
+    throw new Error(`Live Frankfurter rates failed with HTTP ${response.status}.`);
   }
-  return data;
+  return Object.fromEntries(
+    rows.map(row => [row.quote, row.rate]).filter(([code, rate]) =>
+      Object.hasOwn(conversionRates, code) && Number.isFinite(rate)),
+  );
+}
+
+async function mockExchangeRates(page) {
+  await page.route("https://api.frankfurter.dev/v2/rates**", async route => {
+    exchangeRequests += 1;
+    if (failExchangeRates) {
+      await route.fulfill({ status: 503, json: { error: "Rates temporarily unavailable." } });
+      return;
+    }
+    if (liveCurrencyApiOrigin && missingCurrency === null) {
+      const liveUrl = new URL("/v2/rates?base=KWD&quotes=USD,EUR,GBP,SAR", liveCurrencyApiOrigin);
+      const liveResponse = await fetch(liveUrl, { headers: { accept: "application/json" } });
+      await route.fulfill({
+        status: liveResponse.status,
+        contentType: liveResponse.headers.get("content-type") || "application/json",
+        body: await liveResponse.text(),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      json: Object.entries(conversionRates).filter(([quote]) => quote !== missingCurrency).map(([quote, rate]) => ({
+        base: "KWD",
+        quote,
+        rate,
+        date: "2026-11-07",
+      })),
+    });
+  });
 }
 
 async function findFreePort() {
@@ -155,47 +191,32 @@ async function mockApi(page) {
     if (method === "GET" && path === "/api/store") {
       body = store;
     } else if (method === "GET" && path === "/api/auth/session") {
-      body = { user: null };
+      body = { user: authUser };
     } else if (method === "GET" && path === "/api/assistant/status") {
       body = { enabled: false, dailyLimit: 0, perMinuteLimit: 0 };
     } else if (method === "GET" && path === "/api/products") {
       body = [product];
     } else if (method === "GET" && path === `/api/products/${product.handle}`) {
       body = product;
-    } else if (method === "GET" && path === "/api/currency-conversion") {
-      const currency = url.searchParams.get("currency");
-      const amount = Number(url.searchParams.get("amount"));
-      conversionRequests.push({ currency, amount });
-      if (failedCurrencies.has(currency)) {
-        await route.fulfill({ status: 503, json: { error: "Currency conversion is temporarily unavailable." } });
-        return;
-      }
-      if (liveCurrencyApiOrigin) {
-        const liveUrl = new URL(path + url.search, liveCurrencyApiOrigin);
-        const liveResponse = await fetch(liveUrl, { headers: { accept: "application/json" } });
-        await route.fulfill({
-          status: liveResponse.status,
-          contentType: liveResponse.headers.get("content-type") || "application/json",
-          body: await liveResponse.text(),
-        });
-        return;
-      }
-      if (!Object.hasOwn(conversionAmounts, currency)) {
-        unexpectedApiRequests.push(`${method} ${path} with currency=${currency}`);
-        await route.fulfill({ status: 400, json: { error: "Unexpected conversion currency." } });
-        return;
-      }
-      body = {
-        amount: Math.round((amount * conversionRates[currency] + Number.EPSILON) * 100) / 100,
-        currency,
-        calculation: currency === "USD" || currency === "GBP" ? "eur_cross_rate" : "direct",
-        sources: [{
-          name: "Test rate source",
-          url: "https://example.invalid/rates",
-          date: "2026-11-07",
-        }],
-        informationalOnly: true,
-      };
+    } else if (method === "GET" && path === "/api/account/orders") {
+      body = [{
+        id: "00000000-0000-4000-8000-000000000001",
+        number: "TEST-ORDER-1",
+        createdAt: "2026-11-11T00:00:00.000Z",
+        stage: "confirmed",
+        financialStatus: "PENDING",
+        fulfillmentStatus: "confirmed",
+        items: [{ title: product.title, quantity: 1 }],
+        total: 2,
+        currency: "KWD",
+        hasMoreItems: false,
+      }];
+    } else if (method === "GET" && path === "/api/account/favorites") {
+      body = [{
+        productId: product.id,
+        product,
+        addedAt: "2026-11-11T00:00:00.000Z",
+      }];
     } else if (method === "GET" && path === "/api/cart") {
       body = cart;
     } else if (method === "POST" && path === "/api/cart") {
@@ -207,7 +228,7 @@ async function mockApi(page) {
       }
       body = cart;
     } else if (method === "GET" && path === "/api/payments/availability") {
-      body = { enabled: false, shippingFils: null, methods: [] };
+      body = { enabled: false, stripeTestEnabled: false, shippingFils: 3000, methods: [] };
     } else {
       unexpectedApiRequests.push(`${method} ${path}`);
       await route.fulfill({ status: 501, json: { error: "This endpoint is disabled in the browser test." } });
@@ -218,19 +239,23 @@ async function mockApi(page) {
   });
 }
 
-async function run() {
-  if (liveCurrencyApiOrigin) {
-    expectedConversionAmounts = {};
-    expectedConversionRates = {};
-    for (const currency of Object.keys(conversionAmounts)) {
-      const [price, rate] = await Promise.all([
-        fetchLiveConversion(2, currency),
-        fetchLiveConversion(1, currency),
-      ]);
-      expectedConversionAmounts[currency] = price.amount;
-      expectedConversionRates[currency] = rate.amount;
-    }
+function displayAmount(amountKwd, currency) {
+  if (currency === "KWD") {
+    return `KWD ${new Intl.NumberFormat("en-KW", { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(amountKwd)}`;
   }
+  const rate = expectedConversionRates[currency];
+  if (!Number.isFinite(rate)) return displayAmount(amountKwd, "KWD");
+  const amount = amountKwd * rate;
+  return `${currency} ${new Intl.NumberFormat("en-KW", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)}`;
+}
+
+async function selectCurrency(page, currency) {
+  await page.getByTestId("button-navbar-currency").click();
+  await page.getByTestId(`button-select-currency-${currency}`).click();
+}
+
+async function run() {
+  if (liveCurrencyApiOrigin) expectedConversionRates = await fetchLiveRates();
   const baseUrl = await startVite();
   browser = await chromium.launch({
     headless: true,
@@ -244,115 +269,153 @@ async function run() {
   page.on("console", message => {
     if (message.type() === "error") browserErrors.push(message.text());
   });
+  await mockExchangeRates(page);
   await mockApi(page);
 
+  await page.goto(`${baseUrl}/`);
+  await page.getByTestId("live-currency-rate-usd").waitFor();
+  assert.match(await page.getByTestId("live-currency-rate-usd").innerText(), /1 KWD = .+ USD/);
+  await page.getByTestId("live-currency-rate-eur").waitFor();
+  await page.getByTestId("live-currency-rate-gbp").waitFor();
+  await page.getByTestId("live-currency-rate-sar").waitFor();
+  await page.getByTestId("live-currency-rate-usd").getByText(/1 KWD =/).waitFor();
+
+  await page.getByTestId("button-navbar-currency").click();
+  await page.getByTestId("link-currency-rate-source").waitFor();
+  assert.equal(await page.getByTestId("link-currency-rate-source").innerText(), "Frankfurter V2");
+  await page.getByTestId("currency-last-updated").getByText(/2026/).waitFor();
+  await page.getByTestId("button-navbar-currency").click();
+  const rateRequestBeforeRefresh = exchangeRequests;
+  const refreshResponse = page.waitForResponse(response => response.url().includes("/v2/rates?"));
+  await page.getByTestId("button-refresh-live-currency-rates").click();
+  await refreshResponse;
+  assert.equal(exchangeRequests, rateRequestBeforeRefresh + 1, "the live section refresh button requests new V2 rates");
+
   await page.goto(`${baseUrl}/products`);
-  try {
-    await page.getByText("KWD 2.000", { exact: true }).waitFor({ timeout: 8_000 });
-  } catch (error) {
-    throw new Error(`${error.message}\nAPI requests: ${JSON.stringify(apiRequests)}\nBrowser errors: ${JSON.stringify(browserErrors)}\nPage text: ${await page.locator("body").innerText()}`);
-  }
+  const productPrice = page.getByTestId(`product-price-${product.id}`);
+  await productPrice.getByText(displayAmount(2, "KWD"), { exact: true }).waitFor();
+  await selectCurrency(page, "USD");
+  await productPrice.getByText(displayAmount(2, "USD"), { exact: true }).waitFor();
   await page.getByRole("link", { name: product.title, exact: true }).click();
   await page.getByRole("heading", { name: product.title }).waitFor();
 
-  const visiblePrice = page.getByTestId("product-display-price");
-  for (const [currency, amount] of Object.entries(expectedConversionAmounts)) {
-    await page.locator("#product-display-currency").selectOption(currency);
-    await assert.doesNotReject(
-      visiblePrice.getByText(`${amount.toFixed(2)} ${currency}`, { exact: true }).waitFor(),
-      `${currency} conversion should be displayed for the KWD product`,
-    );
+  const detailPrice = page.getByTestId("product-display-price");
+  for (const currency of ["USD", "EUR", "GBP", "SAR"]) {
+    await selectCurrency(page, currency);
+    await detailPrice.getByText(displayAmount(2, currency), { exact: true }).waitFor();
   }
-  const productConversionRequests = conversionRequests.slice();
-
   await page.getByTestId("button-add-product").click();
   await page.waitForURL(/\/checkout$/);
-  await page.getByTestId("checkout-total").getByText("2.000 KWD", { exact: true }).waitFor();
+  await page.getByTestId("checkout-total").getByText(displayAmount(5, "SAR"), { exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "Pay with Stripe Test Mode" }).isDisabled(), true,
-    "checkout payment remains disabled");
+    "display currency does not enable checkout or create a payment");
   await page.getByRole("status").filter({ hasText: "Test checkout is not ready yet" }).waitFor();
 
   await page.getByTestId("link-cart").click();
-  await page.getByTestId("cart-total-summary").getByText("2.000 KWD", { exact: true }).waitFor();
-  await page.getByText("2.000 KWD", { exact: true }).first().waitFor();
-  const cartCurrency = page.getByTestId("cart-display-currency");
-  await cartCurrency.selectOption("USD");
-  const usdCartTotal = `${expectedConversionAmounts.USD.toFixed(2)} USD`;
-  await page.getByTestId("cart-total-display-price").getByText(usdCartTotal, { exact: true }).waitFor();
-  await page.getByTestId("cart-total-original-kwd").getByText("2.000 KWD", { exact: true }).waitFor();
-  await page.getByTestId("cart-line-unit-converted").getByText(usdCartTotal, { exact: true }).waitFor();
-  await page.getByTestId("cart-line-total-converted").getByText(usdCartTotal, { exact: true }).waitFor();
-  await page.getByTestId("cart-rate").getByText(`1 KWD ≈ ${expectedConversionRates.USD.toFixed(2)} USD`, { exact: false }).waitFor();
-  await page.getByTestId("cart-rate-updated").getByText(/\d{4}-\d{2}-\d{2}/).waitFor();
-  await page.getByTestId("cart-rate-sources").getByText(
-    liveCurrencyApiOrigin ? /ExchangeRate-API|Frankfurter/ : "Test rate source",
-    { exact: false },
-  ).waitFor();
-  await page.getByText("Original amount: 2.000 KWD", { exact: true }).waitFor();
-  await cartCurrency.selectOption("SAR");
-  const sarCartTotal = `${expectedConversionAmounts.SAR.toFixed(2)} SAR`;
-  await page.getByTestId("cart-total-display-price").getByText(sarCartTotal, { exact: true }).waitFor();
-  await page.getByTestId("cart-line-total-converted").getByText(sarCartTotal, { exact: true }).waitFor();
-  await page.getByTestId("cart-rate").getByText(`1 KWD ≈ ${expectedConversionRates.SAR.toFixed(2)} SAR`, { exact: false }).waitFor();
+  await page.getByTestId("cart-total-display-price").getByText(displayAmount(2, "SAR"), { exact: true }).waitFor();
+  await page.getByTestId("cart-total-original-kwd").getByText(displayAmount(2, "KWD"), { exact: true }).waitFor();
+  await page.getByTestId("cart-line-total-converted").getByText(displayAmount(2, "SAR"), { exact: true }).waitFor();
+  await selectCurrency(page, "USD");
+  await page.getByTestId("cart-total-display-price").getByText(displayAmount(2, "USD"), { exact: true }).waitFor();
+  await page.getByTestId("cart-line-total-converted").getByText(displayAmount(2, "USD"), { exact: true }).waitFor();
+
+  await selectCurrency(page, "SAR");
   await page.goto(`${baseUrl}/checkout`);
-  await page.getByTestId("checkout-total").getByText("2.000 KWD", { exact: true }).waitFor();
+  await page.getByTestId("checkout-total").getByText(displayAmount(5, "SAR"), { exact: true }).waitFor();
+  await page.getByTestId("checkout-converted-total").getByText(displayAmount(5, "SAR"), { exact: true }).waitFor();
+  await page.getByTestId(`checkout-line-total-${cart.lines[0].id}`).getByText(displayAmount(2, "SAR"), { exact: true }).waitFor();
   assert.equal(await page.locator('[data-testid="delivery-location-picker"]').count(), 0,
-    "checkout no longer renders the map location picker");
+    "address-only checkout remains unchanged");
   for (const field of ["area", "block", "street", "house"]) {
     assert.equal(await page.locator(`input[name="${field}"]`).isVisible(), true,
       `checkout still requires the ${field} address field`);
   }
-  const checkoutCurrency = page.getByTestId("checkout-display-currency");
-  assert.equal(await checkoutCurrency.inputValue(), "SAR",
-    "the selected display currency carries from the bag into checkout");
-  await checkoutCurrency.selectOption("SAR");
-  await page.getByTestId("checkout-converted-total").getByText(sarCartTotal, { exact: true }).waitFor();
-  await page.locator('[data-testid^="checkout-line-total-converted-"]').getByText(sarCartTotal, { exact: true }).waitFor();
-  await page.getByTestId("checkout-rate").getByText(`1 KWD ≈ ${expectedConversionRates.SAR.toFixed(2)} SAR`, { exact: false }).waitFor();
-  await page.getByTestId("checkout-rate-updated").getByText(/\d{4}-\d{2}-\d{2}/).waitFor();
-  await checkoutCurrency.selectOption("USD");
-  await page.getByTestId("checkout-converted-total").getByText(usdCartTotal, { exact: true }).waitFor();
-  await page.locator('[data-testid^="checkout-line-total-converted-"]').getByText(usdCartTotal, { exact: true }).waitFor();
-  await page.getByTestId("checkout-total").getByText("2.000 KWD", { exact: true }).waitFor();
+  await page.getByText(displayAmount(3, "SAR"), { exact: true }).waitFor();
+  await page.getByText(displayAmount(3, "KWD"), { exact: true }).waitFor();
+  await selectCurrency(page, "USD");
+  await page.getByTestId("checkout-total").getByText(displayAmount(5, "USD"), { exact: true }).waitFor();
+  await page.getByTestId("checkout-converted-total").getByText(displayAmount(5, "USD"), { exact: true }).waitFor();
+  await page.getByText(displayAmount(3, "USD"), { exact: true }).waitFor();
+  await selectCurrency(page, "KWD");
+  await page.getByTestId("checkout-total").getByText(displayAmount(5, "KWD"), { exact: true }).waitFor();
+  await page.getByText(displayAmount(3, "KWD"), { exact: true }).waitFor();
+  await selectCurrency(page, "USD");
+  await page.getByTestId("checkout-total").getByText(displayAmount(5, "USD"), { exact: true }).waitFor();
+
+  const rateMenuRefreshBefore = exchangeRequests;
+  await page.getByTestId("button-navbar-currency").click();
+  const menuRefreshResponse = page.waitForResponse(response => response.url().includes("/v2/rates?"));
+  await page.getByTestId("button-refresh-currency-rates").click();
+  await menuRefreshResponse;
+  assert.equal(exchangeRequests, rateMenuRefreshBefore + 1, "the navbar refresh button requests new V2 rates");
+  await page.getByTestId("button-navbar-currency").click();
+
   await page.setViewportSize({ width: 390, height: 844 });
-  assert.equal(await checkoutCurrency.isVisible(), true, "the checkout currency selector remains visible on mobile");
-  assert.equal(await page.getByTestId("checkout-converted-total").isVisible(), true,
-    "the converted checkout total remains visible on mobile");
-  assert.equal(await page.getByRole("button", { name: "Pay with Stripe Test Mode" }).isDisabled(), true,
-    "currency display selection never enables payment");
-
-  await page.goto(`${baseUrl}/products`);
-  await page.getByText("KWD 2.000", { exact: true }).waitFor();
-
-  assert.deepEqual(
-    productConversionRequests.map(({ currency, amount }) => [currency, amount]),
-    Object.entries(conversionAmounts).map(([currency]) => [currency, 2]),
-    "the product selector requests each supported conversion using the KWD catalog price",
+  assert.equal(await page.getByTestId("button-navbar-currency").isVisible(), true,
+    "the compact currency selector stays visible on mobile");
+  await page.goto(`${baseUrl}/`);
+  const mobileColumns = await page.getByTestId("live-currency-rates").evaluate(element =>
+    getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length,
   );
-  failedCurrencies.add("USD");
-  await page.evaluate(() => {
-    localStorage.setItem("amore-lang", "ar");
-    localStorage.setItem("amore-display-currency", "KWD");
-  });
+  assert.equal(mobileColumns, 2, "live-rate cards use two columns on mobile");
   await page.reload();
-  await page.goto(`${baseUrl}/cart`);
-  await page.getByTestId("cart-total-display-price").getByText("2.000 KWD", { exact: true }).waitFor();
-  await page.getByTestId("cart-display-currency").selectOption("USD");
-  await page.getByRole("alert").filter({ hasText: "تحويل العملة غير متاح مؤقتاً" }).waitFor();
-  await page.getByTestId("cart-total-display-price").getByText("2.000 KWD", { exact: true }).waitFor();
-  await page.goto(`${baseUrl}/checkout`);
-  await page.getByTestId("checkout-total").getByText("2.000 KWD", { exact: true }).waitFor();
+  await page.getByTestId(`product-price-${product.id}`).getByText(displayAmount(2, "USD"), { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem("amore-display-currency")), "USD",
+    "currency selection persists across refresh");
 
-  assert.deepEqual(
-    conversionRequests.slice(-1).map(({ currency, amount }) => [currency, amount]),
-    [["USD", 2]],
-    "a failed cart estimate is handled without using a different or fixed rate",
-  );
+  await page.goto(`${baseUrl}/sign-in`);
+  assert.equal(await page.evaluate(() => localStorage.getItem("amore-display-currency")), "USD",
+    "the saved choice remains available through sign-in");
+  await page.goto(`${baseUrl}/products`);
+  await page.getByTestId(`product-price-${product.id}`).getByText(displayAmount(2, "USD"), { exact: true }).waitFor();
+
+  authUser = {
+    id: "test-customer",
+    email: "customer@example.test",
+    displayName: "Test Customer",
+  };
+  await page.reload();
+  await page.goto(`${baseUrl}/my-orders`);
+  await page.getByText(displayAmount(2, "USD"), { exact: true }).waitFor();
+  await page.getByText(displayAmount(2, "KWD"), { exact: true }).waitFor();
+  await page.goto(`${baseUrl}/my-favorites`);
+  await page.getByText(displayAmount(2, "USD"), { exact: true }).waitFor();
+  await selectCurrency(page, "SAR");
+  await page.getByText(displayAmount(2, "SAR"), { exact: true }).waitFor();
+  await page.goto(`${baseUrl}/my-orders`);
+  await page.getByText(displayAmount(2, "SAR"), { exact: true }).waitFor();
+
+  failExchangeRates = true;
+  const offlineContext = await browser.newContext();
+  const offlinePage = await offlineContext.newPage();
+  await offlinePage.addInitScript(() => localStorage.setItem("amore-display-currency", "EUR"));
+  await mockExchangeRates(offlinePage);
+  await mockApi(offlinePage);
+  await offlinePage.goto(`${baseUrl}/products`);
+  await offlinePage.getByTestId(`product-price-${product.id}`).getByText(displayAmount(2, "KWD"), { exact: true }).waitFor();
+  await offlinePage.getByTestId("button-navbar-currency").click();
+  await offlinePage.getByTestId("currency-rate-status").filter({ hasText: "Live rates are unavailable" }).waitFor();
+  await offlineContext.close();
+
+  failExchangeRates = false;
+  missingCurrency = "GBP";
+  const partialContext = await browser.newContext();
+  const partialPage = await partialContext.newPage();
+  await partialPage.addInitScript(() => localStorage.setItem("amore-display-currency", "GBP"));
+  await mockExchangeRates(partialPage);
+  await mockApi(partialPage);
+  await partialPage.goto(`${baseUrl}/products`);
+  await partialPage.getByTestId(`product-price-${product.id}`).getByText(displayAmount(2, "KWD"), { exact: true }).waitFor();
+  await partialPage.getByTestId("button-navbar-currency").click();
+  await partialPage.getByTestId("currency-rate-status").filter({ hasText: "This currency pair is unavailable" }).waitFor();
+  await partialContext.close();
+
   assert.equal(apiRequests.filter(request => request.method === "POST" && request.path === "/api/cart").length, 1,
-    "the test adds one fixture item to the mocked cart");
-  assert.deepEqual(unexpectedApiRequests, [], "no live checkout or payment endpoint is called");
+    "the test adds only one fixture item");
+  assert.deepEqual(unexpectedApiRequests, [], "the storefront does not request unknown APIs or payment endpoints");
+  assert.deepEqual(browserErrors, [], `the browser has no runtime errors: ${JSON.stringify(browserErrors)}`);
 
-  console.log(`Currency browser test passed (${liveCurrencyApiOrigin ? "live conversion API" : "fixture conversion API"}): product, cart and checkout USD/SAR estimates display; KWD remains visible and payment stays disabled.`);
+  console.log(`Global currency browser test passed (${liveCurrencyApiOrigin ? "live Frankfurter V2 API" : "rate fixtures"}): products, details, favorites, cart, delivery, checkout, order history, persistence, refresh, mobile layout and unavailable-rate fallback.`);
 }
 
 try {
