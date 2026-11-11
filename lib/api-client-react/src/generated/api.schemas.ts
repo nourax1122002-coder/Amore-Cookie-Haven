@@ -617,6 +617,20 @@ export const GetCurrencyConversionCurrency = {
 
 export type StartCheckout200 = {
   url: string;
+  resume?: {
+    orderId: string;
+    token: string;
+    url: string;
+    number: string;
+    totalKwd: string;
+    usdTotal: string;
+    expiresAt: string;
+    sessionStatus: 'open' | 'complete';
+    items: Array<{
+      title: string;
+      quantity: number;
+    }>;
+  };
 };
 
 export type GetPaymentOrderParams = {

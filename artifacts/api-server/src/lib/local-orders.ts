@@ -237,20 +237,27 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
     // No payment request is sent until reservation is durably confirmed.
     await reserveStock(order);
     await updateCustomerOrder(order.id, { paymentStatus: "creating", updatedAt: new Date() });
+    let stripeSessionExpired = false;
     try {
-      const url = await createStripeTestCheckout({
+      const checkout = await createStripeTestCheckout({
         orderId: order.id, token: receiptToken(order.id), origin, lang: body.lang ?? "en",
       });
-      return { url };
+      if (checkout.status === "expired") {
+        stripeSessionExpired = true;
+        throw new HttpError(409, "The Stripe test session expired before it could open. Please try checkout again. / انتهت جلسة الدفع التجريبية قبل فتحها. يرجى المحاولة مجدداً.");
+      }
+      return { url: checkout.status === "complete" ? resultUrl(order, origin) : checkout.url! };
     } catch (error) {
       // Keep stock reserved after an ambiguous API result; a signed webhook may
       // still confirm that Stripe created and completed the session.
       const rateUnavailable = error instanceof HttpError
         && error.message.includes("No Stripe session was created");
-      await updateCustomerOrder(order.id, {
-        paymentStatus: rateUnavailable ? "creating" : "review",
-        updatedAt: new Date(),
-      });
+      if (!stripeSessionExpired) {
+        await updateCustomerOrder(order.id, {
+          paymentStatus: rateUnavailable ? "creating" : "review",
+          updatedAt: new Date(),
+        });
+      }
       throw error;
     }
   });

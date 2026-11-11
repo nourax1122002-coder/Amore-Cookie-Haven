@@ -98,6 +98,21 @@ function safeUsdMinor(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 2_000_000_000;
 }
 
+function safeWebhookError(error: unknown) {
+  const details = typeof error === "object" && error !== null
+    ? error as Record<string, unknown>
+    : {};
+  const message = error instanceof Error ? error.message : "Unknown webhook error";
+  return {
+    type: typeof details.type === "string" ? details.type.slice(0, 80) : "Error",
+    code: typeof details.code === "string" ? details.code.slice(0, 80) : null,
+    statusCode: typeof details.statusCode === "number" ? details.statusCode : null,
+    message: message
+      .replace(/\b(?:sk_(?:test|live)_[A-Za-z0-9]+|whsec_[A-Za-z0-9]+)\b/g, "[redacted]")
+      .slice(0, 240),
+  };
+}
+
 function storedUsdAmount(order: WebhookOrder): number | null {
   const value = typeof order.stripe_payment_amount_minor === "number"
     ? order.stripe_payment_amount_minor
@@ -110,6 +125,13 @@ function storedExchangeRate(order: WebhookOrder): number | null {
     ? order.stripe_exchange_rate
     : Number(order.stripe_exchange_rate);
   return Number.isFinite(value) && value >= 0.1 && value <= 10 ? value : null;
+}
+
+function sameTimestamp(left: unknown, right: unknown): boolean {
+  if (typeof left !== "string" || typeof right !== "string") return false;
+  const leftMillis = Date.parse(left);
+  const rightMillis = Date.parse(right);
+  return Number.isFinite(leftMillis) && Number.isFinite(rightMillis) && leftMillis === rightMillis;
 }
 
 function hasValidUsdSettlement(order: WebhookOrder): boolean {
@@ -139,7 +161,7 @@ function validSessionMetadata(session: Stripe.Checkout.Session, order: WebhookOr
     && session.metadata.stripe_payment_amount_minor === String(storedUsdAmount(order))
     && session.metadata.exchange_rate === rate.toFixed(10)
     && session.metadata.exchange_rate_source === KWD_USD_RATE_SOURCE
-    && session.metadata.exchange_rate_updated_at === order.stripe_exchange_rate_updated_at;
+    && sameTimestamp(session.metadata.exchange_rate_updated_at, order.stripe_exchange_rate_updated_at);
 }
 
 async function markPaymentFailed(
@@ -163,11 +185,21 @@ async function markPaymentPaid(
   const paymentIntentId = typeof session.payment_intent === "string"
     ? session.payment_intent
     : session.payment_intent?.id ?? null;
-  if (session.livemode !== false || session.id !== order.stripe_checkout_session_id
-    || session.status !== "complete" || session.payment_status !== "paid"
-    || session.currency !== "usd" || session.amount_total !== storedUsdAmount(order)
-    || session.client_reference_id !== order.id || !validSessionMetadata(session, order)
-    || !hasValidUsdSettlement(order) || !paymentIntentId || order.payment_provider !== "stripe") {
+  const checks = {
+    testMode: session.livemode === false,
+    sessionId: session.id === order.stripe_checkout_session_id,
+    sessionComplete: session.status === "complete",
+    paymentConfirmed: session.payment_status === "paid",
+    currencyUsd: session.currency === "usd",
+    amountMatches: session.amount_total === storedUsdAmount(order),
+    orderReferenceMatches: session.client_reference_id === order.id,
+    metadataMatches: validSessionMetadata(session, order),
+    settlementMatches: hasValidUsdSettlement(order),
+    paymentIntentPresent: Boolean(paymentIntentId),
+    providerStripe: order.payment_provider === "stripe",
+  };
+  if (Object.values(checks).some(matches => !matches)) {
+    console.error("stripe_paid_order_validation_failed", checks);
     throw new Error("Stripe test payment does not match the saved order");
   }
   if (["refunded", "partially_refunded"].includes(order.payment_status)) return;
@@ -270,7 +302,7 @@ async function processEvent(stripe: Stripe, event: Stripe.Event) {
         || intent.metadata.stripe_payment_amount_minor !== String(storedUsdAmount(order))
         || intent.metadata.exchange_rate_source !== KWD_USD_RATE_SOURCE
         || intent.metadata.exchange_rate !== storedExchangeRate(order)?.toFixed(10)
-        || intent.metadata.exchange_rate_updated_at !== order.stripe_exchange_rate_updated_at) {
+        || !sameTimestamp(intent.metadata.exchange_rate_updated_at, order.stripe_exchange_rate_updated_at)) {
         throw new Error("Stripe test payment intent does not match the saved order");
       }
       const { error } = await supabase.from("customer_orders").update({
@@ -296,7 +328,11 @@ Deno.serve(async req => {
   if (req.method !== "POST") return respond(405, { error: "POST is required." });
   const signature = req.headers.get("stripe-signature");
   const settings = stripeSettings();
-  if (!settings.ready || !signature) return respond(503, { error: "Stripe Test Mode is not configured." });
+  if (!settings.ready) {
+    console.error("stripe_webhook_test_configuration_unavailable");
+    return respond(503, { error: "Stripe Test Mode is not configured." });
+  }
+  if (!signature) return respond(400, { error: "Stripe signature is required." });
   let rawBody: string;
   try {
     rawBody = await req.text();
@@ -304,15 +340,26 @@ Deno.serve(async req => {
     return respond(400, { error: "Invalid webhook payload." });
   }
   if (rawBody.length > 1_000_000) return respond(413, { error: "Webhook payload is too large." });
+  const stripe = getStripe(settings.secretKey);
+  let event: Stripe.Event;
   try {
-    const stripe = getStripe(settings.secretKey);
-    const event = await stripe.webhooks.constructEventAsync(
+    event = await stripe.webhooks.constructEventAsync(
       rawBody, signature, settings.webhookSecret, undefined, Stripe.createSubtleCryptoProvider(),
     );
-    if (!validStripeEventMode(event.livemode)) return respond(403, { error: "Live Stripe events are rejected." });
+  } catch (error) {
+    console.error("stripe_webhook_signature_rejected", safeWebhookError(error));
+    return respond(400, { error: "Stripe test webhook signature is invalid." });
+  }
+  if (!validStripeEventMode(event.livemode)) return respond(403, { error: "Live Stripe events are rejected." });
+  try {
     await processEvent(stripe, event);
     return respond(200, { received: true, mode: "test" });
-  } catch {
-    return respond(400, { error: "Stripe test webhook verification or processing failed." });
+  } catch (error) {
+    console.error("stripe_webhook_processing_failed", {
+      eventId: event.id,
+      eventType: event.type,
+      ...safeWebhookError(error),
+    });
+    return respond(500, { error: "Stripe test webhook processing failed." });
   }
 });
