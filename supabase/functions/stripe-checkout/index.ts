@@ -32,6 +32,35 @@ function respond(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload), { status, headers: responseHeaders });
 }
 
+function safeStripeError(error: unknown) {
+  const detail = typeof error === "object" && error !== null
+    ? error as Record<string, unknown>
+    : {};
+  const message = error instanceof Error ? error.message : "Stripe API request failed";
+  return {
+    type: typeof detail.type === "string" ? detail.type.slice(0, 80) : "Error",
+    code: typeof detail.code === "string" ? detail.code.slice(0, 80) : null,
+    statusCode: typeof detail.statusCode === "number" ? detail.statusCode : null,
+    requestId: typeof detail.requestId === "string" ? detail.requestId.slice(0, 100) : null,
+    message: message
+      .replace(/\b(?:sk_(?:test|live)_[A-Za-z0-9]+|whsec_[A-Za-z0-9]+)\b/g, "[redacted]")
+      .slice(0, 300),
+  };
+}
+
+function stripeResponseMeta(response: unknown) {
+  const value = typeof response === "object" && response !== null
+    ? response as Record<string, unknown>
+    : {};
+  const lastResponse = typeof value.lastResponse === "object" && value.lastResponse !== null
+    ? value.lastResponse as Record<string, unknown>
+    : {};
+  return {
+    statusCode: typeof lastResponse.statusCode === "number" ? lastResponse.statusCode : null,
+    requestId: typeof lastResponse.requestId === "string" ? lastResponse.requestId.slice(0, 100) : null,
+  };
+}
+
 function supabaseSecretKey(): string {
   const secretKeysJson = Deno.env.get("SUPABASE_SECRET_KEYS");
   if (secretKeysJson) {
@@ -222,6 +251,66 @@ async function createSession(input: Record<string, unknown>) {
   return respond(200, { url: session.url, mode: "test" });
 }
 
+async function diagnoseStripe(input: Record<string, unknown>) {
+  const settings = stripeTestSettings();
+  if (!settings.ready) return respond(200, { ready: false, reason: "test_secrets_not_configured" });
+
+  const orderId = input.orderId;
+  const createdAt = input.createdAt;
+  if (typeof orderId !== "string" || !/^[a-f0-9-]{36}$/.test(orderId) || typeof createdAt !== "string") {
+    return respond(200, { ready: false, reason: "invalid_diagnostic_request" });
+  }
+  const createdAtMs = Date.parse(createdAt);
+  if (!Number.isFinite(createdAtMs)) {
+    return respond(200, { ready: false, reason: "invalid_order_timestamp" });
+  }
+
+  const stripe = stripeClient(settings.keys.secretKey);
+  let apiCheck: Record<string, unknown>;
+  try {
+    const balance = await stripe.balance.retrieve();
+    apiCheck = {
+      ok: true,
+      ...stripeResponseMeta(balance),
+    };
+  } catch (error) {
+    const details = safeStripeError(error);
+    console.error("stripe_test_account_diagnostic_failed", details);
+    apiCheck = { ok: false, error: details };
+  }
+
+  let sessionCheck: Record<string, unknown>;
+  try {
+    const sessions = await stripe.checkout.sessions.list({
+      limit: 100,
+      created: { gte: Math.floor(createdAtMs / 1000) - 60 },
+    });
+    const matches = sessions.data.filter(session =>
+      session.client_reference_id === orderId || session.metadata?.order_id === orderId
+    );
+    sessionCheck = {
+      ok: true,
+      count: matches.length,
+      sessions: matches.map(session => ({
+        idSuffix: session.id.slice(-6),
+        status: session.status,
+        paymentStatus: session.payment_status,
+        mode: session.mode,
+        livemode: session.livemode,
+        amountTotal: session.amount_total,
+        currency: session.currency,
+      })),
+      hasMore: sessions.has_more,
+    };
+  } catch (error) {
+    const details = safeStripeError(error);
+    console.error("stripe_test_session_lookup_failed", details);
+    sessionCheck = { ok: false, error: details };
+  }
+
+  return respond(200, { ready: true, mode: "test", apiCheck, sessionCheck });
+}
+
 async function cancelSession(input: Record<string, unknown>) {
   const settings = stripeTestSettings();
   if (!settings.ready) return respond(503, { error: "Stripe Test Mode is not configured." });
@@ -304,10 +393,12 @@ Deno.serve(async req => {
         mode: "test",
       });
     }
+    if (action === "diagnostics") return await diagnoseStripe(input);
     if (action === "create") return await createSession(input);
     if (action === "cancel") return await cancelSession(input);
     return respond(400, { error: "Unknown Stripe checkout action." });
-  } catch {
+  } catch (error) {
+    console.error("stripe_checkout_request_failed", safeStripeError(error));
     return respond(503, { error: "Stripe Test Mode is temporarily unavailable." });
   }
 });

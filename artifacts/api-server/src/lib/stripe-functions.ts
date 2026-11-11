@@ -8,6 +8,11 @@ type StripeFunctionResponse = {
   url?: unknown;
   status?: unknown;
   stripeTestEnabled?: unknown;
+  ready?: unknown;
+  mode?: unknown;
+  reason?: unknown;
+  accountCheck?: unknown;
+  sessionCheck?: unknown;
 };
 
 function functionUrl(): string | null {
@@ -24,7 +29,7 @@ function functionUrl(): string | null {
 }
 
 async function callStripeFunction(
-  action: "availability" | "create" | "cancel",
+  action: "availability" | "create" | "cancel" | "diagnostics",
   payload: Record<string, unknown> = {},
 ): Promise<StripeFunctionResponse> {
   const url = functionUrl();
@@ -71,6 +76,10 @@ export async function createStripeTestCheckout(input: {
 
 export async function cancelStripeTestCheckout(input: { orderId: string; token: string }) {
   return callStripeFunction("cancel", input);
+}
+
+export async function diagnoseStripeTestCheckout(input: { orderId: string; createdAt: string }) {
+  return callStripeFunction("diagnostics", input);
 }
 
 export function safeStripeTestCheckoutUrl(value: string): string {
