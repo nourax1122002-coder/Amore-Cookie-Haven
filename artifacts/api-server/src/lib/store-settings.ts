@@ -17,6 +17,7 @@ export const defaultSettings = {
     { titleEn: "Cool & enjoy", titleAr: "بردي وقدمي", textEn: "Remove from the oven and let the cookies cool before serving.", textAr: "أخرجي الكوكيز واتركيه يبرد خارج الفرن قبل التقديم." },
   ],
   checkoutEnabled: false,
+  deliveryFeeFils: 3000,
   logoImage: "/images/amore-logo.png",
   bakerImage: "/images/amore-baker.png",
   packageImage: "/images/amore-package.png",
@@ -25,7 +26,7 @@ export const defaultSettings = {
 
 export async function readSettings() {
   const row = await readSettingsRow();
-  return SaveSettingsBody.parse(row?.content ?? defaultSettings);
+  return SaveSettingsBody.parse({ ...defaultSettings, ...row?.content });
 }
 
 export async function writeSettings(content: ReturnType<typeof SaveSettingsBody.parse>) {

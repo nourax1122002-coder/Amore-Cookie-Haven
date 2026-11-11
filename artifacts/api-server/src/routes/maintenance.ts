@@ -1,7 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { Router } from "express";
 import { pruneSecurityCounters } from "../lib/tracking-limits";
-import { runPaymentReconciliation } from "../lib/local-orders";
 import { HttpError } from "../lib/errors";
 
 const router = Router();
@@ -21,8 +20,7 @@ router.get("/maintenance", async (req, res): Promise<void> => {
   }
   res.setHeader("Cache-Control", "no-store");
   await pruneSecurityCounters();
-  const paymentReconciliation = await runPaymentReconciliation();
-  res.json({ ok: true, paymentReconciliation });
+  res.json({ ok: true });
 });
 
 export default router;

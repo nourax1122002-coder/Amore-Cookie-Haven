@@ -7,7 +7,7 @@ import {
 import { GetCartResponse, UpdateCartBody } from "@workspace/api-zod";
 import { readSettings } from "./store-settings";
 import { HttpError } from "./errors";
-import { paymentConfiguration } from "./myfatoorah";
+import { stripeTestAvailability } from "./stripe-functions";
 
 type RawLine = {
   id: string;
@@ -81,8 +81,14 @@ export async function rawCart(id?: string): Promise<RawCart | null> {
 
 export async function readiness() {
   const settings = await readSettings();
-  const checkoutReady = settings.checkoutEnabled && paymentConfiguration().ready;
-  const launchMessage = checkoutReady ? "" : "Live payments await merchant approval, approved fees and delivery settings. / الدفع الحقيقي بانتظار اعتماد حساب التاجر والرسوم وإعدادات التوصيل.";
+  const [stripe, shippingFils] = await Promise.all([
+    stripeTestAvailability(),
+    Promise.resolve(settings.deliveryFeeFils),
+  ]);
+  const checkoutReady = stripe.stripeTestEnabled && shippingFils !== null;
+  const launchMessage = checkoutReady
+    ? "Stripe Test Mode is ready. No real payments are accepted. / وضع اختبار Stripe جاهز، ولن تُقبل مدفوعات حقيقية."
+    : "Stripe Test Mode is not configured yet. / لم يكتمل إعداد وضع اختبار Stripe بعد.";
   return { settings, shopCurrency: "KWD", checkoutReady, launchMessage };
 }
 
@@ -150,7 +156,7 @@ export async function mutateCart(req: Request, res: Response, body: ReturnType<t
         break;
       }
       case "discount":
-        if (body.code?.trim()) throw new HttpError(409, "Discount codes are not enabled for direct MyFatoorah checkout. / أكواد الخصم غير مفعّلة للدفع المباشر عبر ماي فاتورة.");
+        if (body.code?.trim()) throw new HttpError(409, "Discount codes are not enabled for direct checkout. / أكواد الخصم غير مفعّلة للدفع المباشر.");
         break;
       case "note":
         await updateCartNoteRow(id, body.note ?? "");

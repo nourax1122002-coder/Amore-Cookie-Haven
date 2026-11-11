@@ -44,6 +44,11 @@ export interface StoreSettings {
      */
   bakingSteps: BakingStep[];
   checkoutEnabled: boolean;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  deliveryFeeFils?: number | null;
   /** @maxLength 2000 */
   logoImage: string;
   /** @maxLength 2000 */

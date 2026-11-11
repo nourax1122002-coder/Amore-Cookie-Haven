@@ -1,7 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { pruneSecurityCounters } from "./lib/tracking-limits";
-import { startPaymentReconciliation } from "./lib/local-orders";
 import { assertSupabaseConfiguration } from "@workspace/db";
 
 // Vercel's Express runtime imports this module and serves the default-exported
@@ -31,7 +30,6 @@ if (!process.env.VERCEL) {
     logger.error({ errorType: "SecurityCounterCleanupFailed" }, "Security counter cleanup failed");
   });
   void prune();
-  startPaymentReconciliation();
   setInterval(() => { void prune(); }, 60_000).unref();
 
   app.listen(port, (err) => {

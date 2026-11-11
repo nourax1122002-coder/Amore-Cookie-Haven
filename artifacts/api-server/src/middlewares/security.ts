@@ -17,12 +17,6 @@ export const requireAdmin: RequestHandler = async (req, _res, next) => {
 };
 
 export const sameOrigin: RequestHandler = (req, _res, next) => {
-  // Only this exact route bypasses browser CSRF checks. Its handler requires
-  // MyFatoorah's V2 HMAC and independently re-verifies the payment via API.
-  if (req.method === "POST" && req.path === "/payments/webhook") {
-    if (!req.is("application/json")) throw new HttpError(415, "Send application/json.");
-    next(); return;
-  }
   if (req.method === "POST" && req.path === "/admin/product-images") {
     if (!req.is("image/jpeg") && !req.is("image/png") && !req.is("image/webp")) {
       throw new HttpError(415, "Only JPG, PNG, and WebP product images are supported.");

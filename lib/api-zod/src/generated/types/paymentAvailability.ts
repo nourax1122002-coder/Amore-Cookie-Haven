@@ -7,9 +7,7 @@
  */
 
 export interface PaymentAvailability {
-  enabled: boolean;
   /** @nullable */
   shippingFils: number | null;
-  methods: string[];
   stripeTestEnabled: boolean;
 }

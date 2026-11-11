@@ -2,7 +2,7 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto
 import type { Request, Response } from "express";
 import {
   getCustomerOrder, getCustomerOrderByNumber, getLatestOrderForCart, insertCustomerOrder,
-  listCustomerOrders, listOrdersForReconciliation, updateCustomerOrder,
+  listCustomerOrders, updateCustomerOrder,
   type CustomerOrder, type OrderItem,
 } from "@workspace/db";
 import { StartCheckoutBody } from "@workspace/api-zod";
@@ -12,10 +12,6 @@ import { readSettings } from "./store-settings";
 import { normalizePhone, phoneMatches } from "./phone";
 import { HttpError } from "./errors";
 import { checkoutAddress } from "./delivery-address";
-import {
-  moneyToFils, myfatoorahRequest, paymentConfiguration, paymentDetailsSchema,
-  safePaymentUrl, verifyDetails,
-} from "./myfatoorah";
 import { reserveStock, releaseStock, stockLock } from "./order-stock";
 import { getAuthenticatedUser } from "./auth";
 import {
@@ -24,6 +20,14 @@ import {
 } from "./stripe-functions";
 
 export const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+function moneyToFils(value: number | string) {
+  const raw = String(value).trim();
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,3})?$/.test(raw)) throw new HttpError(409, "Invalid product price.");
+  const [whole, decimal = ""] = raw.split(".");
+  const amount = Number(whole) * 1000 + Number(decimal.padEnd(3, "0"));
+  if (!Number.isSafeInteger(amount)) throw new HttpError(409, "Invalid product price.");
+  return amount;
+}
 function receiptToken(id: string) {
   if (!process.env.SESSION_SECRET) throw new HttpError(503, "Session security is not configured.");
   return createHmac("sha256", process.env.SESSION_SECRET).update(`amore-order:${id}`).digest("hex");
@@ -51,30 +55,14 @@ export function orderSummary(order: CustomerOrder) {
     items: order.items.map(({ title, quantity }) => ({ title, quantity })), hasMoreItems: false,
   };
 }
-let methodsCache: { expires: number; methods: string[] } | undefined;
-export async function enabledMethods() {
-  if (methodsCache && methodsCache.expires > Date.now()) return methodsCache.methods;
-  const response = await myfatoorahRequest<{ PaymentMethods: { ApiName: string; CurrencyIso: string }[] }>("/v3/payment-methods");
-  const methods = response.PaymentMethods.filter(m => m.CurrencyIso === "KWD").map(m => m.ApiName.toUpperCase());
-  if (!methods.includes("KNET") || !methods.includes("CARD")) throw new HttpError(503, "Activate KNET and Visa/Mastercard with MyFatoorah first. / يرجى تفعيل كي نت وفيزا وماستر كارد لدى ماي فاتورة.");
-  methodsCache = { expires: Date.now() + 30 * 60_000, methods };
-  return methods;
-}
 export async function paymentAvailability() {
-  const config = paymentConfiguration();
   const settings = await readSettings();
   const stripe = await stripeTestAvailability();
-  const myfatoorahConfigured = config.ready && settings.checkoutEnabled;
-  let methods: string[] = [];
-  let myfatoorahEnabled = myfatoorahConfigured;
-  if (myfatoorahConfigured) {
-    try { methods = await enabledMethods(); }
-    catch { myfatoorahEnabled = false; }
-  }
-  return { enabled: myfatoorahEnabled, shippingFils: config.shippingFils,
-    methods: myfatoorahEnabled ? methods : [], stripeTestEnabled: stripe.stripeTestEnabled };
+  const shippingFils = Number.isSafeInteger(settings.deliveryFeeFils) && settings.deliveryFeeFils! >= 0
+    ? settings.deliveryFeeFils! : null;
+  return { shippingFils, stripeTestEnabled: stripe.stripeTestEnabled && shippingFils !== null };
 }
-function resultUrl(order: CustomerOrder, origin = paymentConfiguration().origin) {
+function resultUrl(order: CustomerOrder, origin: string) {
   const state = order.paymentStatus === "paid" ? "success" : order.paymentStatus === "failed" ? "failure"
     : order.paymentStatus === "cancelled" ? "cancelled" : "pending";
   const provider = order.paymentProvider === "stripe" ? "&provider=stripe" : "";
@@ -97,24 +85,18 @@ function requestOrigin(req: Request, fallback: string) {
   }
 }
 export async function localCheckout(req: Request, body: ReturnType<typeof StartCheckoutBody.parse>, res?: Response) {
-  const provider = body.provider ?? "myfatoorah";
-  const config = paymentConfiguration();
   const settings = await readSettings();
-  const stripe = provider === "stripe" ? await stripeTestAvailability() : null;
-  if (provider === "stripe" && (!stripe?.stripeTestEnabled || config.shippingFils === null)) {
+  const stripe = await stripeTestAvailability();
+  const shippingFils = Number.isSafeInteger(settings.deliveryFeeFils) && settings.deliveryFeeFils! >= 0
+    ? settings.deliveryFeeFils! : null;
+  if (!stripe.stripeTestEnabled || shippingFils === null) {
     throw new HttpError(503, "Stripe Test Mode is not configured. / وضع اختبار Stripe غير مهيأ.");
   }
-  if (provider === "myfatoorah" && (!config.ready || !settings.checkoutEnabled)) {
-    throw new HttpError(503, "Live payments are awaiting merchant approval and configuration. / الدفع الحقيقي بانتظار اعتماد حساب التاجر وإكمال الإعدادات.");
-  }
-  const shippingFils = config.shippingFils;
-  if (shippingFils === null) throw new HttpError(503, "Delivery pricing is not configured. / رسوم التوصيل غير مهيأة.");
-  const origin = provider === "stripe" ? requestOrigin(req, config.origin) : config.origin;
+  const origin = requestOrigin(req, process.env.PAYMENT_PUBLIC_ORIGIN?.trim() ?? "");
   const phone = normalizePhone(body.phone ?? "");
   if (!phone || !phone.startsWith("965") || phone.length !== 11) throw new HttpError(400, "Enter a Kuwait phone number. / يرجى إدخال رقم هاتف كويتي صحيح.");
   const address = checkoutAddress(body.address);
   if (!body.requestKey) throw new HttpError(400, "Checkout reference is missing. Refresh the page.");
-  if (provider === "myfatoorah") await enabledMethods(); // Never create an invoice without the approved methods.
   const id = cartId(req);
   const cart = await rawCart(id);
   if (!id || !cart?.lines.nodes.length) throw new HttpError(409, "Your bag is empty. / السلة فارغة.");
@@ -135,15 +117,15 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
   if (!Number.isSafeInteger(totalFils) || totalFils > 2_000_000_000) throw new HttpError(409, "Invalid order total.");
   const cartHash = digest(id);
   const requestPayload = { cartHash, items, address, phone, note: body.note ?? "", totalFils };
-  const requestHash = digest(JSON.stringify(provider === "stripe" ? { ...requestPayload, provider } : requestPayload));
+  const requestHash = digest(JSON.stringify({ ...requestPayload, provider: "stripe" }));
   return stockLock(async () => {
-    // Prevent another invoice for the same cart, including a double-click/new tab.
+    // Prevent another Checkout session for the same cart, including a double-click/new tab.
     let order = await getLatestOrderForCart(cartHash);
     if (order && !(order.stockStatus === "released" && order.paymentStatus !== "paid")) {
       if (order.requestHash !== requestHash) throw new HttpError(409, "This bag already has a payment attempt. Review its order before starting again. / للسلة محاولة دفع مسجلة؛ راجعي طلبك قبل إنشاء محاولة جديدة.");
-       if (order.paymentStatus === "paid") return { url: resultUrl(order, provider === "stripe" ? origin : undefined) };
+        if (order.paymentStatus === "paid") return { url: resultUrl(order, origin) };
        if (order.paymentUrl && order.expiresAt > new Date() && order.stockStatus === "reserved") {
-         return { url: order.paymentProvider === "stripe" ? safeStripeTestCheckoutUrl(order.paymentUrl) : safePaymentUrl(order.paymentUrl) };
+          return { url: safeStripeTestCheckoutUrl(order.paymentUrl) };
        }
       // Unknown POST outcome: NEVER create another invoice automatically.
       throw new HttpError(409, "This payment needs review. Do not pay again. / هذه العملية تحتاج مراجعة، لا تعيدي الدفع.");
@@ -156,69 +138,27 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
     order = await insertCustomerOrder({
       id: orderId, number: `AM-${randomUUID().replaceAll("-", "").slice(0, 16).toUpperCase()}`,
       cartHash, requestKey: body.requestKey!, requestHash, tokenHash: digest(receiptToken(orderId)),
-       phone, address, note: body.note ?? "", items, subtotalFils, shippingFils, totalFils,
-       ...(provider === "stripe" ? { paymentProvider: "stripe" as const } : {}),
+        phone, address, note: body.note ?? "", items, subtotalFils, shippingFils, totalFils,
+        paymentProvider: "stripe",
       userId: account?.id ?? null,
       expiresAt: new Date(Date.now() + 30 * 60_000),
     });
     if (!order) throw new HttpError(503, "Order could not be saved.");
     // No payment request is sent until reservation is durably confirmed.
     await reserveStock(order);
-    const state = `order=${order.id}&token=${receiptToken(order.id)}`;
     await updateCustomerOrder(order.id, { paymentStatus: "creating", updatedAt: new Date() });
     try {
-      if (provider === "stripe") {
-        const url = await createStripeTestCheckout({
-          orderId: order.id, token: receiptToken(order.id), origin, lang: body.lang ?? "en",
-        });
-        return { url };
-      }
-      const payment = await myfatoorahRequest<{ InvoiceId: string; PaymentURL: string }>("/v3/payments", {
-        Order: { Amount: totalFils / 1000, Currency: "KWD", ExternalIdentifier: order.id },
-        PaymentExpiry: order.expiresAt.toISOString(), OperationType: "PAY", NotificationOption: "LINK",
-        Customer: { Reference: order.number, Mobile: { CountryCode: "965", Number: phone.slice(3) } },
-        IntegrationUrls: { Redirection: `${config.origin}/api/payments/callback?${state}`, Webhook: `${config.origin}/api/payments/webhook` },
-        Language: body.lang === "ar" ? "AR" : "EN",
-        DisplayPaymentMethods: ["knet", "card", "applepay"],
+      const url = await createStripeTestCheckout({
+        orderId: order.id, token: receiptToken(order.id), origin, lang: body.lang ?? "en",
       });
-      const url = safePaymentUrl(payment.PaymentURL);
-      if (!/^[A-Za-z0-9_-]{1,100}$/.test(String(payment.InvoiceId))) throw new HttpError(502, "Invalid payment invoice.");
-      await updateCustomerOrder(order.id, { invoiceId: String(payment.InvoiceId), paymentUrl: url, updatedAt: new Date() });
       return { url };
     } catch (error) {
-      // Keep stock reserved: a timed-out API call may have created a payable invoice.
-      // The authenticated webhook can recover the invoice binding via ExternalIdentifier.
+      // Keep stock reserved after an ambiguous API result; a signed webhook may
+      // still confirm that Stripe created and completed the session.
       await updateCustomerOrder(order.id, { paymentStatus: "review", updatedAt: new Date() });
       throw error;
     }
   });
-}
-export async function verifyPayment(orderId: string, paymentId: string) {
-  if (!/^[A-Za-z0-9_-]{1,100}$/.test(paymentId)) throw new HttpError(400, "Invalid payment reference.");
-  const details = paymentDetailsSchema.parse(await myfatoorahRequest(`/v3/payments/${encodeURIComponent(paymentId)}`));
-  return stockLock(async () => {
-    let order = await findOrder(orderId);
-    if (!order.invoiceId && details.Invoice.ExternalIdentifier === order.id && order.stockStatus === "reserved") {
-      // Recover only by independently authenticated GET, never by trusting webhook JSON.
-      const recovered = await updateCustomerOrder(order.id, { invoiceId: details.Invoice.Id });
-      if (!recovered) throw new HttpError(409, "Payment invoice could not be bound to this order.");
-      order = recovered;
-    }
-    if (!order) throw new HttpError(404, "Order not found.");
-    const status = verifyDetails(details, order, paymentId);
-    if (order.paymentStatus === "paid") return order; // paid is monotonic.
-    const review = status === "paid" && order.stockStatus !== "reserved";
-    const updated = await updateCustomerOrder(order.id, {
-      paymentStatus: status, paymentId: status === "paid" ? paymentId : order.paymentId,
-      fulfillmentStatus: status === "paid" ? (review ? "review" : "confirmed") : order.fulfillmentStatus,
-      updatedAt: new Date(),
-    }, {}, true);
-    return updated ?? await findOrder(order.id);
-  });
-}
-export async function callbackResult(id: string, token: string, paymentId: string) {
-  await authorizedOrder(id, token);
-  return resultUrl(await verifyPayment(id, paymentId));
 }
 export async function cancelStripeOrder(id: string, token: string) {
   const order = await authorizedOrder(id, token);
@@ -239,7 +179,7 @@ export async function localOrderList() {
   return rows.map(order => ({ id: order.id, ...orderSummary(order), phone: order.phone, address: order.address, note: order.note,
     subtotal: (order.subtotalFils / 1000).toFixed(3), shipping: (order.shippingFils / 1000).toFixed(3),
     stockStatus: order.stockStatus, invoiceId: order.invoiceId ?? "",
-    paymentProvider: order.paymentProvider ?? "myfatoorah" }));
+    paymentProvider: order.paymentProvider === "stripe" ? "stripe" : "legacy" }));
 }
 export async function updateFulfillment(id: string, stage: string) {
   const order = await findOrder(id);
@@ -248,78 +188,4 @@ export async function updateFulfillment(id: string, stage: string) {
     path.indexOf(stage) !== path.indexOf(order.fulfillmentStatus) + 1) throw new HttpError(409, "Only paid orders can advance to the next delivery stage. / يمكن تحديث مرحلة التوصيل التالية للطلبات المدفوعة فقط.");
   await updateCustomerOrder(id, { fulfillmentStatus: stage, updatedAt: new Date() },
     { fulfillmentStatus: order.fulfillmentStatus });
-}
-// Reconcile abandoned attempts too: closing the browser must not lose a payment.
-// Never release stock solely because a callback said "failed" or time elapsed.
-export async function reconcileOrder(id: string) {
-  let order = await findOrder(id);
-  if (order.paymentProvider === "stripe") {
-    throw new HttpError(409, "Stripe Test Mode payments are verified by signed webhooks. Refresh the order status.");
-  }
-  if (order.paymentStatus === "paid" || order.stockStatus === "released") return;
-  if (!order.invoiceId && order.paymentStatus === "pending") {
-    // No provider POST was started. Finish a durable ambiguous stock write with
-    // its ORIGINAL idempotency key, then safely return that reservation.
-    await stockLock(async () => {
-      order = await findOrder(id);
-      if (order.paymentStatus !== "pending" || order.invoiceId) return;
-      if (order.stockStatus === "unreserved") {
-        await updateCustomerOrder(id, { stockStatus: "released", paymentStatus: "cancelled" });
-        return;
-      }
-      await reserveStock(order);
-      order = await findOrder(id);
-      await releaseStock(order);
-      await updateCustomerOrder(id, { paymentStatus: "cancelled" });
-    });
-    return;
-  }
-  const invoice = await myfatoorahRequest<{
-    Invoice: { Id: string; Status: string; ExternalIdentifier: string; ExpirationDate: string };
-    Transactions: { PaymentId: string; Status: string }[];
-  }>(order.invoiceId ? `/v3/invoices/${encodeURIComponent(order.invoiceId)}` : `/v3/invoices/externalIdentifier/${encodeURIComponent(order.id)}`);
-  if ((order.invoiceId && String(invoice.Invoice.Id) !== order.invoiceId) || invoice.Invoice.ExternalIdentifier !== order.id) throw new HttpError(409, "Invoice mismatch.");
-  if (!order.invoiceId) {
-    await updateCustomerOrder(id, { invoiceId: String(invoice.Invoice.Id) });
-    order = await findOrder(id);
-  }
-  const success = invoice.Transactions.find(t => t.Status === "SUCCESS");
-  if (success) { await verifyPayment(order.id, success.PaymentId); return; }
-  const expiry = new Date(invoice.Invoice.ExpirationDate).getTime();
-  if (invoice.Invoice.Status !== "PENDING" || !Number.isFinite(expiry) || Date.now() < expiry + 10 * 60_000 ||
-    invoice.Transactions.some(t => !["FAILED", "CANCELED"].includes(t.Status))) return;
-  await stockLock(async () => {
-    order = await findOrder(id);
-    if (order.paymentStatus === "paid") return;
-    await releaseStock(order);
-    await updateCustomerOrder(id, { paymentStatus: "cancelled", updatedAt: new Date() });
-  });
-}
-let reconciling = false;
-export async function runPaymentReconciliation() {
-  if (!process.env.MYFATOORAH_API_KEY) return { enabled: false, processed: 0 };
-  if (reconciling) return { enabled: true, processed: 0 };
-  reconciling = true;
-  try {
-    const rows = await listOrdersForReconciliation(
-      ["pending", "creating", "failed", "cancelled", "review"],
-      ["reserved", "reserving", "releasing"], 10,
-    );
-    for (const row of rows) {
-      try { await reconcileOrder(row.id); } catch { /* keep held/pending; visible to the owner, never invent success */ }
-      await updateCustomerOrder(row.id, { updatedAt: new Date() });
-    }
-    return { enabled: true, processed: rows.length };
-  } finally {
-    reconciling = false;
-  }
-}
-
-export function startPaymentReconciliation() {
-  const timer = setInterval(() => {
-    void runPaymentReconciliation().catch(() => {
-      // DB/provider unavailable: leave persisted state unchanged.
-    });
-  }, 60_000);
-  timer.unref();
 }

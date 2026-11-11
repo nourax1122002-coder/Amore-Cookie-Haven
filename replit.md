@@ -34,9 +34,10 @@ Bilingual English/Arabic store for frozen, ready-to-bake cookie dough for homes 
 
 ## Architecture decisions
 
-- The owner explicitly chose direct MyFatoorah API payments and locally managed new orders. Supabase is the ledger for these new orders; Shopify remains the source for products, variants, available stock and carts. Historical Shopify orders are preserved separately.
-- Checkout creates a durable local order, reserves Shopify availability with idempotent compare-and-set, then redirects to MyFatoorah's official hosted payment page. Server-side payment verification controls paid status; browser redirects and administrator input cannot mark orders paid.
-- See `docs/myfatoorah-live-setup.md` for production approval gates, Secrets, webhook V2 configuration, recovery and current limitations. No sandbox fallback or live activation is allowed without owner approval.
+- New checkout uses Stripe Test Mode hosted Checkout through Supabase Edge Functions only. The server calculates KWD totals, saves a durable Supabase order and reserves stock before creating a session. Signed Stripe webhooks control payment, cancellation and refund status; browser redirects and administrator input cannot mark orders paid.
+- Reject all live Stripe keys and events. Keep checkout unavailable until the owner confirms account eligibility and supplies test credentials through Supabase Edge Function Secrets. Never ask for keys in chat; never deploy or activate live payments without explicit owner approval.
+- The owner approved a flat delivery fee of 3 KWD. Keep the fee editable in protected store settings; do not invent or silently change it.
+- Old payment columns and records are retained for history, but no MyFatoorah API, callback, webhook, or checkout path should be active.
 - New checkout addresses require an explicitly confirmed delivery point, saved with the existing address JSON and included in payment idempotency. Historical orders may omit coordinates. Precise location belongs only in protected administration, never public receipts/tracking or AI prompts. See `docs/delivery-map.md` for the Leaflet/OSM usage policy and tests.
 - The Arabic assistant uses the owner's server-side OpenRouter key directly, not the credit-billed Replit proxy. Preserve zero-price routing, privacy filtering and Supabase-backed shared quotas; never silently switch to paid models or send checkout/order context. See `docs/arabic-assistant.md`.
 - Administration requires a verified Clerk email matching the owner-approved `ADMIN_EMAILS` allowlist. Public signup does not confer administrator privileges. Create and verify the approved owner account in `/sign-up` before opening `/admin`.
@@ -49,9 +50,8 @@ Bilingual English/Arabic store for frozen, ready-to-bake cookie dough for homes 
 - Phone-and-order-number tracking verifies an exact order number against the checkout/shipping phone in Shopify. Responses expose only status, items and totals, never phone/address or privileged confirmation links. Protected-field errors fail closed; buyers can still use their existing Shopify confirmation link. A store with no orders cannot prove protected phone access for a real order.
 - Tracking limits share Supabase RPC-backed security-only counters (10/IP/15 minutes and 20/normalized order/hour). Atomic RPCs preserve limits across replicas/restarts; IPs retain IPv6 /56 grouping. Keys are scoped HMACs using the existing `SESSION_SECRET`, which must be present and identical across replicas (rotating it invalidates existing counters). No phones, orders or customer records are retained in counters. Store failure blocks tracking with 503 and Retry-After; throttling keeps 429, Retry-After and no-store. A startup/minute janitor deletes expired counters in bounded batches, even without tracking traffic.
 - `pnpm --filter @workspace/api-server run test:orders` checks phone matching, disclosure boundaries and Shopify status mapping without making orders.
-- `pnpm run validate` typechecks the project and runs order logic, isolated HTTP security regressions and shared-limiter/quota tests. Payment integration tests use clearly fictional fixtures and remove any Supabase test orders afterward. No real customer records or live payment requests are used.
+- `pnpm run validate` typechecks the project and runs order logic, isolated HTTP security regressions and shared-limiter/quota tests. Stripe domain tests use local fixtures; do not create sample or test orders in the connected Supabase project.
 - `pnpm --filter @workspace/api-server run test:admin:http` checks product creation/editing, settings saves and inquiry updates through the real HTTP/security stack with fictional identities, Shopify and database state. It is included in `validate`; no real store settings or products are changed. See `artifacts/api-server/test/admin-http/README.md`.
-- `pnpm --filter @workspace/api-server run test:payments` uses isolated gateway/stock mocks and temporary self-cleaning database fixtures. It covers KWD totals, activation gates, signatures, invoice/amount/currency binding, duplicate checkout, stock reservation/release, uncertain API outcomes and monotonic paid status. It never calls a real gateway.
 
 ## User preferences
 
@@ -64,11 +64,11 @@ Bilingual English/Arabic store for frozen, ready-to-bake cookie dough for homes 
 
 ## Gotchas
 
-- Shopify currency remains independent from direct MyFatoorah payments: charge only the server-approved KWD catalog prices and approved delivery amount, never convert or charge USD. The direct checkout gates and owner checkout switch must all pass before payment starts.
+- KWD is the checkout currency; display-only conversions must never alter the server-calculated Stripe test amount or saved order.
 - Never reset stock to an initial seed value. Read current Shopify availability and account for durable reservations.
 - Ingredients, policies, public contacts/hours and WhatsApp remain unapproved. WhatsApp appears only when the owner saves a real number.
-- Before commercial launch: approve MyFatoorah's merchant account and written fees, configure production Secrets and signed webhook, approve delivery coverage/flat fee and policies, set the actual published origin, then explicitly enable checkout. Existing Shopify discount codes are rejected by direct checkout rather than silently ignored.
-- No live payments have been tested. Automated browser checks verified disabled checkout, correct bag quantities/totals, rejected fabricated receipts, and the authenticated local-orders administration UI.
+- Before any live launch, review the merchant country and Stripe eligibility, fees, webhook, policies and delivery coverage; obtain explicit owner approval. This code is Test Mode only and must not be presented as production-ready.
+- No end-to-end Stripe payment has been tested until Supabase functions, test secrets and a test webhook are configured. Never claim success based on a local build or a browser redirect alone.
 - Publishing is a user action. Do not claim commercial readiness until these owner-controlled prerequisites and a complete purchase verification are finished.
 
 ## Pointers

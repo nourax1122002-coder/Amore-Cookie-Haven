@@ -7,7 +7,6 @@
  */
 import type { CheckoutAddressInput } from './checkoutAddressInput';
 import type { CheckoutInputLang } from './checkoutInputLang';
-import type { CheckoutInputProvider } from './checkoutInputProvider';
 
 export interface CheckoutInput {
   requestKey?: string;
@@ -17,6 +16,5 @@ export interface CheckoutInput {
   phone?: string;
   /** @maxLength 2000 */
   note?: string;
-  provider?: CheckoutInputProvider;
   address?: CheckoutAddressInput;
 }

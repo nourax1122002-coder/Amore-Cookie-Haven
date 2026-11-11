@@ -150,7 +150,7 @@ paths:
             schema: { $ref: "#/components/schemas/CheckoutInput" }
       responses:
         "200":
-          description: Secure MyFatoorah payment URL, only when merchant setup and checkout are approved.
+          description: Secure Stripe Test Mode Checkout URL for an order calculated and stored by the server.
           content:
             application/json:
               schema:
@@ -163,7 +163,7 @@ paths:
       operationId: getPaymentAvailability
       responses:
         "200":
-          description: Live payment readiness and approved delivery charge
+          description: Stripe Test Mode readiness and configured delivery charge
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PaymentAvailability" }
@@ -217,17 +217,6 @@ paths:
       responses:
         "200":
           description: Updated
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/OperationResult" }
-  /admin/local-orders/{id}/reconcile:
-    post:
-      operationId: reconcileLocalOrder
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-      responses:
-        "200":
-          description: Payment rechecked with provider
           content:
             application/json:
               schema: { $ref: "#/components/schemas/OperationResult" }
@@ -634,6 +623,7 @@ components:
           maxItems: 10
           items: { $ref: "#/components/schemas/BakingStep" }
         checkoutEnabled: { type: boolean }
+        deliveryFeeFils: { type: [integer, "null"], minimum: 0 }
         logoImage: { type: string, maxLength: 2000 }
         bakerImage: { type: string, maxLength: 2000 }
         packageImage: { type: string, maxLength: 2000 }
@@ -696,7 +686,6 @@ components:
         email: { type: string, format: email }
         phone: { type: string, maxLength: 30 }
         note: { type: string, maxLength: 2000 }
-        provider: { type: string, enum: [myfatoorah, stripe] }
         address:
           $ref: "#/components/schemas/CheckoutAddressInput"
     StripeCheckoutCancelInput:
@@ -811,13 +800,9 @@ components:
         productId: { type: string, format: uuid }
     PaymentAvailability:
       type: object
-      required: [enabled, shippingFils, methods, stripeTestEnabled]
+      required: [shippingFils, stripeTestEnabled]
       properties:
-        enabled: { type: boolean }
         shippingFils: { type: [integer, "null"] }
-        methods:
-          type: array
-          items: { type: string }
         stripeTestEnabled: { type: boolean }
     OrderFulfillmentInput:
       type: object
@@ -843,7 +828,7 @@ components:
             shipping: { type: string }
             stockStatus: { type: string }
             invoiceId: { type: string }
-            paymentProvider: { type: string, enum: [myfatoorah, stripe] }
+            paymentProvider: { type: string, enum: [legacy, stripe] }
     AuthUser:
       type: object
       required: [id, email, displayName, emailVerified, role]

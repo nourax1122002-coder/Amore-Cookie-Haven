@@ -12,7 +12,6 @@ import { getCatalog, saveCatalogProduct } from "../lib/catalog";
 import { readSettings, writeSettings } from "../lib/store-settings";
 import { readiness } from "../lib/cart";
 import { HttpError } from "../lib/errors";
-import { paymentConfiguration } from "../lib/myfatoorah";
 import { createSignedProductImageUpload, uploadProductImage } from "@workspace/db";
 
 const router = Router();
@@ -31,7 +30,6 @@ router.get("/admin/summary", async (_req, res): Promise<void> => {
     notices: [
       ...(ready.launchMessage ? [ready.launchMessage] : []),
       "Products, inventory, customer accounts and orders are stored in Supabase. / المنتجات والمخزون وحسابات العملاء والطلبات محفوظة في Supabase.",
-      ...paymentConfiguration().missing.map(key => `Payment setup required: ${key}`),
     ],
   }));
 });
@@ -44,10 +42,6 @@ router.put("/admin/settings", async (req, res): Promise<void> => {
   if (input.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) throw new HttpError(400, "Enter a valid email.");
   for (const key of ["logoImage", "bakerImage", "packageImage", "cookieImage"] as const) {
     if (!(input[key].startsWith("/images/") || /^https:\/\/\S+$/.test(input[key]))) throw new HttpError(400, "Image paths must start with /images/ or https://.");
-  }
-  if (input.checkoutEnabled) {
-    const ready = await readiness();
-    if (!paymentConfiguration().ready) throw new HttpError(409, "Approve and configure the live MyFatoorah account, fees and delivery before enabling checkout. / يجب اعتماد وإعداد حساب ماي فاتورة الحقيقي والرسوم والتوصيل أولاً.");
   }
   res.json(SaveSettingsResponse.parse(await writeSettings(input)));
 });

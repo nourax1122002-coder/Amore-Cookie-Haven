@@ -29,7 +29,6 @@ export * from './cartLine';
 export * from './checkoutAddressInput';
 export * from './checkoutInput';
 export * from './checkoutInputLang';
-export * from './checkoutInputProvider';
 export * from './currencyConversion';
 export * from './currencyConversionCalculation';
 export * from './currencyConversionCurrency';

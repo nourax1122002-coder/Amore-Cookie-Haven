@@ -1,6 +1,6 @@
 # Stripe Checkout in test mode only
 
-This project uses Supabase Edge Functions for Stripe session creation and webhook verification. The Express API keeps Supabase's server key on the backend; the browser only receives a Stripe-hosted test Checkout URL. MyFatoorah remains unchanged.
+This project uses Supabase Edge Functions for Stripe Test Mode session creation and webhook verification. The Express API keeps Supabase's server key on the backend; the browser only receives a Stripe-hosted test Checkout URL. New checkouts use Stripe Test Mode only. Existing legacy payment fields and order records are retained, but the old MyFatoorah payment flow is no longer active.
 
 ## Before enabling the test flow
 

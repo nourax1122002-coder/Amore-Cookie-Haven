@@ -213,6 +213,11 @@ export interface StoreSettings {
      */
   bakingSteps: BakingStep[];
   checkoutEnabled: boolean;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  deliveryFeeFils?: number | null;
   /** @maxLength 2000 */
   logoImage: string;
   /** @maxLength 2000 */
@@ -290,14 +295,6 @@ export const CheckoutInputLang = {
   en: 'en',
 } as const;
 
-export type CheckoutInputProvider = typeof CheckoutInputProvider[keyof typeof CheckoutInputProvider];
-
-
-export const CheckoutInputProvider = {
-  myfatoorah: 'myfatoorah',
-  stripe: 'stripe',
-} as const;
-
 export interface DeliveryLocation {
   /**
      * @minimum -90
@@ -345,7 +342,6 @@ export interface CheckoutInput {
   phone?: string;
   /** @maxLength 2000 */
   note?: string;
-  provider?: CheckoutInputProvider;
   address?: CheckoutAddressInput;
 }
 
@@ -502,10 +498,8 @@ export interface FavoriteInput {
 }
 
 export interface PaymentAvailability {
-  enabled: boolean;
   /** @nullable */
   shippingFils: number | null;
-  methods: string[];
   stripeTestEnabled: boolean;
 }
 
@@ -530,7 +524,7 @@ export type LocalOrderPaymentProvider = typeof LocalOrderPaymentProvider[keyof t
 
 
 export const LocalOrderPaymentProvider = {
-  myfatoorah: 'myfatoorah',
+  legacy: 'legacy',
   stripe: 'stripe',
 } as const;
 

@@ -61,20 +61,16 @@ not set `PORT` for the Vercel deployment.
 
 ## Runtime differences
 
-The Replit service continues to use `src/index.ts` as a persistent listener and
-keeps its existing minute-level counter cleanup and payment reconciler. On
+The Replit service continues to use `src/index.ts` as a persistent listener. On
 Vercel, the same default-exported Express app runs request-by-request and does
-not start those process timers. `vercel.json` invokes the protected
+not start process timers. `vercel.json` invokes the protected
 `GET /api/maintenance` route once per day. Set `CRON_SECRET`; the route prunes
-expired Supabase counters and, only when a MyFatoorah key is configured, runs a
-bounded payment-reconciliation batch.
+expired Supabase security counters. Stripe payment changes arrive through the
+separately signature-verified Supabase Edge webhook.
 
 Vercel Hobby allows a cron schedule only once per day (with up to 59 minutes of
-timing variance). Payment callbacks and authenticated webhooks still verify
-payments immediately, but abandoned-payment inventory cleanup can be delayed
-until the daily run. Do not enable live checkout on Hobby if minute-level
-reconciliation is required; use an approved worker/schedule that supports the
-required frequency first.
+timing variance). The cron does not reconcile payment state or release inventory;
+payment status changes are driven by verified Stripe test webhook events.
 
 Vercel Functions also cap request bodies at 4.5 MB. The admin image uploader
 therefore requests an admin-authorized, one-time Supabase Storage upload URL

@@ -82,6 +82,8 @@ export const getStoreResponseSettingsBakingStepsItemTextArMax = 1000;
 
 export const getStoreResponseSettingsBakingStepsMax = 10;
 
+export const getStoreResponseSettingsDeliveryFeeFilsMin = 0;
+
 export const getStoreResponseSettingsLogoImageMax = 2000;
 
 export const getStoreResponseSettingsBakerImageMax = 2000;
@@ -116,6 +118,7 @@ export const GetStoreResponse = zod.object({
   "textAr": zod.string().max(getStoreResponseSettingsBakingStepsItemTextArMax)
 })).min(1).max(getStoreResponseSettingsBakingStepsMax),
   "checkoutEnabled": zod.boolean(),
+  "deliveryFeeFils": zod.number().int().min(getStoreResponseSettingsDeliveryFeeFilsMin).nullish(),
   "logoImage": zod.string().max(getStoreResponseSettingsLogoImageMax),
   "bakerImage": zod.string().max(getStoreResponseSettingsBakerImageMax),
   "packageImage": zod.string().max(getStoreResponseSettingsPackageImageMax),
@@ -296,7 +299,6 @@ export const StartCheckoutBody = zod.object({
   "email": zod.string().email().optional(),
   "phone": zod.string().max(startCheckoutBodyPhoneMax).optional(),
   "note": zod.string().max(startCheckoutBodyNoteMax).optional(),
-  "provider": zod.enum(['myfatoorah', 'stripe']).optional(),
   "address": zod.object({
   "area": zod.string().min(1).max(startCheckoutBodyAddressOneAreaMax),
   "block": zod.string().min(1).max(startCheckoutBodyAddressOneBlockMax),
@@ -315,9 +317,7 @@ export const StartCheckoutResponse = zod.object({
 
 
 export const GetPaymentAvailabilityResponse = zod.object({
-  "enabled": zod.boolean(),
   "shippingFils": zod.number().int().nullable(),
-  "methods": zod.array(zod.string()),
   "stripeTestEnabled": zod.boolean()
 })
 
@@ -403,7 +403,7 @@ export const ListLocalOrdersResponseItem = zod.object({
   "shipping": zod.string(),
   "stockStatus": zod.string(),
   "invoiceId": zod.string(),
-  "paymentProvider": zod.enum(['myfatoorah', 'stripe'])
+  "paymentProvider": zod.enum(['legacy', 'stripe'])
 }))
 export const ListLocalOrdersResponse = zod.array(ListLocalOrdersResponseItem)
 
@@ -417,15 +417,6 @@ export const UpdateLocalOrderBody = zod.object({
 })
 
 export const UpdateLocalOrderResponse = zod.object({
-  "ok": zod.boolean()
-})
-
-
-export const ReconcileLocalOrderParams = zod.object({
-  "id": zod.coerce.string()
-})
-
-export const ReconcileLocalOrderResponse = zod.object({
   "ok": zod.boolean()
 })
 
@@ -762,6 +753,8 @@ export const getAdminSettingsResponseBakingStepsItemTextArMax = 1000;
 
 export const getAdminSettingsResponseBakingStepsMax = 10;
 
+export const getAdminSettingsResponseDeliveryFeeFilsMin = 0;
+
 export const getAdminSettingsResponseLogoImageMax = 2000;
 
 export const getAdminSettingsResponseBakerImageMax = 2000;
@@ -795,6 +788,7 @@ export const GetAdminSettingsResponse = zod.object({
   "textAr": zod.string().max(getAdminSettingsResponseBakingStepsItemTextArMax)
 })).min(1).max(getAdminSettingsResponseBakingStepsMax),
   "checkoutEnabled": zod.boolean(),
+  "deliveryFeeFils": zod.number().int().min(getAdminSettingsResponseDeliveryFeeFilsMin).nullish(),
   "logoImage": zod.string().max(getAdminSettingsResponseLogoImageMax),
   "bakerImage": zod.string().max(getAdminSettingsResponseBakerImageMax),
   "packageImage": zod.string().max(getAdminSettingsResponsePackageImageMax),
@@ -842,6 +836,8 @@ export const saveSettingsBodyBakingStepsItemTextArMax = 1000;
 
 export const saveSettingsBodyBakingStepsMax = 10;
 
+export const saveSettingsBodyDeliveryFeeFilsMin = 0;
+
 export const saveSettingsBodyLogoImageMax = 2000;
 
 export const saveSettingsBodyBakerImageMax = 2000;
@@ -875,6 +871,7 @@ export const SaveSettingsBody = zod.object({
   "textAr": zod.string().max(saveSettingsBodyBakingStepsItemTextArMax)
 })).min(1).max(saveSettingsBodyBakingStepsMax),
   "checkoutEnabled": zod.boolean(),
+  "deliveryFeeFils": zod.number().int().min(saveSettingsBodyDeliveryFeeFilsMin).nullish(),
   "logoImage": zod.string().max(saveSettingsBodyLogoImageMax),
   "bakerImage": zod.string().max(saveSettingsBodyBakerImageMax),
   "packageImage": zod.string().max(saveSettingsBodyPackageImageMax),
@@ -921,6 +918,8 @@ export const saveSettingsResponseBakingStepsItemTextArMax = 1000;
 
 export const saveSettingsResponseBakingStepsMax = 10;
 
+export const saveSettingsResponseDeliveryFeeFilsMin = 0;
+
 export const saveSettingsResponseLogoImageMax = 2000;
 
 export const saveSettingsResponseBakerImageMax = 2000;
@@ -954,6 +953,7 @@ export const SaveSettingsResponse = zod.object({
   "textAr": zod.string().max(saveSettingsResponseBakingStepsItemTextArMax)
 })).min(1).max(saveSettingsResponseBakingStepsMax),
   "checkoutEnabled": zod.boolean(),
+  "deliveryFeeFils": zod.number().int().min(saveSettingsResponseDeliveryFeeFilsMin).nullish(),
   "logoImage": zod.string().max(saveSettingsResponseLogoImageMax),
   "bakerImage": zod.string().max(saveSettingsResponseBakerImageMax),
   "packageImage": zod.string().max(saveSettingsResponsePackageImageMax),

@@ -10,6 +10,6 @@ export type LocalOrderPaymentProvider = typeof LocalOrderPaymentProvider[keyof t
 
 
 export const LocalOrderPaymentProvider = {
-  myfatoorah: 'myfatoorah',
+  legacy: 'legacy',
   stripe: 'stripe',
 } as const;

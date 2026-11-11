@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Link } from "wouter";
 import {
   getGetCartQueryKey, getGetPaymentOrderQueryKey, getListLocalOrdersQueryKey,
-  useCancelStripeCheckout, useGetPaymentOrder, useListLocalOrders, useReconcileLocalOrder,
+  useCancelStripeCheckout, useGetPaymentOrder, useListLocalOrders,
   useUpdateLocalOrder, type LocalOrder,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -13,7 +13,7 @@ export function PaymentResult({ lang }: { lang: Lang }) {
   const ar = lang === "ar";
   const params = new URLSearchParams(window.location.search);
   const id = params.get("order") ?? "", token = params.get("token") ?? "";
-  const provider = params.get("provider") === "stripe" ? "stripe" : "myfatoorah";
+  const provider = params.get("provider") === "stripe" ? "stripe" : "legacy";
   const stripeCancellation = provider === "stripe" && window.location.pathname.endsWith("/payment/cancelled");
   const valid = /^[a-f0-9-]{36}$/.test(id) && /^[a-f0-9]{64}$/.test(token);
   const qc = useQueryClient();
@@ -68,7 +68,7 @@ export function PaymentResult({ lang }: { lang: Lang }) {
           {ar&&<p className="mt-3 text-sm text-[#795963]" dir="rtl">تأكدنا من دفعة الاختبار عبر حدث Stripe موقّع. لم تُحصّل أي أموال حقيقية.</p>}
         </div>
       : <p className="mt-5 text-sm leading-7 text-[#795963]">{status === "PAID"
-      ? (ar ? "تأكدنا من عملية الدفع لدى ماي فاتورة. احتفظي برقم الطلب للمتابعة." : "Your payment was verified with MyFatoorah. Keep your order number for tracking.")
+      ? (ar ? "تم تأكيد الدفع. احتفظي برقم الطلب للمتابعة." : "Payment was confirmed. Keep your order number for tracking.")
       : status === "REFUNDED" || status === "PARTIALLY_REFUNDED"
         ? (ar ? "وصل تأكيد الاسترداد من مزود الدفع. لم تُعدّل بيانات الطلب الأصلية." : "The provider confirmed the refund. The original order details were preserved.")
       : (ar ? "لا تُعتبر زيارة هذه الصفحة إثباتاً للدفع. نعتمد فقط الحالة المؤكدة من مزود الدفع. لا تعيدي الدفع إذا كانت العملية قيد التحقق." : "Opening this page is not proof of payment. Only the provider-verified status counts. Do not pay again while verification is pending.")}</p>}
@@ -79,7 +79,7 @@ export function PaymentResult({ lang }: { lang: Lang }) {
 }
 function LocalOrderCard({ order, lang, refresh }: { order: LocalOrder; lang: Lang; refresh: () => void }) {
   const ar = lang === "ar";
-  const update = useUpdateLocalOrder(), reconcile = useReconcileLocalOrder();
+  const update = useUpdateLocalOrder();
   const next: Record<string, string> = { confirmed: "preparing", preparing: "out_for_delivery", out_for_delivery: "delivered" };
   const stage = next[order.stage];
   const label: Record<string, string> = ar ? { preparing: "بدء التجهيز", out_for_delivery: "خرج للتوصيل", delivered: "تم التوصيل" }
@@ -92,14 +92,13 @@ function LocalOrderCard({ order, lang, refresh }: { order: LocalOrder; lang: Lan
       ? <p className="text-xs text-[#795963]" data-testid="admin-delivery-location">{ar?'موقع التوصيل المؤكد':'Confirmed delivery point'}: <span dir="ltr">{order.address.location.latitude.toFixed(6)}, {order.address.location.longitude.toFixed(6)}</span></p>
       : <p className="text-xs text-[#795963]">{ar?'طلب سابق بدون إحداثيات':'Historical order without coordinates'}</p>}
     {order.note&&<p className="text-xs">{order.note}</p>}
-    <p className="text-xs text-[#795963]">{ar?'مزود الدفع':'Payment provider'}: {order.paymentProvider==='stripe'?'Stripe Test Mode':'MyFatoorah'}</p>
+    <p className="text-xs text-[#795963]">{ar?'مزود الدفع':'Payment provider'}: {order.paymentProvider==='stripe'?'Stripe Test Mode':(ar?'سجل دفع سابق':'Legacy payment record')}</p>
     <p className="text-xs text-[#795963]">{ar?'التوصيل':'Delivery'}: {order.shipping} KWD · {ar?'حالة المخزون':'Inventory'}: {order.stockStatus}</p>
     <div className="flex flex-wrap gap-3">
       {order.financialStatus==='PAID'&&order.stockStatus==='reserved'&&stage&&<button className="btn-primary" disabled={update.isPending} onClick={()=>update.mutate({id:order.id,data:{stage:stage as 'preparing'|'out_for_delivery'|'delivered'}},{onSuccess:refresh})}>{label[stage]}</button>}
-      {order.paymentProvider!=='stripe'&&!['PAID','REFUNDED','PARTIALLY_REFUNDED'].includes(order.financialStatus)&&<button className="btn-outline" disabled={reconcile.isPending} onClick={()=>reconcile.mutate({id:order.id},{onSuccess:refresh})}>{ar?'التحقق من الدفع':'Recheck payment'}</button>}
       {order.paymentProvider==='stripe'&&!['PAID','REFUNDED','PARTIALLY_REFUNDED','CANCELLED','FAILED'].includes(order.financialStatus)&&<p className="text-xs text-[#795963]">{ar?'دفعة Stripe للاختبار؛ الحالة تصل عبر webhook موثّق.':'Stripe test payment; status arrives through the verified webhook.'}</p>}
     </div>
-    {(update.isError||reconcile.isError)&&<p role="alert" className="text-xs text-red-700">{update.error?.message||reconcile.error?.message}</p>}
+    {update.isError&&<p role="alert" className="text-xs text-red-700">{update.error?.message}</p>}
   </article>;
 }
 export function LocalOrdersAdmin({ lang }: { lang: Lang }) {
