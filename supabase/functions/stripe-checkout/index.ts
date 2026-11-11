@@ -223,6 +223,12 @@ async function createSession(input: Record<string, unknown>) {
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     currency: "kwd",
+    branding_settings: {
+      display_name: "Amore Cookies",
+      background_color: "#FFFAF8",
+      button_color: "#5B0D1E",
+    },
+    // Keep Stripe's account-configured dynamic methods, including eligible card wallets.
     line_items: makeLineItems(order),
     client_reference_id: order.id,
     metadata: { order_id: order.id, payment_mode: "test" },
@@ -431,7 +437,11 @@ Deno.serve(async req => {
     if (action === "cancel") return await cancelSession(input);
     return respond(400, { error: "Unknown Stripe checkout action." });
   } catch (error) {
-    console.error("stripe_checkout_request_failed", safeStripeError(error));
+    const details = safeStripeError(error);
+    console.error("stripe_checkout_request_failed", details);
+    if (details.statusCode === 400 && details.message.toLowerCase().includes("invalid currency: kwd")) {
+      return respond(422, { error: "stripe_currency_not_enabled" });
+    }
     return respond(503, { error: "Stripe Test Mode is temporarily unavailable." });
   }
 });

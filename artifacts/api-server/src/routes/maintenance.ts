@@ -20,7 +20,10 @@ router.get("/maintenance", async (req, res): Promise<void> => {
   }
   res.setHeader("Cache-Control", "no-store");
   await pruneSecurityCounters();
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    paymentReconciliation: { enabled: false, processed: 0 },
+  });
 });
 
 export default router;

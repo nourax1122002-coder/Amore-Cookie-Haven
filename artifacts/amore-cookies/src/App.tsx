@@ -476,9 +476,10 @@ function CheckoutPage({lang}:{lang:Lang}) {
   const stripeAvailable=availability.data?.stripeTestEnabled===true;
   const stripeReady=Boolean(stripeAvailable&&typeof availability.data?.shippingFils==='number'&&cart?.checkoutReady&&cart.lines.length);
    const ready=stripeReady;
-  const reviewRequired=Boolean(start.isError&&start.error?.message.includes('This payment needs review'));
+  const currencyUnavailable=Boolean(start.isError&&start.error?.message.includes('cannot accept KWD'));
+  const reviewRequired=Boolean(start.isError&&(start.error?.message.includes('This payment needs review')||currencyUnavailable));
   const checkoutError=phoneError||(start.isError?(reviewRequired
-    ?(lang==='ar'?'محاولة الدفع تحتاج إلى مراجعة. لا تعيدي المحاولة حتى يتم التحقق من الطلب.':'This payment attempt needs review. Do not retry until the order has been checked.')
+    ?(currencyUnavailable?(lang==='ar'?'حساب Stripe لا يدعم الدينار الكويتي حالياً. لا تعيدي المحاولة حتى يتم تفعيل KWD.':'This Stripe account does not currently support KWD. Do not retry until KWD is enabled.'):(lang==='ar'?'محاولة الدفع تحتاج إلى مراجعة. لا تعيدي المحاولة حتى يتم التحقق من الطلب.':'This payment attempt needs review. Do not retry until the order has been checked.'))
     :start.error?.message?.includes('Kuwait phone number')
       ?(lang==='ar'?'أدخلي رقم هاتف كويتي من 8 أرقام، أو أضيفي مفتاح الدولة +965.':'Enter an 8-digit Kuwait number, or include the +965 country code.')
       :start.error?.message|| (lang==='ar'?'تعذر بدء الدفع. لا تعيدي الدفع إذا كانت هناك عملية قيد التحقق.':'Checkout could not be started. Do not pay again while a payment is being verified.')):'');
@@ -502,9 +503,9 @@ function CheckoutPage({lang}:{lang:Lang}) {
       </fieldset>
        <label><span className="field-label">{c.phone} *</span><input className="field" name="phone" type="tel" required minLength={8} maxLength={30} autoComplete="tel" value={phone} onChange={e=>{setPhone(e.target.value);setPhoneError('')}}/><span className="mt-1 block text-[11px] leading-5 text-[#896a71]">{lang==='ar'?'للتوصيل داخل الكويت: 8 أرقام، أو اكتبي +965 قبل الرقم.':'For Kuwait delivery: enter 8 digits or prefix the number with +965.'}</span></label>
       <label><span className="field-label">{c.note}</span><textarea className="field min-h-28" maxLength={2000} value={note} onChange={e=>setNote(e.target.value)}/></label>
-         <p role="status" className={`rounded-xl p-4 text-xs leading-6 ${ready?'bg-[#edf6ec] text-[#42643c]':'bg-[#fff1f3] text-[#763246]'}`}>{ready?(lang==='ar'?'الدفع التجريبي عبر Stripe متاح. لن تُحصّل أموال حقيقية.':'Stripe Test Mode checkout is available. No real payment will be collected.'):(lang==='ar'?'الدفع التجريبي غير جاهز بعد. يلزم إعداد مفاتيح Stripe التجريبية ورسوم التوصيل.':'Test checkout is not ready yet. Stripe test credentials and the delivery fee must be configured.')}</p>
+         <p role="status" className={`rounded-xl p-4 text-xs leading-6 ${ready?'bg-[#edf6ec] text-[#42643c]':'bg-[#fff1f3] text-[#763246]'}`}>{ready?(lang==='ar'?'وضع Stripe التجريبي مُعدّ. يجب أن يدعم الحساب عملة KWD قبل إنشاء صفحة الدفع.':'Stripe Test Mode is configured. The account must support KWD before a hosted payment page can be created.'):(lang==='ar'?'الدفع التجريبي غير جاهز بعد. يلزم إعداد مفاتيح Stripe التجريبية ورسوم التوصيل.':'Test checkout is not ready yet. Stripe test credentials and the delivery fee must be configured.')}</p>
        {checkoutError&&<p role="alert" className="text-xs text-red-700">{checkoutError}</p>}
-         <button disabled={!ready||start.isPending||reviewRequired} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:reviewRequired?(lang==='ar'?'محاولة الدفع قيد المراجعة':'Payment attempt under review'):(lang==='ar'?'الدفع التجريبي عبر Stripe':'Pay with Stripe Test Mode')}<ExternalLink size={14}/></button>
+         <button disabled={!ready||start.isPending||reviewRequired} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:reviewRequired?(currencyUnavailable?(lang==='ar'?'تفعيل KWD مطلوب':'KWD setup required'):(lang==='ar'?'محاولة الدفع قيد المراجعة':'Payment attempt under review')):(lang==='ar'?'الدفع التجريبي عبر Stripe':'Pay with Stripe Test Mode')}<ExternalLink size={14}/></button>
       </form><aside className="card-surface p-6 h-fit"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.bag}</h2>
       <label htmlFor="checkout-display-currency" className="mt-5 grid gap-2 text-xs font-medium text-[#795963]">{c.displayCurrency}
         <select id="checkout-display-currency" data-testid="checkout-display-currency" className="field w-full py-2" value={displayCurrency} onChange={event=>setDisplayCurrency(event.target.value as DisplayCurrency)}>

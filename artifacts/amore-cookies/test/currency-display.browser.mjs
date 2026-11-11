@@ -268,9 +268,9 @@ async function run() {
   await page.getByTestId("button-add-product").click();
   await page.waitForURL(/\/checkout$/);
   await page.getByTestId("checkout-total").getByText("2.000 KWD", { exact: true }).waitFor();
-  assert.equal(await page.getByRole("button", { name: "Pay now" }).isDisabled(), true,
+  assert.equal(await page.getByRole("button", { name: "Pay with Stripe Test Mode" }).isDisabled(), true,
     "checkout payment remains disabled");
-  await page.getByRole("status").filter({ hasText: "Live payments are not enabled yet" }).waitFor();
+  await page.getByRole("status").filter({ hasText: "Test checkout is not ready yet" }).waitFor();
 
   await page.getByTestId("link-cart").click();
   await page.getByTestId("cart-total-summary").getByText("2.000 KWD", { exact: true }).waitFor();
@@ -318,7 +318,7 @@ async function run() {
   assert.equal(await checkoutCurrency.isVisible(), true, "the checkout currency selector remains visible on mobile");
   assert.equal(await page.getByTestId("checkout-converted-total").isVisible(), true,
     "the converted checkout total remains visible on mobile");
-  assert.equal(await page.getByRole("button", { name: "Pay now" }).isDisabled(), true,
+  assert.equal(await page.getByRole("button", { name: "Pay with Stripe Test Mode" }).isDisabled(), true,
     "currency display selection never enables payment");
 
   await page.goto(`${baseUrl}/products`);

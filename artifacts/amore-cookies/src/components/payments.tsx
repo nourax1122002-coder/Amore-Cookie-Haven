@@ -33,7 +33,7 @@ export function PaymentResult({ lang }: { lang: Lang }) {
         void qc.invalidateQueries({ queryKey: getGetCartQueryKey() });
         if (result.status === "cancelled") {
           const base = import.meta.env.BASE_URL.replace(/\/+$/, "");
-          window.location.replace(`${base}/cart?payment=cancelled`);
+          window.location.replace(`${base}/checkout?payment=cancelled`);
         }
       },
     });
