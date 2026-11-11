@@ -141,7 +141,10 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
         phone, address, note: body.note ?? "", items, subtotalFils, shippingFils, totalFils,
         paymentProvider: "stripe",
       userId: account?.id ?? null,
-      expiresAt: new Date(Date.now() + 30 * 60_000),
+      // Stripe requires a Checkout Session to expire at least 30 minutes after
+      // the create request. Keep a buffer for network latency and use the same
+      // persisted deadline in the Edge Function.
+      expiresAt: new Date(Date.now() + 40 * 60_000),
     });
     if (!order) throw new HttpError(503, "Order could not be saved.");
     // No payment request is sent until reservation is durably confirmed.

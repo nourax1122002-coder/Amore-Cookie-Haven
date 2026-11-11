@@ -13,6 +13,7 @@ type StripeFunctionResponse = {
   reason?: unknown;
   apiCheck?: unknown;
   sessionCheck?: unknown;
+  paymentIntentCheck?: unknown;
 };
 
 function functionUrl(): string | null {
