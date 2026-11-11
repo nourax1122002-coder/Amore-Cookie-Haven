@@ -6,6 +6,12 @@ import {
   isSafeFils,
   sha256Hex,
 } from "../_shared/stripe-domain.ts";
+import {
+  allocateUsdLineAmounts,
+  convertKwdFilsToUsdMinor,
+  KWD_USD_RATE_SOURCE,
+  kwdUsdRateProvider,
+} from "../_shared/kwd-usd-settlement.ts";
 
 type CheckoutItem = { title: string; quantity: number; unitFils: number };
 type CheckoutOrder = {
@@ -23,6 +29,11 @@ type CheckoutOrder = {
   expires_at: string;
   stripe_checkout_session_id: string | null;
   stripe_payment_intent_id: string | null;
+  stripe_payment_currency: string | null;
+  stripe_payment_amount_minor: number | null;
+  stripe_exchange_rate: number | string | null;
+  stripe_exchange_rate_source: string | null;
+  stripe_exchange_rate_updated_at: string | null;
   payment_url: string | null;
 };
 
@@ -130,43 +141,122 @@ async function loadAuthorizedOrder(
   return constantTimeEqual(order.token_hash, tokenHash) ? order : null;
 }
 
-function makeLineItems(order: CheckoutOrder): Stripe.Checkout.SessionCreateParams.LineItem[] {
+function makeUsdLineItems(
+  order: CheckoutOrder,
+  rate: number,
+  lang: "ar" | "en",
+): { lines: Stripe.Checkout.SessionCreateParams.LineItem[]; totalMinor: number } {
   if (order.currency !== "KWD" || !Array.isArray(order.items) || order.items.length === 0
     || !isSafeFils(order.subtotal_fils) || !isSafeFils(order.shipping_fils)
     || !isSafeFils(order.total_fils)) {
     throw new Error("Order totals are invalid");
   }
   let calculatedSubtotal = 0;
-  const lines = order.items.map(item => {
+  const components = order.items.map(item => {
     if (typeof item.title !== "string" || !item.title.trim() || !Number.isInteger(item.quantity)
       || item.quantity < 1 || !isSafeFils(item.unitFils) || item.unitFils < 1) {
       throw new Error("Order items are invalid");
     }
     calculatedSubtotal += item.unitFils * item.quantity;
     return {
-      quantity: item.quantity,
-      price_data: {
-        currency: "kwd",
-        unit_amount: item.unitFils,
-        product_data: { name: item.title.slice(0, 200) },
-      },
+      name: `${item.title.slice(0, 160)} (${item.quantity} ${item.quantity === 1 ? "bag" : "bags"})`,
+      amountFils: item.unitFils * item.quantity,
     };
   });
   if (!Number.isSafeInteger(calculatedSubtotal) || calculatedSubtotal !== order.subtotal_fils
     || calculatedSubtotal + order.shipping_fils !== order.total_fils) {
     throw new Error("Order total does not match its stored items");
   }
-  if (order.shipping_fils > 0) {
-    lines.push({
+  if (order.shipping_fils > 0) components.push({
+    name: lang === "ar" ? "التوصيل" : "Delivery",
+    amountFils: order.shipping_fils,
+  });
+  const allocation = allocateUsdLineAmounts(components, order.total_fils, rate);
+  const rateLabel = rate.toFixed(6);
+  const sourceDate = new Date(order.stripe_exchange_rate_updated_at ?? Date.now()).toISOString().slice(0, 10);
+  const description = lang === "ar"
+    ? `الإجمالي الأصلي ${formatKwd(order.total_fils)} د.ك؛ 1 د.ك = ${rateLabel} USD؛ المصدر ${KWD_USD_RATE_SOURCE} (${sourceDate}).`
+    : `Original total KWD ${formatKwd(order.total_fils)}; 1 KWD = USD ${rateLabel}; ${KWD_USD_RATE_SOURCE} (${sourceDate}).`;
+  return {
+    totalMinor: allocation.totalMinor,
+    lines: allocation.lines.map((line, index) => ({
       quantity: 1,
       price_data: {
-        currency: "kwd",
-        unit_amount: order.shipping_fils,
-        product_data: { name: "Delivery" },
+        currency: "usd",
+        unit_amount: line.amountMinor,
+        product_data: {
+          name: line.name,
+          ...(index === 0 ? { description } : {}),
+        },
       },
-    });
+    })),
+  };
+}
+
+function formatKwd(totalFils: number): string {
+  return (totalFils / 1000).toFixed(3);
+}
+
+function parseStoredRate(value: number | string | null): number | null {
+  if (value === null) return null;
+  const rate = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(rate) ? rate : null;
+}
+
+function validStoredSettlement(order: CheckoutOrder) {
+  const rate = parseStoredRate(order.stripe_exchange_rate);
+  const updatedAt = order.stripe_exchange_rate_updated_at
+    ? Date.parse(order.stripe_exchange_rate_updated_at)
+    : Number.NaN;
+  const age = Date.now() - updatedAt;
+  const fieldsPresent = order.stripe_payment_currency === "USD"
+    && Number.isSafeInteger(order.stripe_payment_amount_minor)
+    && order.stripe_payment_amount_minor !== null
+    && typeof order.stripe_exchange_rate_source === "string"
+    && order.stripe_exchange_rate_source === KWD_USD_RATE_SOURCE
+    && rate !== null && rate >= 0.1 && rate <= 10
+    && Number.isFinite(updatedAt) && age >= -5 * 60_000 && age <= 48 * 60 * 60 * 1000;
+  if (!fieldsPresent) return null;
+  try {
+    if (convertKwdFilsToUsdMinor(order.total_fils, rate) !== order.stripe_payment_amount_minor) return null;
+  } catch {
+    return null;
   }
-  return lines;
+  return { rate, updatedAt: new Date(updatedAt).toISOString(), amountMinor: order.stripe_payment_amount_minor };
+}
+
+async function persistSettlement(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  order: CheckoutOrder,
+  rate: number,
+  updatedAt: string,
+  amountMinor: number,
+) {
+  const { data, error } = await supabase.from("customer_orders").update({
+    stripe_payment_currency: "USD",
+    stripe_payment_amount_minor: amountMinor,
+    stripe_exchange_rate: rate,
+    stripe_exchange_rate_source: KWD_USD_RATE_SOURCE,
+    stripe_exchange_rate_updated_at: updatedAt,
+    updated_at: new Date().toISOString(),
+  }).eq("id", order.id).is("stripe_checkout_session_id", null)
+    .is("stripe_payment_amount_minor", null)
+    .in("payment_status", ["creating", "pending"])
+    .select("id").maybeSingle();
+  if (error) throw new Error("Unable to save the USD test settlement.");
+  if (data) return;
+
+  const { data: saved, error: readError } = await supabase.from("customer_orders")
+    .select("stripe_payment_currency,stripe_payment_amount_minor,stripe_exchange_rate,stripe_exchange_rate_source,stripe_exchange_rate_updated_at")
+    .eq("id", order.id).maybeSingle();
+  const savedAmount = typeof saved?.stripe_payment_amount_minor === "number"
+    ? saved.stripe_payment_amount_minor
+    : Number(saved?.stripe_payment_amount_minor);
+  if (readError || !saved || saved.stripe_payment_currency !== "USD"
+    || savedAmount !== amountMinor
+    || saved.stripe_exchange_rate_source !== KWD_USD_RATE_SOURCE) {
+    throw new Error("The USD settlement changed during checkout.");
+  }
 }
 
 async function createSession(input: Record<string, unknown>) {
@@ -191,7 +281,8 @@ async function createSession(input: Record<string, unknown>) {
     const existing = await stripe.checkout.sessions.retrieve(existingId);
     if (existing.livemode !== false || existing.mode !== "payment"
       || existing.metadata?.order_id !== order.id || existing.client_reference_id !== order.id
-      || existing.currency !== "kwd" || existing.amount_total !== order.total_fils) {
+      || existing.currency !== "usd" || existing.amount_total !== order.stripe_payment_amount_minor
+      || !validStoredSettlement(order)) {
       return respond(409, { error: "Stripe session does not match this test order." });
     }
     if (existing.status === "open" && existing.url) return respond(200, { url: existing.url, mode: "test" });
@@ -210,6 +301,36 @@ async function createSession(input: Record<string, unknown>) {
   if (!Number.isSafeInteger(expiresAt) || expiresAt < minimumBufferedExpiry) {
     return respond(409, { error: "The reserved order has expired. Do not retry checkout." });
   }
+  let settlement = validStoredSettlement(order);
+  if (!settlement) {
+    const hasPartialSettlement = order.stripe_payment_currency !== null
+      || order.stripe_payment_amount_minor !== null
+      || order.stripe_exchange_rate !== null
+      || order.stripe_exchange_rate_source !== null
+      || order.stripe_exchange_rate_updated_at !== null;
+    if (hasPartialSettlement) {
+      return respond(409, { error: "The saved USD conversion needs review before checkout." });
+    }
+    let quote;
+    try {
+      quote = await kwdUsdRateProvider.getRate();
+    } catch (error) {
+      console.error("stripe_usd_exchange_rate_unavailable", {
+        message: error instanceof Error ? error.message.slice(0, 160) : "Rate provider failed",
+      });
+      return respond(503, { error: "usd_exchange_rate_unavailable" });
+    }
+    const amountMinor = convertKwdFilsToUsdMinor(order.total_fils, quote.rate);
+    await persistSettlement(supabase, order, quote.rate, quote.updatedAt, amountMinor);
+    settlement = { rate: quote.rate, updatedAt: quote.updatedAt, amountMinor };
+  }
+  const lang = input.lang === "ar" ? "ar" : "en";
+  // Use the persisted rate timestamp for the hosted checkout description.
+  order.stripe_exchange_rate_updated_at = settlement.updatedAt;
+  const usdLineItems = makeUsdLineItems(order, settlement.rate, lang);
+  if (usdLineItems.totalMinor !== settlement.amountMinor) {
+    return respond(409, { error: "The converted amount does not match the saved order." });
+  }
   const successUrl = new URL("/payment/success", input.origin);
   successUrl.searchParams.set("order", order.id);
   successUrl.searchParams.set("token", token);
@@ -222,17 +343,39 @@ async function createSession(input: Record<string, unknown>) {
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
-    currency: "kwd",
+    currency: "usd",
     branding_settings: {
       display_name: "Amore Cookies",
       background_color: "#FFFAF8",
       button_color: "#5B0D1E",
     },
     // Keep Stripe's account-configured dynamic methods, including eligible card wallets.
-    line_items: makeLineItems(order),
+    line_items: usdLineItems.lines,
     client_reference_id: order.id,
-    metadata: { order_id: order.id, payment_mode: "test" },
-    payment_intent_data: { metadata: { order_id: order.id, payment_mode: "test" } },
+    metadata: {
+      order_id: order.id,
+      payment_mode: "test",
+      original_currency: "KWD",
+      original_total_fils: String(order.total_fils),
+      stripe_payment_currency: "USD",
+      stripe_payment_amount_minor: String(settlement.amountMinor),
+      exchange_rate: settlement.rate.toFixed(10),
+      exchange_rate_source: KWD_USD_RATE_SOURCE,
+      exchange_rate_updated_at: settlement.updatedAt,
+    },
+    payment_intent_data: {
+      metadata: {
+        order_id: order.id,
+        payment_mode: "test",
+        original_currency: "KWD",
+        original_total_fils: String(order.total_fils),
+        stripe_payment_currency: "USD",
+        stripe_payment_amount_minor: String(settlement.amountMinor),
+        exchange_rate: settlement.rate.toFixed(10),
+        exchange_rate_source: KWD_USD_RATE_SOURCE,
+        exchange_rate_updated_at: settlement.updatedAt,
+      },
+    },
     success_url: successUrl.toString(),
     cancel_url: cancelUrl.toString(),
     expires_at: expiresAt,
@@ -240,7 +383,7 @@ async function createSession(input: Record<string, unknown>) {
   }, { idempotencyKey: `amore-stripe-test-${order.id}` });
 
   if (session.livemode !== false || session.mode !== "payment" || !session.id.startsWith("cs_test_")
-    || !session.url || session.currency !== "kwd" || session.amount_total !== order.total_fils
+    || !session.url || session.currency !== "usd" || session.amount_total !== settlement.amountMinor
     || session.metadata?.order_id !== order.id || session.client_reference_id !== order.id) {
     throw new Error("Stripe returned a session outside the expected test order");
   }
@@ -252,6 +395,11 @@ async function createSession(input: Record<string, unknown>) {
     payment_provider: "stripe",
     stripe_checkout_session_id: session.id,
     stripe_payment_intent_id: paymentIntentId,
+    stripe_payment_currency: "USD",
+    stripe_payment_amount_minor: settlement.amountMinor,
+    stripe_exchange_rate: settlement.rate,
+    stripe_exchange_rate_source: KWD_USD_RATE_SOURCE,
+    stripe_exchange_rate_updated_at: settlement.updatedAt,
     payment_url: session.url,
     payment_status: "pending",
     expires_at: new Date(expiresAt * 1000).toISOString(),
@@ -416,10 +564,10 @@ Deno.serve(async req => {
           const supabase = getSupabaseAdmin();
           const [customerOrders, accountOrders] = await Promise.all([
             supabase.from("customer_orders").select(
-              "payment_provider,stripe_checkout_session_id,stripe_payment_intent_id,stripe_charge_id,stripe_refunded_amount_fils,paid_at",
+              "payment_provider,stripe_checkout_session_id,stripe_payment_intent_id,stripe_charge_id,stripe_refunded_amount_fils,paid_at,stripe_payment_currency,stripe_payment_amount_minor,stripe_exchange_rate,stripe_exchange_rate_source,stripe_exchange_rate_updated_at,stripe_refunded_amount_minor",
             ).limit(0),
             supabase.from("orders").select(
-              "payment_provider,stripe_checkout_session_id,stripe_payment_intent_id,stripe_charge_id,stripe_refunded_amount_fils,paid_at",
+              "payment_provider,stripe_checkout_session_id,stripe_payment_intent_id,stripe_charge_id,stripe_refunded_amount_fils,paid_at,stripe_payment_currency,stripe_payment_amount_minor,stripe_exchange_rate,stripe_exchange_rate_source,stripe_exchange_rate_updated_at,stripe_refunded_amount_minor",
             ).limit(0),
           ]);
           schemaReady = !customerOrders.error && !accountOrders.error;
@@ -439,8 +587,8 @@ Deno.serve(async req => {
   } catch (error) {
     const details = safeStripeError(error);
     console.error("stripe_checkout_request_failed", details);
-    if (details.statusCode === 400 && details.message.toLowerCase().includes("invalid currency: kwd")) {
-      return respond(422, { error: "stripe_currency_not_enabled" });
+    if (details.statusCode === 400 && details.message.toLowerCase().includes("invalid currency: usd")) {
+      return respond(422, { error: "stripe_usd_currency_not_enabled" });
     }
     return respond(503, { error: "Stripe Test Mode is temporarily unavailable." });
   }

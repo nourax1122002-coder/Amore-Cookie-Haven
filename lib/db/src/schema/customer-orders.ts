@@ -1,4 +1,4 @@
-import { pgTable, text, integer, jsonb, timestamp, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, bigint, numeric, jsonb, timestamp, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export type OrderItem = { variantId: string; title: string; quantity: number; unitFils: number };
@@ -34,6 +34,12 @@ export const customerOrdersTable = pgTable("customer_orders", {
   stripePaymentIntentId: text("stripe_payment_intent_id").unique(),
   stripeChargeId: text("stripe_charge_id"),
   stripeRefundedAmountFils: integer("stripe_refunded_amount_fils").notNull().default(0),
+  stripePaymentCurrency: text("stripe_payment_currency"),
+  stripePaymentAmountMinor: bigint("stripe_payment_amount_minor", { mode: "number" }),
+  stripeExchangeRate: numeric("stripe_exchange_rate", { precision: 18, scale: 10 }),
+  stripeExchangeRateSource: text("stripe_exchange_rate_source"),
+  stripeExchangeRateUpdatedAt: timestamp("stripe_exchange_rate_updated_at", { withTimezone: true }),
+  stripeRefundedAmountMinor: bigint("stripe_refunded_amount_minor", { mode: "number" }).notNull().default(0),
   paidAt: timestamp("paid_at", { withTimezone: true }),
   stockStatus: text("stock_status").notNull().default("unreserved"),
   stockPlan: jsonb("stock_plan").$type<StockQuantity[]>(),
