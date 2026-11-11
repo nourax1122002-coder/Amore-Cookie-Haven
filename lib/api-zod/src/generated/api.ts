@@ -312,7 +312,21 @@ export const StartCheckoutBody = zod.object({
 })
 
 export const StartCheckoutResponse = zod.object({
-  "url": zod.string()
+  "url": zod.string(),
+  "resume": zod.object({
+  "orderId": zod.string().uuid(),
+  "token": zod.string().regex(new RegExp('^[a-f0-9]{64}$')),
+  "url": zod.string(),
+  "number": zod.string(),
+  "totalKwd": zod.string(),
+  "usdTotal": zod.string(),
+  "expiresAt": zod.string(),
+  "sessionStatus": zod.enum(['open', 'complete']),
+  "items": zod.array(zod.object({
+  "title": zod.string(),
+  "quantity": zod.number().int()
+})),
+  }).optional()
 })
 
 

@@ -1,7 +1,8 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Request, Response } from "express";
 import {
-  getCustomerOrder, getCustomerOrderByNumber, getLatestOrderForCart, insertCustomerOrder,
+  getCustomerOrder, getCustomerOrderByNumber, getCustomerOrderByRequestKey,
+  getLatestOrderForCart, insertCustomerOrder,
   listCustomerOrders, updateCustomerOrder,
   type CustomerOrder, type OrderItem,
 } from "@workspace/db";
@@ -15,8 +16,7 @@ import { checkoutAddress } from "./delivery-address";
 import { reserveStock, releaseStock, stockLock } from "./order-stock";
 import { getAuthenticatedUser } from "./auth";
 import {
-  cancelStripeTestCheckout, createStripeTestCheckout, stripeTestAvailability,
-  safeStripeTestCheckoutUrl,
+  cancelStripeTestCheckout, createStripeTestCheckout, diagnoseStripeTestCheckout, stripeTestAvailability,
 } from "./stripe-functions";
 
 export const digest = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -54,6 +54,97 @@ export function orderSummary(order: CustomerOrder) {
     total: (order.totalFils / 1000).toFixed(3), currency: "KWD",
     items: order.items.map(({ title, quantity }) => ({ title, quantity })), hasMoreItems: false,
   };
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown> : null;
+}
+
+function diagnosticConfirmsNoStripeObjects(value: unknown): boolean {
+  const diagnostic = record(value);
+  const apiCheck = record(diagnostic?.apiCheck);
+  const sessionCheck = record(diagnostic?.sessionCheck);
+  const intentCheck = record(diagnostic?.paymentIntentCheck);
+  return diagnostic?.ready === true && diagnostic.mode === "test"
+    && apiCheck?.ok === true
+    && sessionCheck?.ok === true && Array.isArray(sessionCheck.sessions) && sessionCheck.sessions.length === 0
+    && intentCheck?.ok === true && Array.isArray(intentCheck.paymentIntents) && intentCheck.paymentIntents.length === 0;
+}
+
+async function releaseExpiredUnlinkedOrder(order: CustomerOrder): Promise<boolean> {
+  const unpaidStatuses = ["creating", "pending", "failed", "review"];
+  if (order.paymentProvider !== "stripe" || !unpaidStatuses.includes(order.paymentStatus)
+    || !["reserved", "released"].includes(order.stockStatus) || order.expiresAt.getTime() > Date.now()
+    || order.stripeCheckoutSessionId || order.stripePaymentIntentId || order.stripeChargeId
+    || order.paymentId || order.invoiceId || order.paymentUrl) return false;
+
+  const diagnostic = await diagnoseStripeTestCheckout({
+    orderId: order.id,
+    createdAt: order.createdAt.toISOString(),
+  });
+  if (!diagnosticConfirmsNoStripeObjects(diagnostic)) return false;
+
+  if (order.stockStatus === "reserved") await releaseStock(order);
+  await updateCustomerOrder(order.id, { paymentStatus: "cancelled", updatedAt: new Date() });
+  return true;
+}
+
+function resumablePayment(order: CustomerOrder, url: string, sessionStatus: "open" | "complete") {
+  const usdMinor = Number(order.stripePaymentAmountMinor);
+  if (!Number.isSafeInteger(usdMinor) || usdMinor < 1) {
+    throw new HttpError(409, "The saved Stripe payment amount needs review. / مبلغ دفع Stripe المحفوظ يحتاج إلى مراجعة.");
+  }
+  return {
+    orderId: order.id,
+    token: receiptToken(order.id),
+    url,
+    number: order.number,
+    totalKwd: (order.totalFils / 1000).toFixed(3),
+    usdTotal: (usdMinor / 100).toFixed(2),
+    expiresAt: order.expiresAt.toISOString(),
+    sessionStatus,
+    items: order.items.map(({ title, quantity }) => ({ title, quantity })),
+  };
+}
+
+async function resolveExistingCheckout(
+  order: CustomerOrder,
+  requestHash: string,
+  origin: string,
+  lang: "ar" | "en",
+): Promise<{ url: string; resume?: ReturnType<typeof resumablePayment> } | null> {
+  if (order.paymentStatus === "paid") {
+    return order.requestHash === requestHash ? { url: resultUrl(order, origin) } : null;
+  }
+  if (order.stockStatus === "released" && order.paymentStatus === "cancelled") return null;
+  if (order.stripeCheckoutSessionId && ["creating", "pending", "review"].includes(order.paymentStatus)) {
+    if (order.stockStatus !== "reserved") {
+      throw new HttpError(409, "This order needs payment review. / هذا الطلب يحتاج إلى مراجعة الدفع.");
+    }
+    const checkout = await createStripeTestCheckout({
+      orderId: order.id, token: receiptToken(order.id), origin, lang,
+    });
+    if (checkout.status === "expired") {
+      const current = await getCustomerOrder(order.id);
+      if (current?.paymentStatus === "cancelled" && current.stockStatus === "released") return null;
+      throw new HttpError(409, "The expired Stripe reservation could not be safely released. / تعذر تحرير حجز Stripe المنتهي بأمان.");
+    }
+    const url = checkout.status === "open" ? checkout.url! : resultUrl(order, origin);
+    if (order.requestHash === requestHash) return { url };
+    return { url, resume: resumablePayment(order, url, checkout.status) };
+  }
+
+  if (order.expiresAt.getTime() <= Date.now()
+    && await releaseExpiredUnlinkedOrder(order)) return null;
+  if (order.stockStatus !== "reserved") {
+    throw new HttpError(409, "This order needs payment review. / هذا الطلب يحتاج إلى مراجعة الدفع.");
+  }
+
+  throw new HttpError(
+    409,
+    "An earlier checkout needs verification. Do not start another payment until it is resolved. / توجد محاولة دفع سابقة تحتاج إلى التحقق؛ لا تبدئي محاولة أخرى قبل حلّها.",
+  );
 }
 export async function paymentAvailability() {
   const settings = await readSettings();
@@ -119,32 +210,21 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
   const requestPayload = { cartHash, items, address, phone, note: body.note ?? "", totalFils };
   const requestHash = digest(JSON.stringify({ ...requestPayload, provider: "stripe" }));
   return stockLock(async () => {
-    // Prevent another Checkout session for the same cart, including a double-click/new tab.
     let order = await getLatestOrderForCart(cartHash);
-    if (order && !(order.stockStatus === "released" && order.paymentStatus !== "paid")) {
-      if (order.requestHash !== requestHash) throw new HttpError(409, "This bag already has a payment attempt. Review its order before starting again. / للسلة محاولة دفع مسجلة؛ راجعي طلبك قبل إنشاء محاولة جديدة.");
-        if (order.paymentStatus === "paid") return { url: resultUrl(order, origin) };
-       if (order.paymentUrl && order.expiresAt > new Date() && order.stockStatus === "reserved") {
-          return { url: safeStripeTestCheckoutUrl(order.paymentUrl) };
-       }
-        if (order.paymentStatus === "creating" && order.expiresAt > new Date()
-          && order.stockStatus === "reserved") {
-          const url = await createStripeTestCheckout({
-            orderId: order.id, token: receiptToken(order.id), origin, lang: body.lang ?? "en",
-          });
-          return { url };
-        }
-      // Unknown POST outcome: NEVER create another invoice automatically.
-      throw new HttpError(409, "This payment needs review. Do not pay again. / هذه العملية تحتاج مراجعة، لا تعيدي الدفع.");
+    if (order) {
+      const existing = await resolveExistingCheckout(order, requestHash, origin, body.lang ?? "en");
+      if (existing) return existing;
     }
     for (const item of items) {
       const product = catalog.find(p => p.variantId === item.variantId)!;
       if (!product.available || item.quantity > product.stock) throw new HttpError(409, "Requested stock is not available. / الكمية المطلوبة غير متوفرة.");
     }
+    const priorRequest = await getCustomerOrderByRequestKey(body.requestKey!);
+    const requestKey = priorRequest ? randomUUID() : body.requestKey!;
     const orderId = randomUUID();
     order = await insertCustomerOrder({
       id: orderId, number: `AM-${randomUUID().replaceAll("-", "").slice(0, 16).toUpperCase()}`,
-      cartHash, requestKey: body.requestKey!, requestHash, tokenHash: digest(receiptToken(orderId)),
+      cartHash, requestKey, requestHash, tokenHash: digest(receiptToken(orderId)),
         phone, address, note: body.note ?? "", items, subtotalFils, shippingFils, totalFils,
         paymentProvider: "stripe",
       userId: account?.id ?? null,

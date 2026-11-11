@@ -7,6 +7,7 @@ export type StripeTestAvailability = {
 type StripeFunctionResponse = {
   url?: unknown;
   status?: unknown;
+  checkoutStatus?: unknown;
   stripeTestEnabled?: unknown;
   ready?: unknown;
   mode?: unknown;
@@ -82,10 +83,14 @@ export async function createStripeTestCheckout(input: {
   token: string;
   origin: string;
   lang: "ar" | "en";
-}): Promise<string> {
+}): Promise<{ url?: string; status: "open" | "complete" | "expired" }> {
   const result = await callStripeFunction("create", input);
-  if (typeof result.url !== "string") throw new HttpError(503, "Stripe Test Mode did not return a checkout link.");
-  return safeStripeTestCheckoutUrl(result.url);
+  if (result.checkoutStatus === "expired") return { status: "expired" };
+  if (result.checkoutStatus === "complete") return { status: "complete" };
+  if (result.checkoutStatus !== "open" || typeof result.url !== "string") {
+    throw new HttpError(503, "Stripe Test Mode did not return a checkout link.");
+  }
+  return { url: safeStripeTestCheckoutUrl(result.url), status: "open" };
 }
 
 export async function cancelStripeTestCheckout(input: { orderId: string; token: string }) {

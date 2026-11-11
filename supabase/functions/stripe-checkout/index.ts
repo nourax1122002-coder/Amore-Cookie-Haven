@@ -289,12 +289,16 @@ async function createSession(input: Record<string, unknown>) {
   const order = await loadAuthorizedOrder(supabase, orderId, token);
   if (!order) return respond(404, { error: "Order not found." });
   if (order.payment_provider !== "stripe" || order.stock_status !== "reserved"
-    || !["creating", "pending"].includes(order.payment_status) || order.fulfillment_status === "cancelled") {
+    || !["creating", "pending", "review"].includes(order.payment_status)
+    || order.fulfillment_status === "cancelled") {
     return respond(409, { error: "This order is not available for Stripe checkout." });
   }
 
   const stripe = stripeClient(settings.keys.secretKey);
   const existingId = order.stripe_checkout_session_id;
+  if (order.payment_status === "review" && !existingId) {
+    return respond(409, { error: "This order needs payment review." });
+  }
   if (existingId) {
     const existing = await stripe.checkout.sessions.retrieve(existingId);
     const settlement = validStoredSettlement(order);
@@ -306,13 +310,19 @@ async function createSession(input: Record<string, unknown>) {
       || existing.metadata.stripe_payment_amount_minor !== String(settlement.amountMinor)) {
       return respond(409, { error: "Stripe session does not match this test order." });
     }
-    if (existing.status === "open" && existing.url) return respond(200, { url: existing.url, mode: "test" });
+    if (existing.status === "open" && existing.url) {
+      return respond(200, { url: existing.url, mode: "test", checkoutStatus: "open" });
+    }
     if (existing.status === "complete") {
       const result = new URL("/payment/success", input.origin);
       result.searchParams.set("order", order.id);
       result.searchParams.set("token", token);
       result.searchParams.set("provider", "stripe");
-      return respond(200, { url: result.toString(), mode: "test" });
+      return respond(200, { url: result.toString(), mode: "test", checkoutStatus: "complete" });
+    }
+    if (existing.status === "expired" && existing.payment_status === "unpaid") {
+      await expireOrder(supabase, order.id, existing.id);
+      return respond(200, { mode: "test", checkoutStatus: "expired" });
     }
     return respond(409, { error: "The Stripe test checkout session has expired." });
   }
@@ -426,7 +436,7 @@ async function createSession(input: Record<string, unknown>) {
     updated_at: new Date().toISOString(),
   }).eq("id", order.id).in("payment_status", ["creating", "pending"]);
   if (saveError) throw new Error("Unable to save Stripe test checkout session");
-  return respond(200, { url: session.url, mode: "test" });
+  return respond(200, { url: session.url, mode: "test", checkoutStatus: "open" });
 }
 
 async function diagnoseStripe(input: Record<string, unknown>) {
@@ -553,7 +563,7 @@ export async function expireOrder(
     payment_status: "cancelled",
     updated_at: new Date().toISOString(),
   }).eq("id", orderId).eq("stripe_checkout_session_id", sessionId)
-    .in("payment_status", ["creating", "pending", "failed"])
+    .in("payment_status", ["creating", "pending", "failed", "review"])
     .select("stock_status").maybeSingle();
   if (error) throw new Error("Unable to save canceled Stripe test payment");
   let stockStatus = data?.stock_status;

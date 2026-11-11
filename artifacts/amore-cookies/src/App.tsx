@@ -7,7 +7,7 @@ import {
   useGetAdminSettings, useGetAdminSummary, useGetCart, useGetProduct, useGetStore,
   useListAdminProducts, useListInquiries, useListProducts, useSaveProduct, useSaveSettings,
   useStartCheckout, useTrackOrder, useUpdateCart, useUpdateInquiry,
-  useGetPaymentAvailability, useGetCurrencyConversion,
+  useGetPaymentAvailability, useGetCurrencyConversion, useCancelStripeCheckout,
 } from '@workspace/api-client-react';
 import type { Cart, Inquiry, Product, ProductInput, StoreSettings, TrackingResult, GetCurrencyConversionParams } from '@workspace/api-client-react';
 import { OrderDetails } from '@/components/order-status';
@@ -40,6 +40,17 @@ const images = {
 };
 type Lang = 'en' | 'ar';
 type DisplayCurrency = GetCurrencyConversionParams['currency'] | 'KWD';
+type ExistingStripeCheckout = {
+  orderId: string;
+  token: string;
+  url: string;
+  number: string;
+  totalKwd: string;
+  usdTotal: string;
+  expiresAt: string;
+  sessionStatus: 'open' | 'complete';
+  items: { title: string; quantity: number }[];
+};
 const DISPLAY_CURRENCIES: readonly DisplayCurrency[] = ['KWD', 'USD', 'SAR'];
 const DISPLAY_CURRENCY_STORAGE_KEY = 'amore-display-currency';
 
@@ -468,10 +479,11 @@ function isKuwaitCheckoutPhone(value: string) {
 
 function CheckoutPage({lang}:{lang:Lang}) {
   const c=copy[lang], cartQ=useGetCart({query:{queryKey:getGetCartQueryKey()}}), cart=cartQ.data;
-  const start=useStartCheckout();const [phone,setPhone]=useState(''),[note,setNote]=useState(''),[phoneError,setPhoneError]=useState('');
+  const start=useStartCheckout(), cancelExisting=useCancelStripeCheckout();const [phone,setPhone]=useState(''),[note,setNote]=useState(''),[phoneError,setPhoneError]=useState('');
   const [displayCurrency,setDisplayCurrency]=useDisplayCurrency();
   const [address,setAddress]=useState({area:'',block:'',street:'',house:''});
-  const [requestKey]=useState(()=>crypto.randomUUID());
+  const [requestKey,setRequestKey]=useState(()=>crypto.randomUUID());
+  const [resume,setResume]=useState<ExistingStripeCheckout|null>(null),[recoveryMessage,setRecoveryMessage]=useState('');
   const availability=useGetPaymentAvailability({query:{refetchInterval:60000}});
   const stripeAvailable=availability.data?.stripeTestEnabled===true;
   const stripeReady=Boolean(stripeAvailable&&typeof availability.data?.shippingFils==='number'&&cart?.checkoutReady&&cart.lines.length);
@@ -493,8 +505,34 @@ function CheckoutPage({lang}:{lang:Lang}) {
   const totalConversion=useGetCurrencyConversion({
     amount:Math.max(0.001,Math.round(checkoutTotalKwd*1000)/1000),currency:conversionCurrency,
   },{query:{enabled:Boolean(displayCurrency!=='KWD'&&checkoutTotalKwd>0),retry:false,staleTime:86_400_000}});
+  const checkoutData=()=>({requestKey,lang,address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim()},phone:phone.trim(),note:note||undefined});
+  const cancelPreviousAttempt=()=>{
+    if(!resume||cancelExisting.isPending)return;
+    const confirmText=lang==='ar'?'سيتم إلغاء جلسة الدفع السابقة غير المكتملة وتحرير حجزها. ستبقى سلتك الحالية كما هي. هل تريدين المتابعة؟':'This will cancel the previous unpaid test session and release only its reservation. Your current basket will stay unchanged. Continue?';
+    if(!window.confirm(confirmText))return;
+    cancelExisting.mutate({data:{orderId:resume.orderId,token:resume.token}},{onSuccess:result=>{
+      if(result.status==='cancelled'){
+        setResume(null);setRequestKey(crypto.randomUUID());setRecoveryMessage(lang==='ar'?'أُلغيت المحاولة السابقة وتحرر حجزها. سلتك الحالية لم تتغير؛ اضغطي الدفع للمتابعة.':'The previous unpaid attempt was canceled and its reservation released. Your current basket is unchanged; click Pay to continue.');
+        start.reset();
+      }else{
+        const base=import.meta.env.BASE_URL.replace(/\/+$/,'');
+        const params=new URLSearchParams({order:resume.orderId,token:resume.token,provider:'stripe'});
+        window.location.assign(`${base}/payment/success?${params.toString()}`);
+      }
+    }});
+  };
+  const submitCheckout=(e:FormEvent<HTMLFormElement>)=>{
+    e.preventDefault();
+    if(!ready||resume||Object.values(address).some(value=>!value.trim()))return;
+    if(!isKuwaitCheckoutPhone(phone)){setPhoneError(lang==='ar'?'أدخلي رقم هاتف كويتي من 8 أرقام، أو أضيفي مفتاح الدولة +965.':'Enter an 8-digit Kuwait number, or include the +965 country code.');return;}
+    setPhoneError('');setRecoveryMessage('');
+    start.mutate({data:checkoutData()},{onSuccess:r=>{
+      if(r.resume){setResume(r.resume);return;}
+      setResume(null);window.location.assign(r.url);
+    }});
+  };
    return <div className="container-wide py-14 md:py-20"><span className="eyebrow">{c.checkout}</span><p className="mt-4 text-xs text-[#896a71] max-w-2xl">{lang==='ar'?'دفع تجريبي عبر صفحة Stripe الآمنة فقط؛ لن تُحصّل أموال حقيقية.':'Stripe hosted Test Mode checkout only. No real payments are processed.'}</p>
-      {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={e=>{e.preventDefault();if(!ready||Object.values(address).some(value=>!value.trim()))return;if(!isKuwaitCheckoutPhone(phone)){setPhoneError(lang==='ar'?'أدخلي رقم هاتف كويتي من 8 أرقام، أو أضيفي مفتاح الدولة +965.':'Enter an 8-digit Kuwait number, or include the +965 country code.');return;}setPhoneError('');start.mutate({data:{requestKey,lang,address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim()},phone:phone.trim(),note:note||undefined}},{onSuccess:r=>{window.location.assign(r.url)}})}}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
+      {cartQ.isLoading?<LoadingBlock lang={lang}/>:cartQ.isError?<div className="mt-8"><ErrorNotice lang={lang} onRetry={()=>cartQ.refetch()}/></div>:!cart?.lines.length?<div className="mt-8"><EmptyState text={c.empty}/><Link href="/products" className="btn-primary mt-5">{c.continue}</Link></div>:<div className="grid lg:grid-cols-[1fr_.7fr] gap-8 mt-9"><form className="card-surface p-6 md:p-8 grid gap-5" onSubmit={submitCheckout}><h2 className="font-display text-2xl text-[#5B0D1E]">{c.checkout}</h2>
       <fieldset className="grid sm:grid-cols-2 gap-5">
         <legend className="field-label mb-3">{lang==='ar'?'عنوان التوصيل':'Delivery address'}</legend>
         {([
@@ -508,7 +546,16 @@ function CheckoutPage({lang}:{lang:Lang}) {
       <label><span className="field-label">{c.note}</span><textarea className="field min-h-28" maxLength={2000} value={note} onChange={e=>setNote(e.target.value)}/></label>
           <p role="status" className={`rounded-xl p-4 text-xs leading-6 ${ready?'bg-[#edf6ec] text-[#42643c]':'bg-[#fff1f3] text-[#763246]'}`}>{ready?(lang==='ar'?'الدفع التجريبي عبر صفحة Stripe الآمنة؛ سيُحوّل إجمالي الطلب إلى USD بسعر يومي موثوق، مع بقاء الأسعار والسجلات الأصلية بـ KWD.':'Stripe hosted Test Mode is ready. The order is converted to USD using a fresh daily rate; catalog prices and order records remain in KWD.'):(lang==='ar'?'الدفع التجريبي غير جاهز بعد. يلزم إعداد مفاتيح Stripe التجريبية ورسوم التوصيل.':'Test checkout is not ready yet. Stripe test credentials and the delivery fee must be configured.')}</p>
        {checkoutError&&<p role="alert" className="text-xs text-red-700">{checkoutError}</p>}
-          <button disabled={!ready||start.isPending||reviewRequired} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:reviewRequired?(currencyUnavailable?(lang==='ar'?'الدولار غير مدعوم':'USD not supported'):(lang==='ar'?'محاولة الدفع قيد المراجعة':'Payment attempt under review')):(lang==='ar'?'الدفع التجريبي عبر Stripe':'Pay with Stripe Test Mode')}<ExternalLink size={14}/></button>
+        {recoveryMessage&&<p role="status" className="rounded-xl bg-[#edf6ec] p-4 text-xs leading-6 text-[#42643c]">{recoveryMessage}</p>}
+        {resume&&<section className="rounded-xl border border-[#efdee2] bg-[#fff6f4] p-4 grid gap-3" role="status" data-testid="existing-stripe-checkout">
+          <h3 className="font-semibold text-[#5B0D1E]">{lang==='ar'?'لديك محاولة دفع سابقة مفتوحة':'An earlier Stripe payment is still open'}</h3>
+          <p className="text-xs leading-6 text-[#795963]">{lang==='ar'?'سلتك الحالية لم تتغير. هذه تفاصيل الطلب السابق:':'Your current basket is unchanged. This is the earlier order:'} {resume.number} · {resume.totalKwd} KWD · ${resume.usdTotal} USD</p>
+          <ul className="text-xs text-[#795963]">{resume.items.map((item,index)=><li key={`${item.title}-${index}`}>{item.title} × {item.quantity}</li>)}</ul>
+          <a href={resume.url} className="btn-primary w-full text-center" data-testid="resume-stripe-checkout">{resume.sessionStatus==='open'?(lang==='ar'?'استئناف الدفع السابق':'Resume previous payment'):(lang==='ar'?'التحقق من حالة الدفع السابق':'Check previous payment status')}<ExternalLink size={14}/></a>
+          {resume.sessionStatus==='open'&&<button type="button" className="btn-outline w-full" disabled={cancelExisting.isPending} onClick={cancelPreviousAttempt} data-testid="cancel-old-stripe-checkout">{cancelExisting.isPending?(lang==='ar'?'جارٍ إلغاء المحاولة':'Canceling previous attempt'):(lang==='ar'?'إلغاء المحاولة السابقة والدفع للسلة الحالية':'Cancel previous attempt and pay for this basket')}</button>}
+          {cancelExisting.isError&&<p role="alert" className="text-xs text-red-700">{lang==='ar'?'تعذر إلغاء المحاولة السابقة. لم نغيّر السلة أو المخزون؛ يمكنك استئناف الدفع السابق.':'Could not cancel the earlier attempt. The basket and inventory were not changed; you can resume the previous payment.'}</p>}
+        </section>}
+           <button disabled={!ready||start.isPending||reviewRequired||Boolean(resume)} className="btn-primary w-full disabled:opacity-50">{start.isPending?c.loading:reviewRequired?(currencyUnavailable?(lang==='ar'?'الدولار غير مدعوم':'USD not supported'):(lang==='ar'?'محاولة الدفع قيد المراجعة':'Payment attempt under review')):(lang==='ar'?'الدفع التجريبي عبر Stripe':'Pay with Stripe Test Mode')}<ExternalLink size={14}/></button>
       </form><aside className="card-surface p-6 h-fit"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.bag}</h2>
       <label htmlFor="checkout-display-currency" className="mt-5 grid gap-2 text-xs font-medium text-[#795963]">{c.displayCurrency}
         <select id="checkout-display-currency" data-testid="checkout-display-currency" className="field w-full py-2" value={displayCurrency} onChange={event=>setDisplayCurrency(event.target.value as DisplayCurrency)}>

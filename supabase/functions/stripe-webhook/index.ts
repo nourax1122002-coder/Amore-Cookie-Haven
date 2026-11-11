@@ -71,7 +71,7 @@ async function expireOrder(supabase: ReturnType<typeof getSupabase>, orderId: st
     payment_status: "cancelled",
     updated_at: new Date().toISOString(),
   }).eq("id", orderId).eq("stripe_checkout_session_id", sessionId)
-    .in("payment_status", ["creating", "pending", "failed"])
+    .in("payment_status", ["creating", "pending", "failed", "review"])
     .select("stock_status").maybeSingle();
   if (error) throw new Error("Unable to save canceled Stripe test payment");
   let stockStatus = data?.stock_status;
@@ -151,7 +151,7 @@ async function markPaymentFailed(
     payment_status: "failed",
     updated_at: new Date().toISOString(),
   }).eq("id", orderId).eq("stripe_checkout_session_id", sessionId)
-    .in("payment_status", ["creating", "pending"]);
+    .in("payment_status", ["creating", "pending", "review"]);
   if (error) throw new Error("Unable to save failed Stripe test payment");
 }
 
@@ -179,7 +179,7 @@ async function markPaymentPaid(
     paid_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }).eq("id", order.id).eq("stripe_checkout_session_id", session.id)
-    .in("payment_status", ["creating", "pending", "failed"]);
+    .in("payment_status", ["creating", "pending", "failed", "review"]);
   if (error) throw new Error("Unable to save successful Stripe test payment");
 }
 
