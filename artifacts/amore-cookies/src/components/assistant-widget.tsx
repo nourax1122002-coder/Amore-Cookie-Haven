@@ -4,6 +4,7 @@ import { getGetAssistantStatusQueryKey, sendAssistantMessage, useGetAssistantSta
 import { MessageCircleQuestion, RefreshCw, Send, Square, X } from 'lucide-react';
 import { buildPayload, formatWait, MAX_MESSAGE, readAssistantError, type ChatTurn } from './assistant-utils';
 import { assistantText } from './assistant-translations';
+import { AssistantMarkdownView } from './assistant-markdown-view';
 
 type Lang = 'en' | 'ar';
 type Failure = { message: string; retryAfter: number; question: string; until: number };
@@ -115,7 +116,9 @@ function AssistantPanel({ onClose, lang }: { onClose: () => void; lang: Lang }) 
           <p className="text-[11px] leading-6 mt-2">{t.example}</p>
         </div>}
         {turns.map((t) => <div key={t.id} className={`flex ${t.role === 'user' ? 'justify-start' : 'justify-end'}`}>
-          <div className={`max-w-[86%] whitespace-pre-wrap break-words rounded-[18px] px-4 py-2.5 text-[12.5px] leading-6 ${t.role === 'user' ? 'bg-[#5B0D1E] text-[#fff6f3] rounded-ss-[6px]' : 'bg-[#fffdfa] border border-[#efdee2] text-[#45101d] rounded-se-[6px]'}`}>{t.content}</div>
+          <div className={`max-w-[86%] whitespace-pre-wrap break-words rounded-[18px] px-4 py-2.5 text-[12.5px] leading-6 ${t.role === 'user' ? 'bg-[#5B0D1E] text-[#fff6f3] rounded-ss-[6px]' : 'bg-[#fffdfa] border border-[#efdee2] text-[#45101d] rounded-se-[6px]'}`}>
+            {t.role === 'assistant' ? <AssistantMarkdownView content={t.content}/> : t.content}
+          </div>
         </div>)}
         {pending && <div className="flex justify-end" role="status"><div className="rounded-[18px] bg-[#fffdfa] border border-[#efdee2] px-4 py-3 flex items-center gap-3 text-[11px] text-[#8b6870]">
           <span className="flex gap-1">{[0, 1, 2].map((i) => <span key={i} className="h-1.5 w-1.5 rounded-full bg-[#a35168] animate-bounce" style={{ animationDelay: `${i * .15}s` }}/>)}</span>{t.thinking}

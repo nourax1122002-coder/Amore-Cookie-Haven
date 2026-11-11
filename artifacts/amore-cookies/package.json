@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "test:location": "node --test src/components/delivery-coordinates.test.mjs",
-    "test:assistant": "node --test src/components/assistant-utils.test.mjs",
+    "test:assistant": "node --test src/components/assistant-utils.test.mjs src/components/assistant-markdown.test.mjs",
     "test:image-upload": "node --test src/lib/admin-product-image-upload.test.mjs",
+    "test:currency-rates": "node --test src/components/live-currency-rates.test.mjs",
     "test:currency-browser": "node test/currency-display.browser.mjs",
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",

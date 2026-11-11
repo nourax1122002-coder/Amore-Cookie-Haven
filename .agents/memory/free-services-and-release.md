@@ -41,13 +41,13 @@ a real Arabic answer while OpenRouter's available free routes returned 429.
 retry timing, and only report a successful real test after receiving the Arabic
 reply from Groq.
 
-Frankfurter's reference rates do not provide KWD or SAR. For KWD-based
-estimates, use a free KWD-base source for the KWD leg and Frankfurter only for
-supported cross-rates such as EUR-to-USD; show the source and date for each leg.
+The current Frankfurter V2 rates endpoint returned KWD-based quotes for USD,
+EUR, GBP, and SAR during the November 11, 2026 verification. The older V1
+currency-support limitation is stale; do not infer V2 support from V1.
 
-**Why:** The store's catalog and checkout are denominated in KWD, while
-Frankfurter's supported base currencies cannot directly convert KWD to SAR.
+**Why:** A live request to `https://api.frankfurter.dev/v2/rates?base=KWD&quotes=USD,EUR,GBP,SAR`
+returned HTTP 200 with dated rates for all four pairs.
 
-**How to apply:** Never label KWD-to-SAR estimates as Frankfurter-only. Keep the
-KWD-base provider free, return dated source attribution, and leave checkout
-amounts in KWD.
+**How to apply:** Verify live V2 results, display only the returned dated pairs,
+and label missing currencies as unavailable. Recheck the endpoint if provider
+coverage changes; never hardcode a fallback rate.

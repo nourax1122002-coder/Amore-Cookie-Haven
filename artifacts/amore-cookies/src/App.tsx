@@ -13,6 +13,7 @@ import type { Cart, Inquiry, Product, ProductInput, StoreSettings, TrackingResul
 import { OrderDetails } from '@/components/order-status';
 import { PaymentResult, LocalOrdersAdmin } from '@/components/payments';
 import { SafeAssistantWidget } from '@/components/assistant-widget';
+import { LiveCurrencyExchange } from '@/components/live-currency-exchange';
 import { AuthPage, PasswordRecoveryPage } from '@/components/auth-pages';
 import { MyFavoritesPage, MyOrdersPage, UserPortalPage } from '@/components/account-pages';
 import { FavoriteButton } from '@/components/favorite-button';
@@ -273,6 +274,7 @@ function HomePage({lang,settings,store}:{lang:Lang;settings?:StoreSettings;store
         </div>
       </div>
     </section>
+    <LiveCurrencyExchange lang={lang}/>
     <section className="section-pad container-wide">
       <div className="flex items-end justify-between gap-5 mb-9"><div><span className="eyebrow">{c.products}</span><h2 className="serif text-4xl md:text-5xl text-[#5B0D1E] mt-3">{c.seeAll}</h2></div><Link href="/products" className="btn-outline hidden sm:inline-flex">{c.all}<ArrowRight size={14}/></Link></div>
       {products.isLoading?<LoadingBlock lang={lang}/>:products.isError?<ErrorNotice lang={lang} onRetry={()=>products.refetch()}/>:shown.length?<ProductGrid lang={lang} products={shown}/>:<EmptyState text={c.noProducts}/>}
