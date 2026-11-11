@@ -275,7 +275,7 @@ async function diagnoseStripe(input: Record<string, unknown>) {
     };
   } catch (error) {
     const details = safeStripeError(error);
-    console.error("stripe_test_account_diagnostic_failed", details);
+    console.error("stripe_test_api_diagnostic_failed", details);
     apiCheck = { ok: false, error: details };
   }
 

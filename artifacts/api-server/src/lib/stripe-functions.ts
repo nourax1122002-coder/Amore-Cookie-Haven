@@ -11,7 +11,7 @@ type StripeFunctionResponse = {
   ready?: unknown;
   mode?: unknown;
   reason?: unknown;
-  accountCheck?: unknown;
+  apiCheck?: unknown;
   sessionCheck?: unknown;
 };
 
