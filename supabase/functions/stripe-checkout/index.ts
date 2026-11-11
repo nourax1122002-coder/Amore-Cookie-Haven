@@ -205,7 +205,11 @@ async function createSession(input: Record<string, unknown>) {
     return respond(409, { error: "The Stripe test checkout session has expired." });
   }
 
-  const expiresAt = Math.floor(Date.now() / 1000) + 30 * 60;
+  const expiresAt = Math.floor(Date.parse(order.expires_at) / 1000);
+  const minimumBufferedExpiry = Math.floor(Date.now() / 1000) + 32 * 60;
+  if (!Number.isSafeInteger(expiresAt) || expiresAt < minimumBufferedExpiry) {
+    return respond(409, { error: "The reserved order has expired. Do not retry checkout." });
+  }
   const successUrl = new URL("/payment/success", input.origin);
   successUrl.searchParams.set("order", order.id);
   successUrl.searchParams.set("token", token);
@@ -292,13 +296,16 @@ async function diagnoseStripe(input: Record<string, unknown>) {
       ok: true,
       count: matches.length,
       sessions: matches.map(session => ({
-        idSuffix: session.id.slice(-6),
+        id: session.id,
         status: session.status,
         paymentStatus: session.payment_status,
         mode: session.mode,
         livemode: session.livemode,
         amountTotal: session.amount_total,
         currency: session.currency,
+        paymentIntentId: typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id ?? null,
       })),
       hasMore: sessions.has_more,
     };
@@ -308,7 +315,33 @@ async function diagnoseStripe(input: Record<string, unknown>) {
     sessionCheck = { ok: false, error: details };
   }
 
-  return respond(200, { ready: true, mode: "test", apiCheck, sessionCheck });
+  let paymentIntentCheck: Record<string, unknown>;
+  try {
+    const intents = await stripe.paymentIntents.list({
+      limit: 100,
+      created: { gte: Math.floor(createdAtMs / 1000) - 60 },
+    });
+    const matches = intents.data.filter(intent => intent.metadata?.order_id === orderId);
+    paymentIntentCheck = {
+      ok: true,
+      count: matches.length,
+      paymentIntents: matches.map(intent => ({
+        id: intent.id,
+        status: intent.status,
+        livemode: intent.livemode,
+        amount: intent.amount,
+        amountReceived: intent.amount_received,
+        currency: intent.currency,
+      })),
+      hasMore: intents.has_more,
+    };
+  } catch (error) {
+    const details = safeStripeError(error);
+    console.error("stripe_test_payment_intent_lookup_failed", details);
+    paymentIntentCheck = { ok: false, error: details };
+  }
+
+  return respond(200, { ready: true, mode: "test", apiCheck, sessionCheck, paymentIntentCheck });
 }
 
 async function cancelSession(input: Record<string, unknown>) {
