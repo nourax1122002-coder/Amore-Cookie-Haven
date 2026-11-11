@@ -1,0 +1,86 @@
+:root {
+  --background: 350 43% 98%;
+  --foreground: 345 40% 17%;
+  --border: 346 27% 88%;
+  --input: 350 24% 91%;
+  --ring: 344 75% 21%;
+  --card: 0 0% 100%;
+  --card-foreground: 345 40% 17%;
+  --primary: 344 75% 21%;
+  --primary-foreground: 350 43% 98%;
+  --secondary: 340 100% 92%;
+  --secondary-foreground: 344 75% 21%;
+  --muted: 346 27% 94%;
+  --muted-foreground: 345 15% 45%;
+  --accent: 340 100% 92%;
+  --accent-foreground: 344 75% 21%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 345 40% 17%;
+  --radius: .7rem;
+  --app-font-sans: 'Montserrat', sans-serif;
+  --app-font-serif: 'Playfair Display', serif;
+  --app-font-mono: 'Montserrat', sans-serif;
+  --sidebar: 350 43% 98%;
+  --sidebar-foreground: 345 40% 17%;
+  --sidebar-border: 346 27% 88%;
+  --sidebar-primary: 344 75% 21%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 340 100% 92%;
+  --sidebar-accent-foreground: 344 75% 21%;
+  --sidebar-ring: 344 75% 21%;
+  --chart-1: 344 75% 21%;
+  --chart-2: 340 70% 75%;
+  --chart-3: 27 67% 62%;
+  --chart-4: 11 55% 72%;
+  --chart-5: 355 38% 42%;
+  --button-outline: rgba(91, 13, 30, .12);
+  --badge-outline: rgba(91, 13, 30, .08);
+  --elevate-1: rgba(91, 13, 30, .03);
+  --elevate-2: rgba(91, 13, 30, .07);
+}
+
+.dark {
+  --background: 345 32% 11%;
+  --foreground: 350 40% 95%;
+  --border: 345 22% 28%;
+  --input: 345 22% 23%;
+  --ring: 340 80% 75%;
+  --card: 345 29% 15%;
+  --card-foreground: 350 40% 95%;
+  --primary: 340 80% 78%;
+  --primary-foreground: 345 36% 14%;
+  --secondary: 345 22% 23%;
+  --secondary-foreground: 350 40% 95%;
+  --muted: 345 22% 20%;
+  --muted-foreground: 350 18% 70%;
+  --accent: 345 22% 23%;
+  --accent-foreground: 350 40% 95%;
+  --destructive: 0 62% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --popover: 345 29% 15%;
+  --popover-foreground: 350 40% 95%;
+  --sidebar: 345 32% 11%;
+  --sidebar-foreground: 350 40% 95%;
+  --sidebar-border: 345 22% 28%;
+  --sidebar-primary: 340 80% 78%;
+  --sidebar-primary-foreground: 345 36% 14%;
+  --sidebar-accent: 345 22% 23%;
+  --sidebar-accent-foreground: 350 40% 95%;
+  --sidebar-ring: 340 80% 78%;
+  --chart-1: 340 80% 78%;
+  --chart-2: 340 70% 75%;
+  --chart-3: 27 67% 62%;
+  --chart-4: 11 55% 72%;
+  --chart-5: 355 38% 62%;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Montserrat', sans-serif; }
+.container-wide { width: min(1240px, calc(100% - 48px)); margin-inline: auto; }
+.serif, .font-display { font-family: 'Playfair Display', serif; }
+.eyebrow { font-size: 10px; letter-spacing: .22em; text-transform: uppercase; font-weight: 700; color: #9d5367; }
+.btn-outline { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border: 1px solid #cfa8b1; color: #5B0D1E; padding: 13px 20px; border-radius: 999px; font-size: 12px; font-weight: 700; transition: all .25s; cursor: pointer; }
+.btn-outline:hover { background: #FFD6E5; }
+@media (max-width: 767px) { .container-wide { width: min(calc(100% - 32px), 600px); } }

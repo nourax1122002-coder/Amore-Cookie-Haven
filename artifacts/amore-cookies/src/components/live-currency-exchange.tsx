@@ -12,7 +12,6 @@ const FRANKFURTER_V2_URL =
 
 const text = {
   en: {
-    subtitle: "Indicative daily reference rates, fetched directly from Frankfurter V2.",
     updated: "Rates updated",
     refreshed: "Last checked",
     refresh: "Refresh rates",
@@ -24,7 +23,6 @@ const text = {
     source: "Source: Frankfurter V2",
   },
   ar: {
-    subtitle: "أسعار استرشادية يومية من واجهة Frankfurter V2 مباشرة.",
     updated: "تاريخ تحديث الأسعار",
     refreshed: "آخر تحقق",
     refresh: "تحديث الأسعار",
@@ -110,73 +108,73 @@ export function LiveCurrencyExchange({ lang }: { lang: "en" | "ar" }) {
 
   return (
     <section
+      id="live-currency-exchange"
       aria-labelledby="live-currency-exchange-title"
       aria-busy={loading}
-      className="container-wide py-10 md:py-14"
+      className="container-wide py-4 sm:py-5"
       data-testid="section-live-currency-exchange"
       dir={lang === "ar" ? "rtl" : "ltr"}
       lang={lang}
     >
-      <div className="rounded-[26px] border border-[#efdee2] bg-[#fffdfa] p-5 shadow-[0_14px_40px_rgba(91,13,30,.06)] sm:p-7 md:p-9">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+      <div className="rounded-2xl border border-[#ead8dd] bg-[#fffdfa] px-4 py-4 sm:px-5">
+        <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <span className="eyebrow">{labels.source}</span>
-            <h2 id="live-currency-exchange-title" className="serif mt-3 text-3xl text-[#5B0D1E] sm:text-4xl">
+            <h2 id="live-currency-exchange-title" className="font-display text-xl leading-tight text-[#5B0D1E] sm:text-2xl">
               Live Currency Exchange
             </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-[#795963]">{labels.subtitle}</p>
           </div>
           <button
             type="button"
             onClick={() => void refresh()}
             disabled={loading}
-            className="btn-outline shrink-0 self-start disabled:cursor-wait disabled:opacity-60"
+            title={loading ? labels.refreshing : labels.refresh}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#e6ccd3] bg-[#fff8fa] text-[#5B0D1E] transition-colors hover:bg-[#FFD6E5] disabled:cursor-wait disabled:opacity-60"
             data-testid="button-refresh-live-currency-rates"
-            aria-label={labels.refresh}
+            aria-label={loading ? labels.refreshing : labels.refresh}
           >
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-            {loading ? labels.refreshing : labels.refresh}
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-[#896a71]" data-testid="live-currency-updated">
-          <span>
-            {labels.updated}:{" "}
-            <strong className="font-semibold text-[#5B0D1E]">
-              {dateLabel ?? (loading ? labels.loading : labels.unavailable)}
-            </strong>
-          </span>
-          {lastChecked && <span>{labels.refreshed}: {formatTime(lastChecked, lang)}</span>}
-        </div>
-
         {failed && (
-          <p className="mt-4 rounded-xl border border-[#ead5da] bg-[#fff1f3] p-3 text-sm text-[#763246]" role="alert" data-testid="live-currency-error">
+          <p className="mt-3 rounded-lg border border-[#ead5da] bg-[#fff1f3] px-3 py-2 text-xs leading-5 text-[#763246]" role="alert" data-testid="live-currency-error">
             {hasRates ? labels.refreshFailed : labels.failed}
           </p>
         )}
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2" data-testid="live-currency-rates">
+        <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4" data-testid="live-currency-rates">
           {LIVE_CURRENCY_CODES.map((code) => {
             const item = rates[code];
             return (
               <article
                 key={code}
-                className="min-w-0 rounded-2xl border border-[#f0e1e4] bg-[#fff8f7] p-4 sm:p-5"
+                className="min-w-0 rounded-xl border border-[#f0dfe3] bg-[#fff9f8] px-3 py-2.5"
                 data-testid={`live-currency-rate-${code.toLowerCase()}`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="truncate text-sm font-semibold text-[#5B0D1E]">{formatCurrencyName(code, lang)}</h3>
-                    <p className="mt-1 text-xs text-[#896a71]">{code}</p>
-                  </div>
-                  <strong className="shrink-0 text-end text-base text-[#5B0D1E]" dir="ltr">
-                    {item ? `1 KWD = ${formatRate(item.rate, lang)} ${code}` : labels.unavailable}
-                  </strong>
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="text-[11px] font-bold tracking-[.08em] text-[#5B0D1E]">{code}</h3>
+                  <span className="truncate text-[9px] text-[#98737c]">{formatCurrencyName(code, lang)}</span>
                 </div>
-                {item?.date && <p className="mt-3 text-[11px] text-[#896a71]">{labels.updated}: {formatDate(item.date, lang)}</p>}
+                <p className="mt-2 whitespace-nowrap text-[11px] font-semibold text-[#5B0D1E]" dir="ltr">
+                  {item ? `1 KWD = ${formatRate(item.rate, lang)} ${code}` : loading ? <span aria-label={labels.loading}>…</span> : labels.unavailable}
+                </p>
               </article>
             );
           })}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] text-[#9a7a81]" data-testid="live-currency-updated">
+          <span>{labels.updated}: <strong className="font-medium text-[#77535a]">{dateLabel ?? (loading ? labels.loading : labels.unavailable)}</strong></span>
+          {lastChecked && <span>{labels.refreshed}: {formatTime(lastChecked, lang)}</span>}
+          <span aria-hidden="true" className="text-[#d3abb5]">•</span>
+          <a
+            href={FRANKFURTER_V2_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="underline decoration-[#e4cbd1] underline-offset-2 hover:text-[#5B0D1E]"
+          >
+            {labels.source}
+          </a>
         </div>
       </div>
     </section>
