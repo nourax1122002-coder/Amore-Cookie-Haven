@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/amore-flavor-rewards/"
+title = "Amore Flavor Rewards"
+description = "A creator rewards platform for Amore Cookies customers to invent new cookie flavors, gather confirmed interest, and track approved rewards."
+version = "1.0.0"
+id = "artifacts/amore-flavor-rewards"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/amore-flavor-rewards/" ]
+localPort = 24906
+
+[services.development]
+run = "pnpm --filter @workspace/amore-flavor-rewards run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/amore-flavor-rewards", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/amore-flavor-rewards/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24906"
+BASE_PATH = "/amore-flavor-rewards/"
