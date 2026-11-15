@@ -5,7 +5,9 @@
  * Amore Cookies storefront and management API
  * OpenAPI spec version: 1.0.0
  */
+import type { StartCheckout200Resume } from './startCheckout200Resume';
 
 export type StartCheckout200 = {
   url: string;
+  resume?: StartCheckout200Resume;
 };

@@ -4,4 +4,5 @@
 - [Shopify cart markets](shopify-market-cart.md) — a forced, unconfigured Kuwait Market can silently zero cart quantities despite catalog stock.
 - [Free services and release](free-services-and-release.md) — keep Amore AI and currency conversion on free providers; honor limits and show source dates for KWD cross-rates.
 - [Amore Supabase access](supabase-data-access.md) — Supabase replaces Clerk and Shopify for store data/auth; keep private tables and admin roles server-controlled.
+- [Flavor Rewards scope](flavor-rewards-scope.md) — keep Flavor Rewards inside the existing Amore Cookies site; do not create a separate app or deployment.
 - [Vercel Express runtime](vercel-express-runtime.md) — keep Replit's persistent listener separate from Vercel requests; Hobby cron is daily, not minute-level.

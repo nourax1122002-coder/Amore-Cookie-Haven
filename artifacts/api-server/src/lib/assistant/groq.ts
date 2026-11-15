@@ -3,6 +3,7 @@ import {
   buildAssistantSystemMessage,
   retrySeconds,
   tomorrowSeconds,
+  type AssistantPurpose,
   type ChatMessage,
   type FreeReply,
 } from "./openrouter";
@@ -21,6 +22,7 @@ export function createGroqGateway(
       context: string,
       signal: AbortSignal,
       language: "ar" | "en" = "ar",
+      purpose: AssistantPurpose = "store",
     ): Promise<FreeReply> {
       if (!key) throw new AssistantError("configuration");
       let response: Response;
@@ -32,7 +34,7 @@ export function createGroqGateway(
           headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             model: GROQ_FREE_MODEL,
-            messages: [{ role: "system", content: buildAssistantSystemMessage(context, language) }, ...messages],
+            messages: [{ role: "system", content: buildAssistantSystemMessage(context, language, purpose) }, ...messages],
             max_completion_tokens: 600,
             temperature: 0.25,
             reasoning_effort: "low",

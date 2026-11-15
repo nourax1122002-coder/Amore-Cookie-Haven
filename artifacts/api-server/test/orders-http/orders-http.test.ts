@@ -118,6 +118,31 @@ test("account order and favorite endpoints require an authenticated Supabase acc
   }
 });
 
+test("Flavor Rewards lists public ideas but protects creator, account, AI, and administrator actions", async () => {
+  const publicIdeas = await request("/api/flavor-rewards");
+  assert.equal(publicIdeas.status, 200);
+  assert.deepEqual(publicIdeas.body, []);
+
+  const id = "00000000-0000-4000-8000-000000000001";
+  const key = "00000000-0000-4000-8000-000000000002";
+  const requests = [
+    ["/api/flavor-rewards/mine", undefined, "GET"],
+    ["/api/account/flavor-rewards", undefined, "GET"],
+    ["/api/flavor-rewards/drafts", { title: "Rose chocolate", requestKey: key }, "POST"],
+    [`/api/flavor-rewards/drafts/${id}`, {}, "PATCH"],
+    [`/api/flavor-rewards/drafts/${id}/publish`, {}, "POST"],
+    [`/api/flavor-rewards/${id}/interest`, {}, "POST"],
+    ["/api/flavor-rewards/assistant", { language: "en", messages: [{ role: "user", content: "Suggest a cookie flavor." }] }, "POST"],
+    ["/api/account/flavor-rewards/payout-requests", { amountFils: 1000, requestKey: key }, "POST"],
+    ["/api/admin/flavor-rewards", undefined, "GET"],
+  ] as const;
+  for (const [path, body, method] of requests) {
+    const response = await request(path, body, undefined, freshIp(), method);
+    assert.equal(response.status, 401, `${method} ${path}: ${JSON.stringify(response.body)}`);
+  }
+  assert.equal((await request("/api/admin/flavor-rewards", undefined, "visitor", freshIp(), "GET")).status, 403);
+});
+
 test("account order history returns only the signed-in user's safe order details", async () => {
   const visitor = await request("/api/account/orders", undefined, "visitor", freshIp(), "GET");
   const another = await request("/api/account/orders", undefined, "another", freshIp(), "GET");

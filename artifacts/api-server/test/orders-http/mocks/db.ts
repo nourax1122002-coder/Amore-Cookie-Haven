@@ -62,6 +62,19 @@ export async function createSignedProductImageUpload() { throw new Error("Unexpe
 export function createSupabaseUserClient(accessToken: string) {
   return { userId: accessToken.replace("fictional.jwt.for.", "") };
 }
+class EmptyPublishedIdeasQuery {
+  select() { return this; }
+  order() { return this; }
+  limit() { return Promise.resolve({ data: [], error: null }); }
+}
+export const supabase = {
+  from(table: string) {
+    if (table !== "published_flavor_ideas") {
+      throw new Error(`Unexpected Supabase table ${table} in orders boundary test.`);
+    }
+    return new EmptyPublishedIdeasQuery();
+  },
+};
 const accountOrders = [
   {
     id: "00000000-0000-4000-8000-000000000031",

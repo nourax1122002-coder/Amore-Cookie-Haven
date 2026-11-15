@@ -27,6 +27,7 @@ import type {
 import type {
   AccountFavorite,
   AccountOrder,
+  AdminFlavorRewards,
   AdminSummary,
   AssistantFailure,
   AssistantInput,
@@ -37,9 +38,20 @@ import type {
   Cart,
   CartInput,
   CheckoutInput,
+  CreateFlavorDraftInput,
+  CreatorFlavorRewards,
   CurrencyConversion,
   CurrencyConversionFailure,
   FavoriteInput,
+  FlavorAssistantInput,
+  FlavorCommercialReviewInput,
+  FlavorIdea,
+  FlavorInterestResult,
+  FlavorPayoutRequest,
+  FlavorPayoutRequestInput,
+  FlavorPayoutReviewInput,
+  FlavorSaleInput,
+  FlavorSaleResult,
   GetAdminSession200,
   GetCurrencyConversionParams,
   GetPaymentOrderParams,
@@ -54,6 +66,7 @@ import type {
   PaymentAvailability,
   Product,
   ProductInput,
+  PublicFlavorIdea,
   SignInInput,
   SignUpInput,
   StartCheckout200,
@@ -63,6 +76,7 @@ import type {
   StripeCheckoutCancelResult,
   TrackingInput,
   TrackingResult,
+  UpdateFlavorDraftInput,
   UploadAdminProductImage201
 } from './api.schemas';
 
@@ -3121,5 +3135,1099 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getUploadAdminProductImageMutationOptions(options), queryClient);
+    }
+
+export const getListPublicFlavorRewardsUrl = () => {
+
+
+
+
+  return `/api/flavor-rewards`
+}
+
+export const listPublicFlavorRewards = async ( options?: Parameters<typeof customFetch>[1]): Promise<PublicFlavorIdea[]> => {
+
+  return customFetch<PublicFlavorIdea[]>(getListPublicFlavorRewardsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPublicFlavorRewardsQueryKey = () => {
+    return [
+    `/api/flavor-rewards`
+    ] as const;
+    }
+
+
+export const getListPublicFlavorRewardsQueryOptions = <TData = Awaited<ReturnType<typeof listPublicFlavorRewards>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPublicFlavorRewards>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPublicFlavorRewardsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPublicFlavorRewards>>> = ({ signal }) => listPublicFlavorRewards({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPublicFlavorRewards>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListPublicFlavorRewardsQueryResult = NonNullable<Awaited<ReturnType<typeof listPublicFlavorRewards>>>
+export type ListPublicFlavorRewardsQueryError = ErrorType<unknown>
+
+
+export function useListPublicFlavorRewards<TData = Awaited<ReturnType<typeof listPublicFlavorRewards>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPublicFlavorRewards>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPublicFlavorRewards>>,
+          TError,
+          Awaited<ReturnType<typeof listPublicFlavorRewards>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListPublicFlavorRewards<TData = Awaited<ReturnType<typeof listPublicFlavorRewards>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPublicFlavorRewards>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPublicFlavorRewards>>,
+          TError,
+          Awaited<ReturnType<typeof listPublicFlavorRewards>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListPublicFlavorRewards<TData = Awaited<ReturnType<typeof listPublicFlavorRewards>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPublicFlavorRewards>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useListPublicFlavorRewards<TData = Awaited<ReturnType<typeof listPublicFlavorRewards>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPublicFlavorRewards>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListPublicFlavorRewardsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListMyFlavorIdeasUrl = () => {
+
+
+
+
+  return `/api/flavor-rewards/mine`
+}
+
+export const listMyFlavorIdeas = async ( options?: Parameters<typeof customFetch>[1]): Promise<FlavorIdea[]> => {
+
+  return customFetch<FlavorIdea[]>(getListMyFlavorIdeasUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMyFlavorIdeasQueryKey = () => {
+    return [
+    `/api/flavor-rewards/mine`
+    ] as const;
+    }
+
+
+export const getListMyFlavorIdeasQueryOptions = <TData = Awaited<ReturnType<typeof listMyFlavorIdeas>>, TError = ErrorType<void>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMyFlavorIdeas>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMyFlavorIdeasQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMyFlavorIdeas>>> = ({ signal }) => listMyFlavorIdeas({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMyFlavorIdeas>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListMyFlavorIdeasQueryResult = NonNullable<Awaited<ReturnType<typeof listMyFlavorIdeas>>>
+export type ListMyFlavorIdeasQueryError = ErrorType<void>
+
+
+export function useListMyFlavorIdeas<TData = Awaited<ReturnType<typeof listMyFlavorIdeas>>, TError = ErrorType<void>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMyFlavorIdeas>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listMyFlavorIdeas>>,
+          TError,
+          Awaited<ReturnType<typeof listMyFlavorIdeas>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListMyFlavorIdeas<TData = Awaited<ReturnType<typeof listMyFlavorIdeas>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMyFlavorIdeas>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listMyFlavorIdeas>>,
+          TError,
+          Awaited<ReturnType<typeof listMyFlavorIdeas>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListMyFlavorIdeas<TData = Awaited<ReturnType<typeof listMyFlavorIdeas>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMyFlavorIdeas>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useListMyFlavorIdeas<TData = Awaited<ReturnType<typeof listMyFlavorIdeas>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMyFlavorIdeas>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListMyFlavorIdeasQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateFlavorDraftUrl = () => {
+
+
+
+
+  return `/api/flavor-rewards/drafts`
+}
+
+export const createFlavorDraft = async (createFlavorDraftInput: CreateFlavorDraftInput, options?: Parameters<typeof customFetch>[1]): Promise<FlavorIdea> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<FlavorIdea>(getCreateFlavorDraftUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createFlavorDraftInput)
+  }
+);}
+
+
+
+
+
+export const getCreateFlavorDraftMutationKey = () => ['createFlavorDraft'] as const;
+
+export const getCreateFlavorDraftMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFlavorDraft>>, TError,CreateFlavorDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createFlavorDraft>>, TError,CreateFlavorDraftMutationVariables, TContext> => {
+
+const mutationKey = getCreateFlavorDraftMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createFlavorDraft>>, CreateFlavorDraftMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createFlavorDraft(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateFlavorDraftMutationResult = NonNullable<Awaited<ReturnType<typeof createFlavorDraft>>>
+    export type CreateFlavorDraftMutationBody = BodyType<CreateFlavorDraftInput>
+    export type CreateFlavorDraftMutationError = ErrorType<void>
+    export type CreateFlavorDraftMutationVariables = {data: BodyType<CreateFlavorDraftInput>}
+
+    export const useCreateFlavorDraft = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFlavorDraft>>, TError,CreateFlavorDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createFlavorDraft>>,
+        TError,
+        CreateFlavorDraftMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateFlavorDraftMutationOptions(options), queryClient);
+    }
+
+export const getUpdateFlavorDraftUrl = (id: string,) => {
+
+
+
+
+  return `/api/flavor-rewards/drafts/${id}`
+}
+
+export const updateFlavorDraft = async (id: string,
+    updateFlavorDraftInput: UpdateFlavorDraftInput, options?: Parameters<typeof customFetch>[1]): Promise<FlavorIdea> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<FlavorIdea>(getUpdateFlavorDraftUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateFlavorDraftInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateFlavorDraftMutationKey = () => ['updateFlavorDraft'] as const;
+
+export const getUpdateFlavorDraftMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateFlavorDraft>>, TError,UpdateFlavorDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateFlavorDraft>>, TError,UpdateFlavorDraftMutationVariables, TContext> => {
+
+const mutationKey = getUpdateFlavorDraftMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateFlavorDraft>>, UpdateFlavorDraftMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateFlavorDraft(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateFlavorDraftMutationResult = NonNullable<Awaited<ReturnType<typeof updateFlavorDraft>>>
+    export type UpdateFlavorDraftMutationBody = BodyType<UpdateFlavorDraftInput>
+    export type UpdateFlavorDraftMutationError = ErrorType<void>
+    export type UpdateFlavorDraftMutationVariables = {id: string;data: BodyType<UpdateFlavorDraftInput>}
+
+    export const useUpdateFlavorDraft = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateFlavorDraft>>, TError,UpdateFlavorDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateFlavorDraft>>,
+        TError,
+        UpdateFlavorDraftMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateFlavorDraftMutationOptions(options), queryClient);
+    }
+
+export const getPublishFlavorDraftUrl = (id: string,) => {
+
+
+
+
+  return `/api/flavor-rewards/drafts/${id}/publish`
+}
+
+export const publishFlavorDraft = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<FlavorIdea> => {
+
+  return customFetch<FlavorIdea>(getPublishFlavorDraftUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPublishFlavorDraftMutationKey = () => ['publishFlavorDraft'] as const;
+
+export const getPublishFlavorDraftMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishFlavorDraft>>, TError,PublishFlavorDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishFlavorDraft>>, TError,PublishFlavorDraftMutationVariables, TContext> => {
+
+const mutationKey = getPublishFlavorDraftMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishFlavorDraft>>, PublishFlavorDraftMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  publishFlavorDraft(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PublishFlavorDraftMutationResult = NonNullable<Awaited<ReturnType<typeof publishFlavorDraft>>>
+
+    export type PublishFlavorDraftMutationError = ErrorType<void>
+    export type PublishFlavorDraftMutationVariables = {id: string}
+
+    export const usePublishFlavorDraft = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishFlavorDraft>>, TError,PublishFlavorDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof publishFlavorDraft>>,
+        TError,
+        PublishFlavorDraftMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPublishFlavorDraftMutationOptions(options), queryClient);
+    }
+
+export const getRegisterFlavorInterestUrl = (id: string,) => {
+
+
+
+
+  return `/api/flavor-rewards/${id}/interest`
+}
+
+export const registerFlavorInterest = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<FlavorInterestResult> => {
+
+  return customFetch<FlavorInterestResult>(getRegisterFlavorInterestUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRegisterFlavorInterestMutationKey = () => ['registerFlavorInterest'] as const;
+
+export const getRegisterFlavorInterestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerFlavorInterest>>, TError,RegisterFlavorInterestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof registerFlavorInterest>>, TError,RegisterFlavorInterestMutationVariables, TContext> => {
+
+const mutationKey = getRegisterFlavorInterestMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof registerFlavorInterest>>, RegisterFlavorInterestMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  registerFlavorInterest(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegisterFlavorInterestMutationResult = NonNullable<Awaited<ReturnType<typeof registerFlavorInterest>>>
+
+    export type RegisterFlavorInterestMutationError = ErrorType<void>
+    export type RegisterFlavorInterestMutationVariables = {id: string}
+
+    export const useRegisterFlavorInterest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerFlavorInterest>>, TError,RegisterFlavorInterestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof registerFlavorInterest>>,
+        TError,
+        RegisterFlavorInterestMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRegisterFlavorInterestMutationOptions(options), queryClient);
+    }
+
+export const getAskFlavorAssistantUrl = () => {
+
+
+
+
+  return `/api/flavor-rewards/assistant`
+}
+
+export const askFlavorAssistant = async (flavorAssistantInput: FlavorAssistantInput, options?: Parameters<typeof customFetch>[1]): Promise<AssistantReply> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AssistantReply>(getAskFlavorAssistantUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(flavorAssistantInput)
+  }
+);}
+
+
+
+
+
+export const getAskFlavorAssistantMutationKey = () => ['askFlavorAssistant'] as const;
+
+export const getAskFlavorAssistantMutationOptions = <TError = ErrorType<AssistantFailure | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof askFlavorAssistant>>, TError,AskFlavorAssistantMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof askFlavorAssistant>>, TError,AskFlavorAssistantMutationVariables, TContext> => {
+
+const mutationKey = getAskFlavorAssistantMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof askFlavorAssistant>>, AskFlavorAssistantMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  askFlavorAssistant(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AskFlavorAssistantMutationResult = NonNullable<Awaited<ReturnType<typeof askFlavorAssistant>>>
+    export type AskFlavorAssistantMutationBody = BodyType<FlavorAssistantInput>
+    export type AskFlavorAssistantMutationError = ErrorType<AssistantFailure | void>
+    export type AskFlavorAssistantMutationVariables = {data: BodyType<FlavorAssistantInput>}
+
+    export const useAskFlavorAssistant = <TError = ErrorType<AssistantFailure | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof askFlavorAssistant>>, TError,AskFlavorAssistantMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof askFlavorAssistant>>,
+        TError,
+        AskFlavorAssistantMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAskFlavorAssistantMutationOptions(options), queryClient);
+    }
+
+export const getGetMyFlavorRewardsUrl = () => {
+
+
+
+
+  return `/api/account/flavor-rewards`
+}
+
+export const getMyFlavorRewards = async ( options?: Parameters<typeof customFetch>[1]): Promise<CreatorFlavorRewards> => {
+
+  return customFetch<CreatorFlavorRewards>(getGetMyFlavorRewardsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyFlavorRewardsQueryKey = () => {
+    return [
+    `/api/account/flavor-rewards`
+    ] as const;
+    }
+
+
+export const getGetMyFlavorRewardsQueryOptions = <TData = Awaited<ReturnType<typeof getMyFlavorRewards>>, TError = ErrorType<void>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMyFlavorRewards>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyFlavorRewardsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyFlavorRewards>>> = ({ signal }) => getMyFlavorRewards({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyFlavorRewards>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetMyFlavorRewardsQueryResult = NonNullable<Awaited<ReturnType<typeof getMyFlavorRewards>>>
+export type GetMyFlavorRewardsQueryError = ErrorType<void>
+
+
+export function useGetMyFlavorRewards<TData = Awaited<ReturnType<typeof getMyFlavorRewards>>, TError = ErrorType<void>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMyFlavorRewards>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getMyFlavorRewards>>,
+          TError,
+          Awaited<ReturnType<typeof getMyFlavorRewards>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetMyFlavorRewards<TData = Awaited<ReturnType<typeof getMyFlavorRewards>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMyFlavorRewards>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getMyFlavorRewards>>,
+          TError,
+          Awaited<ReturnType<typeof getMyFlavorRewards>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetMyFlavorRewards<TData = Awaited<ReturnType<typeof getMyFlavorRewards>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMyFlavorRewards>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetMyFlavorRewards<TData = Awaited<ReturnType<typeof getMyFlavorRewards>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMyFlavorRewards>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetMyFlavorRewardsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRequestFlavorPayoutUrl = () => {
+
+
+
+
+  return `/api/account/flavor-rewards/payout-requests`
+}
+
+export const requestFlavorPayout = async (flavorPayoutRequestInput: FlavorPayoutRequestInput, options?: Parameters<typeof customFetch>[1]): Promise<FlavorPayoutRequest> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<FlavorPayoutRequest>(getRequestFlavorPayoutUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(flavorPayoutRequestInput)
+  }
+);}
+
+
+
+
+
+export const getRequestFlavorPayoutMutationKey = () => ['requestFlavorPayout'] as const;
+
+export const getRequestFlavorPayoutMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestFlavorPayout>>, TError,RequestFlavorPayoutMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestFlavorPayout>>, TError,RequestFlavorPayoutMutationVariables, TContext> => {
+
+const mutationKey = getRequestFlavorPayoutMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestFlavorPayout>>, RequestFlavorPayoutMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestFlavorPayout(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestFlavorPayoutMutationResult = NonNullable<Awaited<ReturnType<typeof requestFlavorPayout>>>
+    export type RequestFlavorPayoutMutationBody = BodyType<FlavorPayoutRequestInput>
+    export type RequestFlavorPayoutMutationError = ErrorType<void>
+    export type RequestFlavorPayoutMutationVariables = {data: BodyType<FlavorPayoutRequestInput>}
+
+    export const useRequestFlavorPayout = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestFlavorPayout>>, TError,RequestFlavorPayoutMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof requestFlavorPayout>>,
+        TError,
+        RequestFlavorPayoutMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRequestFlavorPayoutMutationOptions(options), queryClient);
+    }
+
+export const getGetAdminFlavorRewardsUrl = () => {
+
+
+
+
+  return `/api/admin/flavor-rewards`
+}
+
+export const getAdminFlavorRewards = async ( options?: Parameters<typeof customFetch>[1]): Promise<AdminFlavorRewards> => {
+
+  return customFetch<AdminFlavorRewards>(getGetAdminFlavorRewardsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminFlavorRewardsQueryKey = () => {
+    return [
+    `/api/admin/flavor-rewards`
+    ] as const;
+    }
+
+
+export const getGetAdminFlavorRewardsQueryOptions = <TData = Awaited<ReturnType<typeof getAdminFlavorRewards>>, TError = ErrorType<void>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminFlavorRewards>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminFlavorRewardsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminFlavorRewards>>> = ({ signal }) => getAdminFlavorRewards({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminFlavorRewards>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetAdminFlavorRewardsQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminFlavorRewards>>>
+export type GetAdminFlavorRewardsQueryError = ErrorType<void>
+
+
+export function useGetAdminFlavorRewards<TData = Awaited<ReturnType<typeof getAdminFlavorRewards>>, TError = ErrorType<void>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminFlavorRewards>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminFlavorRewards>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminFlavorRewards>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetAdminFlavorRewards<TData = Awaited<ReturnType<typeof getAdminFlavorRewards>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminFlavorRewards>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminFlavorRewards>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminFlavorRewards>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetAdminFlavorRewards<TData = Awaited<ReturnType<typeof getAdminFlavorRewards>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminFlavorRewards>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetAdminFlavorRewards<TData = Awaited<ReturnType<typeof getAdminFlavorRewards>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminFlavorRewards>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetAdminFlavorRewardsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getReviewFlavorCommercialOutcomeUrl = (id: string,) => {
+
+
+
+
+  return `/api/admin/flavor-rewards/${id}/review`
+}
+
+export const reviewFlavorCommercialOutcome = async (id: string,
+    flavorCommercialReviewInput: FlavorCommercialReviewInput, options?: Parameters<typeof customFetch>[1]): Promise<OperationResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<OperationResult>(getReviewFlavorCommercialOutcomeUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(flavorCommercialReviewInput)
+  }
+);}
+
+
+
+
+
+export const getReviewFlavorCommercialOutcomeMutationKey = () => ['reviewFlavorCommercialOutcome'] as const;
+
+export const getReviewFlavorCommercialOutcomeMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewFlavorCommercialOutcome>>, TError,ReviewFlavorCommercialOutcomeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewFlavorCommercialOutcome>>, TError,ReviewFlavorCommercialOutcomeMutationVariables, TContext> => {
+
+const mutationKey = getReviewFlavorCommercialOutcomeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewFlavorCommercialOutcome>>, ReviewFlavorCommercialOutcomeMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reviewFlavorCommercialOutcome(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewFlavorCommercialOutcomeMutationResult = NonNullable<Awaited<ReturnType<typeof reviewFlavorCommercialOutcome>>>
+    export type ReviewFlavorCommercialOutcomeMutationBody = BodyType<FlavorCommercialReviewInput>
+    export type ReviewFlavorCommercialOutcomeMutationError = ErrorType<void>
+    export type ReviewFlavorCommercialOutcomeMutationVariables = {id: string;data: BodyType<FlavorCommercialReviewInput>}
+
+    export const useReviewFlavorCommercialOutcome = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewFlavorCommercialOutcome>>, TError,ReviewFlavorCommercialOutcomeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof reviewFlavorCommercialOutcome>>,
+        TError,
+        ReviewFlavorCommercialOutcomeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReviewFlavorCommercialOutcomeMutationOptions(options), queryClient);
+    }
+
+export const getRecordFlavorEligibleSaleUrl = (id: string,) => {
+
+
+
+
+  return `/api/admin/flavor-rewards/${id}/sales`
+}
+
+export const recordFlavorEligibleSale = async (id: string,
+    flavorSaleInput: FlavorSaleInput, options?: Parameters<typeof customFetch>[1]): Promise<FlavorSaleResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<FlavorSaleResult>(getRecordFlavorEligibleSaleUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(flavorSaleInput)
+  }
+);}
+
+
+
+
+
+export const getRecordFlavorEligibleSaleMutationKey = () => ['recordFlavorEligibleSale'] as const;
+
+export const getRecordFlavorEligibleSaleMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordFlavorEligibleSale>>, TError,RecordFlavorEligibleSaleMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recordFlavorEligibleSale>>, TError,RecordFlavorEligibleSaleMutationVariables, TContext> => {
+
+const mutationKey = getRecordFlavorEligibleSaleMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordFlavorEligibleSale>>, RecordFlavorEligibleSaleMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  recordFlavorEligibleSale(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecordFlavorEligibleSaleMutationResult = NonNullable<Awaited<ReturnType<typeof recordFlavorEligibleSale>>>
+    export type RecordFlavorEligibleSaleMutationBody = BodyType<FlavorSaleInput>
+    export type RecordFlavorEligibleSaleMutationError = ErrorType<void>
+    export type RecordFlavorEligibleSaleMutationVariables = {id: string;data: BodyType<FlavorSaleInput>}
+
+    export const useRecordFlavorEligibleSale = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordFlavorEligibleSale>>, TError,RecordFlavorEligibleSaleMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof recordFlavorEligibleSale>>,
+        TError,
+        RecordFlavorEligibleSaleMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRecordFlavorEligibleSaleMutationOptions(options), queryClient);
+    }
+
+export const getReviewFlavorPayoutRequestUrl = (id: string,) => {
+
+
+
+
+  return `/api/admin/flavor-rewards/payout-requests/${id}`
+}
+
+export const reviewFlavorPayoutRequest = async (id: string,
+    flavorPayoutReviewInput: FlavorPayoutReviewInput, options?: Parameters<typeof customFetch>[1]): Promise<FlavorPayoutRequest> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<FlavorPayoutRequest>(getReviewFlavorPayoutRequestUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(flavorPayoutReviewInput)
+  }
+);}
+
+
+
+
+
+export const getReviewFlavorPayoutRequestMutationKey = () => ['reviewFlavorPayoutRequest'] as const;
+
+export const getReviewFlavorPayoutRequestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewFlavorPayoutRequest>>, TError,ReviewFlavorPayoutRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewFlavorPayoutRequest>>, TError,ReviewFlavorPayoutRequestMutationVariables, TContext> => {
+
+const mutationKey = getReviewFlavorPayoutRequestMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewFlavorPayoutRequest>>, ReviewFlavorPayoutRequestMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reviewFlavorPayoutRequest(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewFlavorPayoutRequestMutationResult = NonNullable<Awaited<ReturnType<typeof reviewFlavorPayoutRequest>>>
+    export type ReviewFlavorPayoutRequestMutationBody = BodyType<FlavorPayoutReviewInput>
+    export type ReviewFlavorPayoutRequestMutationError = ErrorType<void>
+    export type ReviewFlavorPayoutRequestMutationVariables = {id: string;data: BodyType<FlavorPayoutReviewInput>}
+
+    export const useReviewFlavorPayoutRequest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewFlavorPayoutRequest>>, TError,ReviewFlavorPayoutRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof reviewFlavorPayoutRequest>>,
+        TError,
+        ReviewFlavorPayoutRequestMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReviewFlavorPayoutRequestMutationOptions(options), queryClient);
     }
 

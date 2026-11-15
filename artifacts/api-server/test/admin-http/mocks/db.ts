@@ -3,6 +3,11 @@ import { inquiriesTable } from "../../../../../lib/db/src/schema/inquiries";
 import { storeSettingsTable } from "../../../../../lib/db/src/schema/store-settings";
 export { inquiriesTable, storeSettingsTable };
 export { customerOrdersTable } from "../../../../../lib/db/src/schema/customer-orders";
+export const supabase = new Proxy({}, {
+  get(_target, property) {
+    throw new Error(`Unexpected Supabase query ${String(property)} in admin boundary test.`);
+  },
+});
 
 const fixture = () => ({
   id: 17, cafeName: "Fictional cafe", contactName: "Test contact",

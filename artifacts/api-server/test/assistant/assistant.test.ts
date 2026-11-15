@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
 import { SendAssistantMessageBody } from "@workspace/api-zod";
-import { createOpenRouter, isFreeModel, selectFreeModels, AssistantError, FREE_ROUTING, retrySeconds, validatePrivateInput } from "../../src/lib/assistant/openrouter";
+import { buildAssistantSystemMessage, createOpenRouter, isFreeModel, selectFreeModels, AssistantError, FREE_ROUTING, retrySeconds, validatePrivateInput } from "../../src/lib/assistant/openrouter";
 import { createGroqGateway, GROQ_FREE_MODEL } from "../../src/lib/assistant/groq";
 import { createAssistantQuota } from "../../src/lib/assistant/quota";
 
@@ -35,6 +35,18 @@ test("contract bounds role, messages and lengths without accepting a system prom
     [{ role: "user", content: "" }], [{ role: "user", content: "x".repeat(1201) }]]) {
     assert.equal(SendAssistantMessageBody.safeParse({ messages: bad }).success, false);
   }
+});
+test("flavor assistant gets its own safe brief while the store assistant keeps its original role", () => {
+  const storePrompt = buildAssistantSystemMessage("store catalog", "en");
+  assert.match(storePrompt, /about products and baking only/);
+  assert.doesNotMatch(storePrompt, /flavor-idea assistant/);
+  const flavorPrompt = buildAssistantSystemMessage("published ideas", "en", "flavor");
+  assert.match(flavorPrompt, /flavor-idea assistant/);
+  assert.match(flavorPrompt, /do not promise that a flavor will be produced/);
+  assert.match(flavorPrompt, /published ideas/);
+  const arabicPrompt = buildAssistantSystemMessage("نكهات منشورة", "ar", "flavor");
+  assert.match(arabicPrompt, /اقتراح النكهات/);
+  assert.match(arabicPrompt, /لا يعني/);
 });
 test("discovery rejects paid, unknown, incomplete and nontext routes including non-token charges", () => {
   assert.equal(isFreeModel(model), true);

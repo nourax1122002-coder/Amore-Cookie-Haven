@@ -158,6 +158,26 @@ paths:
                 required: [url]
                 properties:
                   url: { type: string }
+                  resume:
+                    type: object
+                    required: [orderId, token, url, number, totalKwd, usdTotal, expiresAt, sessionStatus, items]
+                    properties:
+                      orderId: { type: string }
+                      token: { type: string }
+                      url: { type: string }
+                      number: { type: string }
+                      totalKwd: { type: string }
+                      usdTotal: { type: string }
+                      expiresAt: { type: string, format: date-time }
+                      sessionStatus: { type: string, enum: [open, complete] }
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          required: [title, quantity]
+                          properties:
+                            title: { type: string }
+                            quantity: { type: integer, minimum: 1 }
   /payments/availability:
     get:
       operationId: getPaymentAvailability
@@ -480,6 +500,225 @@ paths:
                 required: [imageUrl]
                 properties:
                   imageUrl: { type: string, format: uri }
+        "401":
+          description: Sign in required
+        "403":
+          description: Approved administrator required
+  /flavor-rewards:
+    get:
+      operationId: listPublicFlavorRewards
+      responses:
+        "200":
+          description: Published flavor ideas with public interest counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PublicFlavorIdea" }
+  /flavor-rewards/mine:
+    get:
+      operationId: listMyFlavorIdeas
+      responses:
+        "200":
+          description: The signed-in creator's ideas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FlavorIdea" }
+        "401":
+          description: Sign in required
+  /flavor-rewards/drafts:
+    post:
+      operationId: createFlavorDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFlavorDraftInput" }
+      responses:
+        "201":
+          description: Saved creator-owned flavor draft
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlavorIdea" }
+        "401":
+          description: Sign in required
+  /flavor-rewards/drafts/{id}:
+    patch:
+      operationId: updateFlavorDraft
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateFlavorDraftInput" }
+      responses:
+        "200":
+          description: Updated creator-owned draft
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlavorIdea" }
+        "401":
+          description: Sign in required
+        "404":
+          description: Draft not found
+  /flavor-rewards/drafts/{id}/publish:
+    post:
+      operationId: publishFlavorDraft
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Published flavor idea
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlavorIdea" }
+        "401":
+          description: Sign in required
+  /flavor-rewards/{id}/interest:
+    post:
+      operationId: registerFlavorInterest
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Idempotent confirmed-interest result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlavorInterestResult" }
+        "401":
+          description: Sign in required
+  /flavor-rewards/assistant:
+    post:
+      operationId: askFlavorAssistant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FlavorAssistantInput" }
+      responses:
+        "200":
+          description: Free-provider flavor suggestion
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistantReply" }
+        "400":
+          description: Invalid or private input
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistantFailure" }
+        "401":
+          description: Sign in required
+        "429":
+          description: Free assistant quota reached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistantFailure" }
+        "503":
+          description: Free assistant provider unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistantFailure" }
+  /account/flavor-rewards:
+    get:
+      operationId: getMyFlavorRewards
+      responses:
+        "200":
+          description: Creator wallet, ledger, ideas, and payout history
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreatorFlavorRewards" }
+        "401":
+          description: Sign in required
+  /account/flavor-rewards/payout-requests:
+    post:
+      operationId: requestFlavorPayout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FlavorPayoutRequestInput" }
+      responses:
+        "201":
+          description: Payout request saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlavorPayoutRequest" }
+        "401":
+          description: Sign in required
+        "409":
+          description: Insufficient available balance or duplicate request
+  /admin/flavor-rewards:
+    get:
+      operationId: getAdminFlavorRewards
+      responses:
+        "200":
+          description: Flavor ideas, eligible sales, and payout requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminFlavorRewards" }
+        "401":
+          description: Sign in required
+        "403":
+          description: Approved administrator required
+  /admin/flavor-rewards/{id}/review:
+    patch:
+      operationId: reviewFlavorCommercialOutcome
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FlavorCommercialReviewInput" }
+      responses:
+        "200":
+          description: Commercial outcome recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResult" }
+        "401":
+          description: Sign in required
+        "403":
+          description: Approved administrator required
+  /admin/flavor-rewards/{id}/sales:
+    post:
+      operationId: recordFlavorEligibleSale
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FlavorSaleInput" }
+      responses:
+        "201":
+          description: Eligible net sale and 15 percent creator commission recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlavorSaleResult" }
+        "401":
+          description: Sign in required
+        "403":
+          description: Approved administrator required
+  /admin/flavor-rewards/payout-requests/{id}:
+    patch:
+      operationId: reviewFlavorPayoutRequest
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FlavorPayoutReviewInput" }
+      responses:
+        "200":
+          description: Payout request decision documented
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlavorPayoutRequest" }
         "401":
           description: Sign in required
         "403":
@@ -882,3 +1121,182 @@ components:
         notices:
           type: array
           items: { type: string }
+    FlavorIdea:
+      type: object
+      required: [id, title, titleAr, description, descriptionAr, ingredients, ingredientsAr, status, commercialStatus, commercialNotes, confirmedInterestCount, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        titleAr: { type: string }
+        description: { type: string }
+        descriptionAr: { type: string }
+        ingredients: { type: string }
+        ingredientsAr: { type: string }
+        status: { type: string, enum: [draft, published, archived] }
+        commercialStatus: { type: string, enum: [not_reviewed, approved, rejected] }
+        commercialNotes: { type: string }
+        confirmedInterestCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        publishedAt: { type: [string, "null"], format: date-time }
+    PublicFlavorIdea:
+      type: object
+      required: [id, title, titleAr, description, descriptionAr, ingredients, ingredientsAr, confirmedInterestCount, publishedAt]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        titleAr: { type: string }
+        description: { type: string }
+        descriptionAr: { type: string }
+        ingredients: { type: string }
+        ingredientsAr: { type: string }
+        confirmedInterestCount: { type: integer, minimum: 0 }
+        publishedAt: { type: string, format: date-time }
+    AdminFlavorIdea:
+      allOf:
+        - { $ref: "#/components/schemas/FlavorIdea" }
+        - type: object
+          required: [creatorUserId]
+          properties:
+            creatorUserId: { type: string, format: uuid }
+    CreateFlavorDraftInput:
+      type: object
+      required: [requestKey, title]
+      properties:
+        requestKey: { type: string, format: uuid }
+        title: { type: string, minLength: 2, maxLength: 120 }
+        titleAr: { type: string, maxLength: 120 }
+        description: { type: string, maxLength: 1200 }
+        descriptionAr: { type: string, maxLength: 1200 }
+        ingredients: { type: string, maxLength: 1200 }
+        ingredientsAr: { type: string, maxLength: 1200 }
+    UpdateFlavorDraftInput:
+      type: object
+      properties:
+        title: { type: string, minLength: 2, maxLength: 120 }
+        titleAr: { type: string, minLength: 2, maxLength: 120 }
+        description: { type: string, maxLength: 1200 }
+        descriptionAr: { type: string, maxLength: 1200 }
+        ingredients: { type: string, maxLength: 1200 }
+        ingredientsAr: { type: string, maxLength: 1200 }
+    FlavorInterestResult:
+      type: object
+      required: [alreadyInterested, interestCount, rewardUnlocked]
+      properties:
+        alreadyInterested: { type: boolean }
+        interestCount: { type: integer, minimum: 0 }
+        rewardUnlocked: { type: boolean }
+    FlavorAssistantInput:
+      allOf:
+        - { $ref: "#/components/schemas/AssistantInput" }
+    FlavorPayoutRequest:
+      type: object
+      required: [id, amountFils, status, adminNote, payoutReference, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        amountFils: { type: integer, minimum: 1 }
+        status: { type: string, enum: [pending, approved, paid, rejected] }
+        adminNote: { type: string }
+        payoutReference: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    FlavorPayoutEvent:
+      type: object
+      required: [id, requestId, action, note, payoutReference, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        requestId: { type: string, format: uuid }
+        action: { type: string, enum: [requested, approved, rejected, paid] }
+        note: { type: string }
+        payoutReference: { type: string }
+        createdAt: { type: string, format: date-time }
+    FlavorRewardEntry:
+      type: object
+      required: [id, flavorId, entryType, amountFils, currency, metadata, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        flavorId: { type: string, format: uuid }
+        entryType: { type: string, enum: [interest_milestone, sales_commission] }
+        amountFils: { type: integer, minimum: 1 }
+        currency: { type: string, enum: [KWD] }
+        metadata: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+    CreatorFlavorRewards:
+      type: object
+      required: [ideas, ledger, payoutRequests, payoutEvents, earnedFils, reservedFils, availableFils]
+      properties:
+        ideas:
+          type: array
+          items: { $ref: "#/components/schemas/FlavorIdea" }
+        ledger:
+          type: array
+          items: { $ref: "#/components/schemas/FlavorRewardEntry" }
+        payoutRequests:
+          type: array
+          items: { $ref: "#/components/schemas/FlavorPayoutRequest" }
+        payoutEvents:
+          type: array
+          items: { $ref: "#/components/schemas/FlavorPayoutEvent" }
+        earnedFils: { type: integer, minimum: 0 }
+        reservedFils: { type: integer, minimum: 0 }
+        availableFils: { type: integer, minimum: 0 }
+    FlavorPayoutRequestInput:
+      type: object
+      required: [amountFils, requestKey]
+      properties:
+        amountFils: { type: integer, minimum: 1 }
+        requestKey: { type: string, format: uuid }
+    FlavorCommercialReviewInput:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [approved, rejected] }
+        notes: { type: string, maxLength: 2000 }
+    FlavorSaleInput:
+      type: object
+      required: [sourceReference, netSalesFils]
+      properties:
+        sourceReference: { type: string, minLength: 2, maxLength: 120 }
+        netSalesFils: { type: integer, minimum: 1 }
+        notes: { type: string, maxLength: 2000 }
+    FlavorSaleResult:
+      type: object
+      required: [duplicate, saleId, commissionFils]
+      properties:
+        duplicate: { type: boolean }
+        saleId: { type: string, format: uuid }
+        commissionFils: { type: integer, minimum: 0 }
+    FlavorPayoutReviewInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [approved, rejected, paid] }
+        adminNote: { type: string, maxLength: 2000 }
+        payoutReference: { type: string, maxLength: 200 }
+    AdminFlavorSale:
+      type: object
+      required: [id, flavorId, creatorUserId, sourceReference, netSalesFils, notes, recordedAt]
+      properties:
+        id: { type: string, format: uuid }
+        flavorId: { type: string, format: uuid }
+        creatorUserId: { type: string, format: uuid }
+        sourceReference: { type: string }
+        netSalesFils: { type: integer, minimum: 1 }
+        notes: { type: string }
+        recordedAt: { type: string, format: date-time }
+    AdminFlavorRewards:
+      type: object
+      required: [ideas, sales, payoutRequests, payoutEvents]
+      properties:
+        ideas:
+          type: array
+          items: { $ref: "#/components/schemas/AdminFlavorIdea" }
+        sales:
+          type: array
+          items: { $ref: "#/components/schemas/AdminFlavorSale" }
+        payoutRequests:
+          type: array
+          items: { $ref: "#/components/schemas/FlavorPayoutRequest" }
+        payoutEvents:
+          type: array
+          items: { $ref: "#/components/schemas/FlavorPayoutEvent" }

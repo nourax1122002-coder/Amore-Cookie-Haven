@@ -596,6 +596,264 @@ export interface AdminSummary {
   notices: string[];
 }
 
+export type FlavorIdeaStatus = typeof FlavorIdeaStatus[keyof typeof FlavorIdeaStatus];
+
+
+export const FlavorIdeaStatus = {
+  draft: 'draft',
+  published: 'published',
+  archived: 'archived',
+} as const;
+
+export type FlavorIdeaCommercialStatus = typeof FlavorIdeaCommercialStatus[keyof typeof FlavorIdeaCommercialStatus];
+
+
+export const FlavorIdeaCommercialStatus = {
+  not_reviewed: 'not_reviewed',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export interface FlavorIdea {
+  id: string;
+  title: string;
+  titleAr: string;
+  description: string;
+  descriptionAr: string;
+  ingredients: string;
+  ingredientsAr: string;
+  status: FlavorIdeaStatus;
+  commercialStatus: FlavorIdeaCommercialStatus;
+  commercialNotes: string;
+  /** @minimum 0 */
+  confirmedInterestCount: number;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  publishedAt?: string | null;
+}
+
+export interface PublicFlavorIdea {
+  id: string;
+  title: string;
+  titleAr: string;
+  description: string;
+  descriptionAr: string;
+  ingredients: string;
+  ingredientsAr: string;
+  /** @minimum 0 */
+  confirmedInterestCount: number;
+  publishedAt: string;
+}
+
+export type AdminFlavorIdea = FlavorIdea & {
+  creatorUserId: string;
+};
+
+export interface CreateFlavorDraftInput {
+  requestKey: string;
+  /**
+     * @minLength 2
+     * @maxLength 120
+     */
+  title: string;
+  /** @maxLength 120 */
+  titleAr?: string;
+  /** @maxLength 1200 */
+  description?: string;
+  /** @maxLength 1200 */
+  descriptionAr?: string;
+  /** @maxLength 1200 */
+  ingredients?: string;
+  /** @maxLength 1200 */
+  ingredientsAr?: string;
+}
+
+export interface UpdateFlavorDraftInput {
+  /**
+     * @minLength 2
+     * @maxLength 120
+     */
+  title?: string;
+  /**
+     * @minLength 2
+     * @maxLength 120
+     */
+  titleAr?: string;
+  /** @maxLength 1200 */
+  description?: string;
+  /** @maxLength 1200 */
+  descriptionAr?: string;
+  /** @maxLength 1200 */
+  ingredients?: string;
+  /** @maxLength 1200 */
+  ingredientsAr?: string;
+}
+
+export interface FlavorInterestResult {
+  alreadyInterested: boolean;
+  /** @minimum 0 */
+  interestCount: number;
+  rewardUnlocked: boolean;
+}
+
+export type FlavorAssistantInput = AssistantInput;
+
+export type FlavorPayoutRequestStatus = typeof FlavorPayoutRequestStatus[keyof typeof FlavorPayoutRequestStatus];
+
+
+export const FlavorPayoutRequestStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  paid: 'paid',
+  rejected: 'rejected',
+} as const;
+
+export interface FlavorPayoutRequest {
+  id: string;
+  /** @minimum 1 */
+  amountFils: number;
+  status: FlavorPayoutRequestStatus;
+  adminNote: string;
+  payoutReference: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type FlavorPayoutEventAction = typeof FlavorPayoutEventAction[keyof typeof FlavorPayoutEventAction];
+
+
+export const FlavorPayoutEventAction = {
+  requested: 'requested',
+  approved: 'approved',
+  rejected: 'rejected',
+  paid: 'paid',
+} as const;
+
+export interface FlavorPayoutEvent {
+  id: string;
+  requestId: string;
+  action: FlavorPayoutEventAction;
+  note: string;
+  payoutReference: string;
+  createdAt: string;
+}
+
+export type FlavorRewardEntryEntryType = typeof FlavorRewardEntryEntryType[keyof typeof FlavorRewardEntryEntryType];
+
+
+export const FlavorRewardEntryEntryType = {
+  interest_milestone: 'interest_milestone',
+  sales_commission: 'sales_commission',
+} as const;
+
+export type FlavorRewardEntryCurrency = typeof FlavorRewardEntryCurrency[keyof typeof FlavorRewardEntryCurrency];
+
+
+export const FlavorRewardEntryCurrency = {
+  KWD: 'KWD',
+} as const;
+
+export type FlavorRewardEntryMetadata = { [key: string]: unknown };
+
+export interface FlavorRewardEntry {
+  id: string;
+  flavorId: string;
+  entryType: FlavorRewardEntryEntryType;
+  /** @minimum 1 */
+  amountFils: number;
+  currency: FlavorRewardEntryCurrency;
+  metadata: FlavorRewardEntryMetadata;
+  createdAt: string;
+}
+
+export interface CreatorFlavorRewards {
+  ideas: FlavorIdea[];
+  ledger: FlavorRewardEntry[];
+  payoutRequests: FlavorPayoutRequest[];
+  payoutEvents: FlavorPayoutEvent[];
+  /** @minimum 0 */
+  earnedFils: number;
+  /** @minimum 0 */
+  reservedFils: number;
+  /** @minimum 0 */
+  availableFils: number;
+}
+
+export interface FlavorPayoutRequestInput {
+  /** @minimum 1 */
+  amountFils: number;
+  requestKey: string;
+}
+
+export type FlavorCommercialReviewInputDecision = typeof FlavorCommercialReviewInputDecision[keyof typeof FlavorCommercialReviewInputDecision];
+
+
+export const FlavorCommercialReviewInputDecision = {
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export interface FlavorCommercialReviewInput {
+  decision: FlavorCommercialReviewInputDecision;
+  /** @maxLength 2000 */
+  notes?: string;
+}
+
+export interface FlavorSaleInput {
+  /**
+     * @minLength 2
+     * @maxLength 120
+     */
+  sourceReference: string;
+  /** @minimum 1 */
+  netSalesFils: number;
+  /** @maxLength 2000 */
+  notes?: string;
+}
+
+export interface FlavorSaleResult {
+  duplicate: boolean;
+  saleId: string;
+  /** @minimum 0 */
+  commissionFils: number;
+}
+
+export type FlavorPayoutReviewInputStatus = typeof FlavorPayoutReviewInputStatus[keyof typeof FlavorPayoutReviewInputStatus];
+
+
+export const FlavorPayoutReviewInputStatus = {
+  approved: 'approved',
+  rejected: 'rejected',
+  paid: 'paid',
+} as const;
+
+export interface FlavorPayoutReviewInput {
+  status: FlavorPayoutReviewInputStatus;
+  /** @maxLength 2000 */
+  adminNote?: string;
+  /** @maxLength 200 */
+  payoutReference?: string;
+}
+
+export interface AdminFlavorSale {
+  id: string;
+  flavorId: string;
+  creatorUserId: string;
+  sourceReference: string;
+  /** @minimum 1 */
+  netSalesFils: number;
+  notes: string;
+  recordedAt: string;
+}
+
+export interface AdminFlavorRewards {
+  ideas: AdminFlavorIdea[];
+  sales: AdminFlavorSale[];
+  payoutRequests: FlavorPayoutRequest[];
+  payoutEvents: FlavorPayoutEvent[];
+}
+
 export type GetCurrencyConversionParams = {
 /**
  * @maximum 10000
@@ -615,22 +873,35 @@ export const GetCurrencyConversionCurrency = {
   SAR: 'SAR',
 } as const;
 
+export type StartCheckout200ResumeSessionStatus = typeof StartCheckout200ResumeSessionStatus[keyof typeof StartCheckout200ResumeSessionStatus];
+
+
+export const StartCheckout200ResumeSessionStatus = {
+  open: 'open',
+  complete: 'complete',
+} as const;
+
+export type StartCheckout200ResumeItemsItem = {
+  title: string;
+  /** @minimum 1 */
+  quantity: number;
+};
+
+export type StartCheckout200Resume = {
+  orderId: string;
+  token: string;
+  url: string;
+  number: string;
+  totalKwd: string;
+  usdTotal: string;
+  expiresAt: string;
+  sessionStatus: StartCheckout200ResumeSessionStatus;
+  items: StartCheckout200ResumeItemsItem[];
+};
+
 export type StartCheckout200 = {
   url: string;
-  resume?: {
-    orderId: string;
-    token: string;
-    url: string;
-    number: string;
-    totalKwd: string;
-    usdTotal: string;
-    expiresAt: string;
-    sessionStatus: 'open' | 'complete';
-    items: Array<{
-      title: string;
-      quantity: number;
-    }>;
-  };
+  resume?: StartCheckout200Resume;
 };
 
 export type GetPaymentOrderParams = {

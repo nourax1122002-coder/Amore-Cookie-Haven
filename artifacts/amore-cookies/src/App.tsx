@@ -12,6 +12,7 @@ import {
 import type { Cart, Inquiry, Product, ProductInput, StoreSettings, TrackingResult } from '@workspace/api-client-react';
 import { OrderDetails } from '@/components/order-status';
 import { PaymentResult, LocalOrdersAdmin } from '@/components/payments';
+import { AdminFlavorRewardsPanel, FlavorRewardsPage } from '@/components/flavor-rewards';
 import { SafeAssistantWidget } from '@/components/assistant-widget';
 import { LiveCurrencyExchange } from '@/components/live-currency-exchange';
 import { AuthPage, PasswordRecoveryPage } from '@/components/auth-pages';
@@ -57,7 +58,7 @@ type ExistingStripeCheckout = {
 const copy: Record<Lang, Record<string, string>> = {
   en: {
     home:'Home', products:'Our cookies', about:'Our story', baking:'How to bake', cafes:'For cafés', individuals:'For home',
-    account:'Account', logout:'Log out', myOrders:'My orders', myFavorites:'My favorites',
+    account:'Account', logout:'Log out', myOrders:'My orders', myFavorites:'My favorites', flavorRewards:'Flavor Rewards',
     bag:'Bag', shop:'Shop the dough', seeAll:'Meet the cookies', made:'A little love, ready for the oven.',
     hero:'The warmest thing in your freezer.', heroText:'Small-batch frozen cookie dough, made for the moments worth making a little sweeter.',
     frozen:'Frozen cookie dough · Ready to bake', pieces:'12 pieces per bag', sold:'Currently sold out', learn:'The Amore way',
@@ -89,7 +90,7 @@ const copy: Record<Lang, Record<string, string>> = {
   },
   ar: {
     home:'الرئيسية', products:'منتجاتنا', about:'من نحن', baking:'طريقة التحضير', cafes:'للمقاهي', individuals:'للأفراد',
-    account:'حسابي', logout:'تسجيل الخروج', myOrders:'طلباتي', myFavorites:'مفضلتي',
+    account:'حسابي', logout:'تسجيل الخروج', myOrders:'طلباتي', myFavorites:'مفضلتي', flavorRewards:'مكافآت النكهات',
     bag:'السلة', shop:'تسوقي العجينة', seeAll:'اكتشفي الكوكيز', made:'قليل من الحب، جاهز للفرن.',
     hero:'أجمل شيء في الفريزر.', heroText:'عجينة كوكيز مجمدة تُحضّر على دفعات صغيرة، للحظات تستحق أن تكون أحلى.',
     frozen:'عجينة كوكيز مجمدة · جاهزة للخبز', pieces:'١٢ قطعة في الكيس', sold:'نفدت الكمية حالياً', learn:'طريقة أموري',
@@ -137,11 +138,11 @@ function AppShell() {
   useEffect(()=>{document.documentElement.lang=lang;document.documentElement.dir=rtl?'rtl':'ltr';document.body.classList.toggle('font-ar',rtl)},[lang,rtl]);
   const settings = store?.settings;
   const nav = [
-    ['/',c.home],['/products',c.products],['/about',c.about],['/baking',c.baking],['/wholesale',c.cafes],['/products',c.individuals],
+    ['/',c.home],['/products',c.products],['/about',c.about],['/baking',c.baking],['/flavor-rewards',c.flavorRewards],['/wholesale',c.cafes],['/products',c.individuals],
   ];
   useEffect(() => {
     const title = nav.find(([href]) => href === path)?.[1] ?? ({
-      '/cart': c.bag, '/checkout': c.checkout, '/tracking': c.tracking, '/admin': c.admin, '/policies': c.policies,
+      '/cart': c.bag, '/checkout': c.checkout, '/tracking': c.tracking, '/admin': c.admin, '/policies': c.policies, '/flavor-rewards': c.flavorRewards,
       '/user-portal':c.account,'/my-orders':c.myOrders,'/my-favorites':c.myFavorites,
     } as Record<string, string>)[path] ?? c.products;
     document.title = `${title} | Amore Cookies`;
@@ -185,6 +186,7 @@ function AppShell() {
         <Route path="/user-portal"><UserPortalPage lang={lang}/></Route>
         <Route path="/my-orders"><MyOrdersPage lang={lang}/></Route>
         <Route path="/my-favorites"><MyFavoritesPage lang={lang}/></Route>
+        <Route path="/flavor-rewards"><FlavorRewardsPage lang={lang}/></Route>
         <Route path="/policies"><PoliciesPage lang={lang} settings={settings}/></Route>
         <Route path="/admin"><AdminPage lang={lang}/></Route>
         <Route component={NotFound}/>
@@ -518,7 +520,7 @@ function TrackingPage({lang}:{lang:Lang}) {
 function PoliciesPage({lang,settings}:{lang:Lang;settings?:StoreSettings}) {const text=lang==='ar'?settings?.policiesAr:settings?.policiesEn;return <PageIntro eyebrow={copy[lang].policies} title={copy[lang].policies}><div className="prose prose-sm max-w-3xl whitespace-pre-wrap leading-8 text-[#795963]">{text?.trim()|| (lang==='ar'?'لا توجد سياسة معتمدة منشورة حالياً.':'No approved policy copy has been published yet.')}</div></PageIntro>}
 
 function AdminPage({lang}:{lang:Lang}) {
-  const c=copy[lang], {user,loading:authLoading,error:authError}=useAuth(),[section,setSection]=useState<'overview'|'products'|'orders'|'inquiries'|'settings'>('overview');
+  const c=copy[lang], {user,loading:authLoading,error:authError}=useAuth(),[section,setSection]=useState<'overview'|'products'|'orders'|'inquiries'|'settings'|'flavorRewards'>('overview');
   const session=useGetAdminSession({query:{queryKey:getGetAdminSessionQueryKey(),enabled:!authLoading&&!!user}});
   if(authLoading||user&&session.isLoading)return <LoadingBlock lang={lang}/>;
   if(!user)return <div className="container-wide py-24 text-center"><img src={images.logo} className="w-24 h-24 object-contain mx-auto rounded-full" alt="Amore Cookies"/><h1 className="serif text-4xl text-[#5B0D1E] mt-5">{c.access}</h1>{authError&&<p className="mt-4 text-sm text-red-700" role="alert">{authError}</p>}<Link href="/sign-in" className="btn-primary mt-6">{lang==='ar'?'تسجيل الدخول':'Sign in'}</Link><p className="text-xs text-[#896a71] mt-4">{lang==='ar'?'إنشاء حساب لا يمنح صلاحية الإدارة.':'Signing up does not grant management access.'}</p></div>;
@@ -526,10 +528,10 @@ function AdminPage({lang}:{lang:Lang}) {
   if(session.data?.setupRequired||!session.data?.isAdmin)return <div className="container-wide py-24 max-w-2xl text-center"><div className="w-16 h-16 bg-[#FFD6E5] rounded-full grid place-items-center mx-auto text-[#5B0D1E]"><CircleHelp/></div><h1 className="serif text-4xl text-[#5B0D1E] mt-5">{c.admin}</h1><p className="mt-4 text-sm leading-7 text-[#795963]">{session.data?.setupRequired?c.pending:(lang==='ar'?'هذا الحساب لا يملك صلاحية إدارة المتجر.':'This account does not have permission to manage the shop.')}</p><Link href="/" className="btn-outline mt-6">{c.home}</Link></div>;
   return <AdminConsole lang={lang} section={section} setSection={setSection}/>;
 }
-function AdminConsole({lang,section,setSection}:{lang:Lang;section:'overview'|'products'|'orders'|'inquiries'|'settings';setSection:(s:'overview'|'products'|'orders'|'inquiries'|'settings')=>void}) {
+function AdminConsole({lang,section,setSection}:{lang:Lang;section:'overview'|'products'|'orders'|'inquiries'|'settings'|'flavorRewards';setSection:(s:'overview'|'products'|'orders'|'inquiries'|'settings'|'flavorRewards')=>void}) {
   const c=copy[lang],summary=useGetAdminSummary({query:{queryKey:getGetAdminSummaryQueryKey(),refetchInterval:45000}}),adminProducts=useListAdminProducts({query:{queryKey:getListAdminProductsQueryKey(),refetchInterval:45000}}),inquiries=useListInquiries({query:{queryKey:getListInquiriesQueryKey(),refetchInterval:45000}});
   const {signOut}=useAuth();
-  const tabs:[typeof section,string][]=[['overview',c.overview],['products',c.inventory],['orders',c.ordersLink],['inquiries',c.inquiries],['settings',c.settings]];
+  const tabs:[typeof section,string][]=[['overview',c.overview],['products',c.inventory],['orders',c.ordersLink],['inquiries',c.inquiries],['flavorRewards',c.flavorRewards],['settings',c.settings]];
   return <div className="container-wide py-8 md:py-12"><div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8"><div><span className="eyebrow">{c.admin}</span><h1 className="serif text-4xl md:text-5xl text-[#5B0D1E] mt-2">{tabs.find(t=>t[0]===section)?.[1]}</h1></div><button className="btn-outline self-start" onClick={()=>void signOut()}>{lang==='ar'?'تسجيل الخروج':'Sign out'}</button></div>
     <div className="flex overflow-x-auto gap-2 border-b border-[#ead5da] mb-8 pb-2">{tabs.map(([key,label])=><button key={key} onClick={()=>setSection(key)} className={`whitespace-nowrap px-4 py-2 rounded-full text-[11px] font-semibold ${section===key?'bg-[#5B0D1E] text-white':'text-[#76525c] hover:bg-[#f8e8ec]'}`}>{label}</button>)}</div>
     {section==='overview'&&<AdminOverview lang={lang} data={summary.data} loading={summary.isLoading} error={summary.isError} retry={()=>summary.refetch()} onNavigate={setSection}/>}
@@ -537,9 +539,10 @@ function AdminConsole({lang,section,setSection}:{lang:Lang;section:'overview'|'p
     {section==='inquiries'&&<AdminInquiries lang={lang} items={inquiries.data||[]} loading={inquiries.isLoading} error={inquiries.isError} retry={()=>inquiries.refetch()}/>}
     {section==='settings'&&<AdminSettings lang={lang}/>}
     {section==='orders'&&<LocalOrdersAdmin lang={lang}/>}
+    {section==='flavorRewards'&&<AdminFlavorRewardsPanel lang={lang}/>}
   </div>;
 }
-function AdminOverview({lang,data,loading,error,retry,onNavigate}:{lang:Lang;data?:{inquiryCount:number;newInquiryCount:number;lowStock:Product[];shopCurrency:string;checkoutEnabled:boolean;notices:string[]};loading:boolean;error:boolean;retry:()=>void;onNavigate:(s:'overview'|'products'|'orders'|'inquiries'|'settings')=>void}) {
+function AdminOverview({lang,data,loading,error,retry,onNavigate}:{lang:Lang;data?:{inquiryCount:number;newInquiryCount:number;lowStock:Product[];shopCurrency:string;checkoutEnabled:boolean;notices:string[]};loading:boolean;error:boolean;retry:()=>void;onNavigate:(s:'overview'|'products'|'orders'|'inquiries'|'settings'|'flavorRewards')=>void}) {
   const c=copy[lang];if(loading)return <LoadingBlock lang={lang}/>;if(error)return <ErrorNotice lang={lang} onRetry={retry}/>;
   return <div className="grid lg:grid-cols-[1fr_.85fr] gap-6"><div className="grid sm:grid-cols-2 gap-4"><div className="card-surface p-6"><span className="eyebrow">{c.inquiries}</span><strong className="block font-display text-5xl text-[#5B0D1E] mt-4">{data?.inquiryCount??'—'}</strong><p className="text-xs text-[#896a71] mt-2">{c.new}: {data?.newInquiryCount??'—'}</p></div><div className="card-surface p-6"><span className="eyebrow">{lang==='ar'?'العملة':'Catalog currency'}</span><strong className="block font-display text-4xl text-[#5B0D1E] mt-4">{data?.shopCurrency||'KWD'}</strong><p className="text-xs text-[#896a71] mt-2">{c.noSales}</p></div><div className="sm:col-span-2 card-surface p-6"><div className="flex justify-between items-center"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.inventory}</h2><button onClick={()=>onNavigate('products')} className="text-xs underline text-[#8b5363]">{c.edit}</button></div>{data?.lowStock?.length?data.lowStock.map(p=><div key={p.id} className="flex justify-between py-3 border-b border-[#f0e1e4] text-xs"><span>{p.title}</span><span>{p.stock} · {c.stock}</span></div>):<p className="text-xs text-[#896a71] mt-4">{lang==='ar'?'لا توجد تنبيهات مخزون مقدمة.':'No low-stock alerts are currently reported.'}</p>}</div></div><div className="grid gap-4 content-start"><div className="card-surface p-6"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.ordersLink}</h2><p className="text-xs text-[#896a71] mt-2">{data?.checkoutEnabled? (lang==='ar'?'الدفع التجريبي متاح فقط؛ لن تُحصّل أموال حقيقية.':'Stripe Test Mode is available; no real payments are processed.') : (lang==='ar'?'الدفع التجريبي غير جاهز حالياً.':'Stripe Test Mode is not ready yet.')}</p><button onClick={()=>onNavigate('orders')} className="btn-outline mt-5">{c.ordersLink}<ArrowUpRight size={14}/></button></div><div className="card-surface p-6"><h2 className="font-display text-2xl text-[#5B0D1E]">{c.inquiries}</h2><p className="text-xs text-[#896a71] mt-2">{data?.newInquiryCount??0} {c.new}</p><button onClick={()=>onNavigate('inquiries')} className="btn-primary mt-5">{c.inquiries}<ArrowRight size={14}/></button></div>{Boolean(data?.notices?.length)&&<div className="rounded-2xl bg-[#fff1f3] p-5 text-xs leading-6 text-[#763246]">{data?.notices?.map((n,i)=><p key={i}>{n}</p>)}</div>}</div></div>;
 }
