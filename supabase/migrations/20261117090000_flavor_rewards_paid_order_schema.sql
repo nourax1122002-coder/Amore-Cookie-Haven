@@ -69,6 +69,8 @@ create table public.flavor_reward_products (
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+comment on table public.flavor_creation_claims is
+  'Permanent one-creation claim. The auth.users RESTRICT reference intentionally blocks hard account deletion until an approved privacy/anonymization workflow preserves this anti-recreation tombstone.';
 
 comment on table public.flavor_reward_products is
   'Admin-reviewed mapping from an approved published flavor to one existing catalog product; catalog price and inventory remain authoritative.';
@@ -157,6 +159,66 @@ create table public.flavor_reward_order_disputes (
 );
 create index flavor_reward_disputes_order_status_idx
   on public.flavor_reward_order_disputes (customer_order_id, status);
+
+-- Signed Stripe events whose product allocation cannot be verified are kept
+-- for review instead of being discarded or prorated into commission changes.
+create table public.flavor_reward_event_reviews (
+  stripe_event_id text primary key
+    check (stripe_event_id ~ '^evt_[A-Za-z0-9]+$'),
+  event_type text not null check (event_type in (
+    'charge.refunded',
+    'charge.dispute.created',
+    'charge.dispute.updated',
+    'charge.dispute.closed'
+  )),
+  stripe_object_type text not null check (stripe_object_type in ('charge', 'dispute')),
+  stripe_object_id text not null check (
+    (stripe_object_type = 'charge' and stripe_object_id ~ '^ch_[A-Za-z0-9]+$')
+    or (stripe_object_type = 'dispute' and stripe_object_id ~ '^dp_[A-Za-z0-9]+$')
+  ),
+  customer_order_id text not null
+    references public.flavor_reward_order_snapshots(customer_order_id) on delete restrict,
+  stripe_payment_intent_id text not null
+    check (stripe_payment_intent_id ~ '^pi_[A-Za-z0-9]+$'),
+  amount_minor bigint not null check (amount_minor > 0),
+  currency text not null check (currency = 'usd'),
+  reason_code text not null check (reason_code in (
+    'missing_allocation_metadata',
+    'invalid_allocation_metadata',
+    'allocation_order_mismatch',
+    'allocation_amount_mismatch',
+    'unsupported_dispute_status',
+    'refund_list_incomplete',
+    'refund_amount_mismatch',
+    'invalid_refund',
+    'duplicate_refund',
+    'invalid_product_refund',
+    'product_refund_exceeds_order',
+    'invalid_dispute',
+    'missing_dispute_metadata'
+  )),
+  allocation_metadata jsonb not null default '{}'::jsonb
+    check (
+      jsonb_typeof(allocation_metadata) = 'object'
+      and octet_length(allocation_metadata::text) <= 4096
+    ),
+  event_created_at timestamptz not null,
+  review_status text not null default 'pending'
+    check (review_status in ('pending', 'reviewed', 'dismissed')),
+  reviewed_by uuid references auth.users(id) on delete set null,
+  reviewed_at timestamptz,
+  review_note text not null default '' check (char_length(review_note) <= 2000),
+  created_at timestamptz not null default now(),
+  check (
+    (review_status = 'pending' and reviewed_at is null)
+    or (review_status <> 'pending' and reviewed_at is not null)
+  )
+);
+create index flavor_reward_event_reviews_pending_idx
+  on public.flavor_reward_event_reviews (created_at)
+  where review_status = 'pending';
+create index flavor_reward_event_reviews_order_idx
+  on public.flavor_reward_event_reviews (customer_order_id, created_at desc);
 
 create table public.flavor_reward_paid_order_ledger (
   id uuid primary key default gen_random_uuid(),
@@ -292,6 +354,7 @@ declare
   v_eligible_sales_fils bigint;
   v_creator_user_id uuid;
   v_product_price numeric;
+  v_existing_snapshot public.flavor_reward_order_snapshots%rowtype;
 begin
   select *
   into v_order
@@ -346,6 +409,26 @@ begin
     raise exception using errcode = '22023', message = 'Flavor order price does not match the catalog';
   end if;
 
+  select *
+  into v_existing_snapshot
+  from public.flavor_reward_order_snapshots
+  where customer_order_id = p_customer_order_id
+  for update;
+  if found then
+    if v_existing_snapshot.flavor_id <> p_flavor_id
+       or v_existing_snapshot.product_id <> v_product_id
+       or v_existing_snapshot.creator_user_id <> v_creator_user_id
+       or v_existing_snapshot.eligible_sales_fils <> v_eligible_sales_fils then
+      raise exception using errcode = '23505', message = 'Order is already claimed for a different flavor';
+    end if;
+    return jsonb_build_object(
+      'duplicate', true,
+      'customerOrderId', p_customer_order_id,
+      'flavorId', p_flavor_id,
+      'eligibleSalesFils', v_eligible_sales_fils
+    );
+  end if;
+
   insert into public.flavor_reward_order_snapshots (
     customer_order_id, flavor_id, creator_user_id, buyer_user_id,
     product_id, eligible_sales_fils
@@ -355,10 +438,136 @@ begin
   );
 
   return jsonb_build_object(
+    'duplicate', false,
     'customerOrderId', p_customer_order_id,
     'flavorId', p_flavor_id,
     'eligibleSalesFils', v_eligible_sales_fils
   );
+end;
+$function$;
+
+create or replace function public.record_flavor_reward_review_event(
+  p_stripe_event_id text,
+  p_event_type text,
+  p_stripe_object_type text,
+  p_stripe_object_id text,
+  p_customer_order_id text,
+  p_payment_intent_id text,
+  p_amount_minor bigint,
+  p_currency text,
+  p_reason_code text,
+  p_allocation_metadata jsonb,
+  p_event_created_at timestamptz
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_order public.customer_orders%rowtype;
+  v_snapshot public.flavor_reward_order_snapshots%rowtype;
+  v_existing public.flavor_reward_event_reviews%rowtype;
+begin
+  if p_stripe_event_id is null
+     or p_stripe_event_id !~ '^evt_[A-Za-z0-9]+$'
+     or p_event_type not in (
+       'charge.refunded',
+       'charge.dispute.created',
+       'charge.dispute.updated',
+       'charge.dispute.closed'
+     )
+     or p_stripe_object_type not in ('charge', 'dispute')
+     or (p_event_type = 'charge.refunded' and p_stripe_object_type <> 'charge')
+     or (p_event_type like 'charge.dispute.%' and p_stripe_object_type <> 'dispute')
+     or p_stripe_object_id is null
+     or (p_stripe_object_type = 'charge' and p_stripe_object_id !~ '^ch_[A-Za-z0-9]+$')
+     or (p_stripe_object_type = 'dispute' and p_stripe_object_id !~ '^dp_[A-Za-z0-9]+$')
+     or p_payment_intent_id is null
+     or p_payment_intent_id !~ '^pi_[A-Za-z0-9]+$'
+     or p_amount_minor is null
+     or p_amount_minor < 1
+     or p_currency is distinct from 'usd'
+     or p_reason_code not in (
+       'missing_allocation_metadata',
+       'invalid_allocation_metadata',
+       'allocation_order_mismatch',
+       'allocation_amount_mismatch',
+       'unsupported_dispute_status',
+       'refund_list_incomplete',
+       'refund_amount_mismatch',
+       'invalid_refund',
+       'duplicate_refund',
+       'invalid_product_refund',
+       'product_refund_exceeds_order',
+       'invalid_dispute',
+       'missing_dispute_metadata'
+     )
+     or p_allocation_metadata is null
+     or jsonb_typeof(p_allocation_metadata) <> 'object'
+     or octet_length(p_allocation_metadata::text) > 4096
+     or p_event_created_at is null then
+    raise exception using errcode = '22023', message = 'Invalid Flavor Rewards review event';
+  end if;
+
+  select *
+  into v_order
+  from public.customer_orders
+  where id = p_customer_order_id
+  for update;
+  if not found then
+    raise exception using errcode = 'P0002', message = 'Customer order not found';
+  end if;
+  select *
+  into v_snapshot
+  from public.flavor_reward_order_snapshots
+  where customer_order_id = p_customer_order_id
+  for update;
+  if not found then
+    raise exception using errcode = 'P0002', message = 'Flavor Rewards order snapshot not found';
+  end if;
+  if v_order.payment_provider <> 'stripe'
+     or v_order.currency <> 'KWD'
+     or v_order.stripe_payment_currency <> 'USD'
+     or v_order.stripe_payment_intent_id <> p_payment_intent_id
+     or v_order.stripe_payment_amount_minor is null
+     or v_order.payment_status not in ('paid', 'partially_refunded', 'refunded')
+     or p_amount_minor > v_order.stripe_payment_amount_minor then
+    raise exception using errcode = '23514', message = 'Review event does not match the saved test order';
+  end if;
+
+  if exists (
+    select 1
+    from public.flavor_reward_stripe_events
+    where stripe_event_id = p_stripe_event_id
+  ) then
+    return jsonb_build_object('duplicate', true, 'alreadyProcessed', true);
+  end if;
+
+  select *
+  into v_existing
+  from public.flavor_reward_event_reviews
+  where stripe_event_id = p_stripe_event_id;
+  if found then
+    if v_existing.event_type <> p_event_type
+       or v_existing.customer_order_id <> p_customer_order_id
+       or v_existing.stripe_object_id <> p_stripe_object_id
+       or v_existing.stripe_payment_intent_id <> p_payment_intent_id then
+      raise exception using errcode = '23505', message = 'Stripe review event ID was reused for another object';
+    end if;
+    return jsonb_build_object('duplicate', true, 'reviewId', v_existing.stripe_event_id);
+  end if;
+
+  insert into public.flavor_reward_event_reviews (
+    stripe_event_id, event_type, stripe_object_type, stripe_object_id,
+    customer_order_id, stripe_payment_intent_id, amount_minor, currency,
+    reason_code, allocation_metadata, event_created_at
+  ) values (
+    p_stripe_event_id, p_event_type, p_stripe_object_type, p_stripe_object_id,
+    p_customer_order_id, p_payment_intent_id, p_amount_minor, p_currency,
+    p_reason_code, p_allocation_metadata, p_event_created_at
+  );
+  return jsonb_build_object('duplicate', false, 'reviewId', p_stripe_event_id);
 end;
 $function$;
 

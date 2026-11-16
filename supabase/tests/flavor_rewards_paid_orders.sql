@@ -77,6 +77,25 @@ select public.test_assert(
    where creator_user_id = '10000000-0000-4000-8000-000000000003'),
   'deleting a draft keeps its lifetime claim as a tombstone'
 );
+do $$
+begin
+  begin
+    delete from auth.users
+    where id = '10000000-0000-4000-8000-000000000003';
+    raise exception 'Expected the retained creation claim to block hard account deletion';
+  exception
+    when foreign_key_violation then
+      null;
+  end;
+end;
+$$;
+select public.test_assert(
+  exists (
+    select 1 from auth.users
+    where id = '10000000-0000-4000-8000-000000000003'
+  ),
+  'hard deletion is blocked while the lifetime creation tombstone exists'
+);
 
 do $$
 begin
@@ -153,6 +172,41 @@ select public.test_assert(
     'EXECUTE'
   ),
   'only the server role can invoke payment reward processing'
+);
+select public.test_assert(
+  has_function_privilege(
+    'service_role',
+    'public.record_flavor_reward_review_event(text, text, text, text, text, text, bigint, text, text, jsonb, timestamp with time zone)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'public.record_flavor_reward_review_event(text, text, text, text, text, text, bigint, text, text, jsonb, timestamp with time zone)',
+    'EXECUTE'
+  ),
+  'only the server can enqueue payment allocation review events'
+);
+select public.test_assert(
+  not has_function_privilege(
+    'service_role',
+    'public.request_flavor_payout(uuid, bigint, uuid)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'service_role',
+    'public.review_flavor_payout_request(uuid, uuid, text, text, text)',
+    'EXECUTE'
+  ),
+  'legacy payout submission and approval remain disabled'
+);
+select public.test_assert(
+  position('flavor_reward_paid_order_ledger' in pg_get_functiondef(
+    'public.request_flavor_payout(uuid, bigint, uuid)'::regprocedure
+  )) > 0
+  and position('flavor_reward_ledger' in pg_get_functiondef(
+    'public.request_flavor_payout(uuid, bigint, uuid)'::regprocedure
+  )) = 0,
+  'legacy payout balance logic reads only verified paid-order ledger rows'
 );
 select public.test_assert(
   has_function_privilege(
@@ -245,6 +299,57 @@ begin
       now() + v_index * interval '1 second'
     );
   end loop;
+
+  v_result := public.record_flavor_reward_review_event(
+    'evt_testrefundreview101',
+    'charge.refunded',
+    'charge',
+    'ch_testcharge101',
+    'fr-order-101',
+    'pi_testintent101',
+    500,
+    'usd',
+    'missing_allocation_metadata',
+    jsonb_build_object('refunds', jsonb_build_array(
+      jsonb_build_object('id', 're_missing', 'amount', 500, 'currency', 'usd')
+    )),
+    now()
+  );
+  perform public.test_assert(
+    not (v_result->>'duplicate')::boolean,
+    'a refund without verified allocation is durably queued for review'
+  );
+  v_result := public.record_flavor_reward_review_event(
+    'evt_testrefundreview101',
+    'charge.refunded',
+    'charge',
+    'ch_testcharge101',
+    'fr-order-101',
+    'pi_testintent101',
+    500,
+    'usd',
+    'missing_allocation_metadata',
+    jsonb_build_object('refunds', jsonb_build_array(
+      jsonb_build_object('id', 're_missing', 'amount', 500, 'currency', 'usd')
+    )),
+    now()
+  );
+  perform public.test_assert(
+    (v_result->>'duplicate')::boolean
+      and (select count(*) = 1 from public.flavor_reward_event_reviews
+        where stripe_event_id = 'evt_testrefundreview101'),
+    'Stripe webhook retry does not duplicate the review record'
+  );
+  perform public.test_assert(
+    (select commission_due_fils = 1500
+      from public.flavor_reward_order_snapshots
+      where customer_order_id = 'fr-order-101')
+    and (select sum(amount_fils) = 200000
+      from public.flavor_reward_paid_order_ledger
+      where flavor_id = '60000000-0000-4000-8000-000000000001'
+        and entry_type = 'milestone_bonus'),
+    'queued ambiguous refunds do not alter commission or milestone bonuses'
+  );
 
   -- Unpaid, failed, and cancelled attempts have no verified paid order number.
   insert into public.customer_orders (
@@ -527,6 +632,22 @@ select public.test_assert(
 select public.test_assert(
   (select count(*) = 1 from public.flavor_creation_claims),
   'a creator can read only their own lifetime claim'
+);
+select public.test_assert(
+  (select count(*) = 0 from public.flavor_reward_event_reviews),
+  'non-admin creators cannot read payment review data'
+);
+select set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000001', true);
+select public.test_assert(
+  (select count(*) = 1
+   from public.flavor_reward_event_reviews
+   where stripe_event_id = 'evt_testrefundreview101'),
+  'admins can inspect pending payment review events'
+);
+select public.test_assert(
+  not has_table_privilege('authenticated', 'public.flavor_reward_event_reviews', 'INSERT')
+    and not has_table_privilege('authenticated', 'public.flavor_reward_event_reviews', 'UPDATE'),
+  'authenticated clients cannot create or resolve payment review events directly'
 );
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
 select public.test_assert(

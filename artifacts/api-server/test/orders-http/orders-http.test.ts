@@ -136,12 +136,23 @@ test("Flavor Rewards lists public ideas but protects creator, account, AI, and a
     ["/api/flavor-rewards/assistant", { language: "en", messages: [{ role: "user", content: "Suggest a cookie flavor." }] }, "POST"],
     ["/api/account/flavor-rewards/payout-requests", { amountFils: 1000, requestKey: key }, "POST"],
     ["/api/admin/flavor-rewards", undefined, "GET"],
+    ["/api/admin/flavor-rewards/payment-reviews", undefined, "GET"],
   ] as const;
   for (const [path, body, method] of requests) {
     const response = await request(path, body, undefined, freshIp(), method);
     assert.equal(response.status, 401, `${method} ${path}: ${JSON.stringify(response.body)}`);
   }
   assert.equal((await request("/api/admin/flavor-rewards", undefined, "visitor", freshIp(), "GET")).status, 403);
+  assert.equal(
+    (await request(
+      "/api/admin/flavor-rewards/payment-reviews",
+      undefined,
+      "visitor",
+      freshIp(),
+      "GET",
+    )).status,
+    403,
+  );
 });
 
 test("Flavor Rewards allows one draft per account and keeps drafts private", async () => {

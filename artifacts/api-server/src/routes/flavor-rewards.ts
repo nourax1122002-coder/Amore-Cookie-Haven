@@ -281,8 +281,8 @@ router.post("/flavor-rewards/drafts/:id/publish", async (req, res): Promise<void
 
 router.post("/flavor-rewards/:id/interest", async (_req, res): Promise<void> => {
   await signedIn(_req, res);
-  // The existing database trigger still awards an interest-count milestone.
-  // Do not call it until the owner approves a migration to remove that trigger.
+  // The local SQL draft removes monetary awards but must be approved and
+  // applied before interest registration is re-enabled.
   throw new HttpError(409, "Interest registration is paused until reward rules are safely updated.");
 });
 
@@ -433,6 +433,19 @@ router.get("/admin/flavor-rewards", async (req, res): Promise<void> => {
     payoutRequests: rowsOrFail(req, "admin_payouts", payoutRequests).map(payout),
     payoutEvents: rowsOrFail(req, "admin_payout_events", payoutEvents).map(payoutEvent),
   }));
+});
+
+router.get("/admin/flavor-rewards/payment-reviews", async (req, res): Promise<void> => {
+  await adminUser(req, res);
+  const result = await supabase.from("flavor_reward_event_reviews")
+    .select(
+      "stripe_event_id,event_type,stripe_object_type,stripe_object_id,customer_order_id,stripe_payment_intent_id,amount_minor,currency,reason_code,allocation_metadata,review_status,event_created_at,created_at",
+    )
+    .eq("review_status", "pending")
+    .order("event_created_at", { ascending: false })
+    .limit(100);
+  const reviews = rowsOrFail(req, "payment_review_events", result);
+  res.json({ reviews });
 });
 
 router.patch("/admin/flavor-rewards/:id/review", async (req, res): Promise<void> => {
