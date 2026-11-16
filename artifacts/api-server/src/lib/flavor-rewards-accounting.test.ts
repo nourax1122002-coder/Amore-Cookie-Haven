@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  assertFlavorOrderAllowed,
   reconcileFlavorRewards,
   type FlavorPaymentEvent,
   type FlavorRewardLedgerEntry,
@@ -28,12 +27,12 @@ function paidOrder(index: number, overrides: Partial<Extract<FlavorPaymentEvent,
     currency: "usd" as const,
     expectedAmountMinor: 1000,
     actualAmountMinor: 1000,
-    eligibleNetSalesFils: 10_000,
+    eligibleProductNetSalesFils: 10_000,
     ...overrides,
   };
 }
 
-function refundOrder(index: number, cumulativeEligibleRefundFils: number, eventId = `evt-refund-${index}`) {
+function refundOrder(index: number, cumulativeProductRefundFils: number, eventId = `evt-refund-${index}`) {
   const id = String(index).padStart(3, "0");
   return {
     eventId,
@@ -43,7 +42,7 @@ function refundOrder(index: number, cumulativeEligibleRefundFils: number, eventI
     type: "refund_updated" as const,
     orderId: `order-${id}`,
     paymentIntentId: `pi-test-${id}`,
-    cumulativeEligibleRefundFils,
+    cumulativeProductRefundFils,
   };
 }
 
@@ -51,7 +50,7 @@ function chargebackOrder(
   index: number,
   status: "open" | "won" | "lost",
   eventId: string,
-  eligibleDisputedFils = 10_000,
+  eligibleProductDisputedFils = 10_000,
 ) {
   const id = String(index).padStart(3, "0");
   return {
@@ -64,7 +63,7 @@ function chargebackOrder(
     paymentIntentId: `pi-test-${id}`,
     disputeId: `dp-test-${id}`,
     status,
-    eligibleDisputedFils,
+    eligibleProductDisputedFils,
   };
 }
 
@@ -143,13 +142,15 @@ test("failed and cancelled attempts do not create eligible orders or rewards", (
     paymentIntentId: "pi-cancelled",
   };
   assert.deepEqual(reconcileFlavorRewards([failed, cancelled]), { summaries: [], ledgerEntries: [] });
-  assert.doesNotThrow(() => assertFlavorOrderAllowed([failed, cancelled], "customer-1", flavorId));
 });
 
-test("one customer cannot use a second flavor order; regular store orders remain unrestricted", () => {
-  const first = paidOrder(1, { customerUserId: "same-customer" });
-  assert.throws(() => assertFlavorOrderAllowed([first], "same-customer", flavorId), /already used/i);
-  assert.doesNotThrow(() => assertFlavorOrderAllowed([first], "same-customer", null));
+test("repeat purchases by the same customer each count as eligible paid orders", () => {
+  const payments = Array.from({ length: 100 }, (_, index) =>
+    paidOrder(index + 1, { customerUserId: "repeat-customer" }));
+  const result = reconcileFlavorRewards(payments);
+  assert.equal(result.summaries[0]?.verifiedEligibleOrderCount, 100);
+  assert.equal(result.summaries[0]?.milestoneEarned, true);
+  assert.deepEqual(result.ledgerEntries.map(entry => entry.type), ["milestone_bonus"]);
 });
 
 test("the milestone remains earned after refunds reduce the eligible count below 100", () => {
@@ -228,7 +229,7 @@ test("a refund on an earlier order does not renumber later commissions", () => {
   assert.equal(sumForTarget(earned.ledgerEntries, "commission:order-101"), 1_500);
 });
 
-test("a partial refund appends only the commission reduction", () => {
+test("a product refund appends only the commission reduction", () => {
   const payments = Array.from({ length: 101 }, (_, index) => paidOrder(index + 1));
   const earned = reconcileFlavorRewards(payments);
   const corrected = reconcileFlavorRewards(
@@ -240,6 +241,17 @@ test("a partial refund appends only the commission reduction", () => {
   assert.ok(corrected.ledgerEntries.every(entry =>
     entry.targetKey !== `milestone:${flavorId}`));
   assert.ok(corrected.ledgerEntries.every(entry => entry.type === "correction"));
+});
+
+test("a shipping-only refund leaves product sales and commission unchanged", () => {
+  const payments = Array.from({ length: 101 }, (_, index) => paidOrder(index + 1));
+  const earned = reconcileFlavorRewards(payments);
+  const corrected = reconcileFlavorRewards(
+    [...payments, refundOrder(101, 0, "evt-shipping-only-refund")],
+    earned.ledgerEntries,
+  );
+  assert.equal(corrected.summaries[0]?.effectiveProductNetSalesFils, 1_010_000);
+  assert.deepEqual(corrected.ledgerEntries, []);
 });
 
 test("duplicate cumulative refund events do not create duplicate corrections", () => {
@@ -285,13 +297,4 @@ test("live mode, unpaid sessions, and amount mismatches fail closed", () => {
     ...paidOrder(1),
     actualAmountMinor: 999,
   }]), /does not match/i);
-});
-
-test("a refunded payment still consumes that customer's one-order opportunity", () => {
-  const first = paidOrder(1, { customerUserId: "same-customer" });
-  assert.throws(() => assertFlavorOrderAllowed(
-    [first, refundOrder(1, 10_000)],
-    "same-customer",
-    flavorId,
-  ), /already used/i);
 });

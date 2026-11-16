@@ -20,3 +20,9 @@ Approved Flavor Rewards creations reuse existing catalog products and inventory,
 **Why:** The user selected the existing-products/separate-orders model to preserve catalog and stock data while making refunds attributable.
 
 **How to apply:** Link each approved published flavor to one existing KWD catalog product. Keep ordinary carts unchanged and ensure a mapped flavor is purchased through a dedicated order; count each distinct verified paid order, including repeat purchases by the same buyer.
+
+Commission is calculated only on net KWD cookie-product sales; delivery is excluded. Never infer product refunds from Stripe's charge-level USD refund total. Each refund needs an exact product allocation recorded by a trusted server flow; shipping-only refunds allocate zero, and refunds without verified allocation require review before commission changes.
+
+**Why:** The user explicitly ruled out commission on shipping and automatic proportional allocation when Stripe does not identify the refunded line item.
+
+**How to apply:** Store explicit KWD-fils product refund/dispute allocations alongside Stripe's raw USD amounts. Apply only the product allocation to commission; leave ambiguous Dashboard/manual events unchanged until reviewed. Keep the 200 KWD milestone permanent.

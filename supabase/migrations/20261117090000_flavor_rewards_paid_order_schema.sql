@@ -89,6 +89,10 @@ create table public.flavor_reward_order_snapshots (
   ),
   stripe_refunded_amount_minor bigint not null default 0 check (stripe_refunded_amount_minor >= 0),
   disputed_amount_minor bigint not null default 0 check (disputed_amount_minor >= 0),
+  product_refunded_fils bigint not null default 0
+    check (product_refunded_fils between 0 and eligible_sales_fils),
+  product_disputed_fils bigint not null default 0
+    check (product_disputed_fils between 0 and eligible_sales_fils),
   net_commissionable_sales_fils bigint not null default 0
     check (net_commissionable_sales_fils >= 0),
   commission_due_fils bigint not null default 0 check (commission_due_fils >= 0),
@@ -99,6 +103,13 @@ create table public.flavor_reward_order_snapshots (
     or (verified_paid_at is not null and eligible_order_number is not null)
   )
 );
+
+comment on column public.flavor_reward_order_snapshots.eligible_sales_fils is
+  'KWD fils for eligible cookie product sales only; shipping and delivery are excluded.';
+comment on column public.flavor_reward_order_snapshots.product_refunded_fils is
+  'Cumulative KWD fils explicitly attributed to product refunds; never inferred from Stripe charge-level USD refunds.';
+comment on column public.flavor_reward_order_snapshots.product_disputed_fils is
+  'KWD fils explicitly attributed to disputed product sales; shipping-only disputes contribute zero.';
 
 create unique index flavor_reward_order_number_once
   on public.flavor_reward_order_snapshots (flavor_id, eligible_order_number)
@@ -137,6 +148,7 @@ create table public.flavor_reward_order_disputes (
   customer_order_id text not null
     references public.flavor_reward_order_snapshots(customer_order_id) on delete restrict,
   amount_minor bigint not null check (amount_minor > 0),
+  product_disputed_fils bigint not null check (product_disputed_fils >= 0),
   status text not null check (status in ('open', 'won', 'lost')),
   last_event_id text not null
     references public.flavor_reward_stripe_events(stripe_event_id) on delete restrict,
@@ -363,7 +375,9 @@ create or replace function public.process_flavor_reward_stripe_event(
   p_dispute_id text default null,
   p_dispute_amount_minor bigint default null,
   p_dispute_status text default null,
-  p_event_created_at timestamptz default now()
+  p_event_created_at timestamptz default now(),
+  p_product_refunded_fils bigint default null,
+  p_dispute_product_amount_fils bigint default null
 )
 returns jsonb
 language plpgsql
@@ -375,8 +389,7 @@ declare
   v_snapshot public.flavor_reward_order_snapshots%rowtype;
   v_existing_event public.flavor_reward_stripe_events%rowtype;
   v_event_inserted integer;
-  v_disputed_minor bigint;
-  v_reduction_minor bigint;
+  v_product_disputed_fils bigint;
   v_net_sales_fils bigint;
   v_new_commission_fils bigint;
   v_commission_delta bigint;
@@ -461,7 +474,10 @@ begin
     if p_refunded_amount_minor is null
        or p_refunded_amount_minor < v_snapshot.stripe_refunded_amount_minor
        or p_refunded_amount_minor < v_order.stripe_refunded_amount_minor
-       or p_refunded_amount_minor > v_order.stripe_payment_amount_minor then
+       or p_refunded_amount_minor > v_order.stripe_payment_amount_minor
+       or p_product_refunded_fils is null
+       or p_product_refunded_fils < v_snapshot.product_refunded_fils
+       or p_product_refunded_fils > v_snapshot.eligible_sales_fils then
       raise exception using errcode = '22023', message = 'Invalid cumulative Stripe refund amount';
     end if;
   else
@@ -470,6 +486,9 @@ begin
        or p_dispute_amount_minor is null
        or p_dispute_amount_minor < 1
        or p_dispute_amount_minor > v_order.stripe_payment_amount_minor
+        or p_dispute_product_amount_fils is null
+        or p_dispute_product_amount_fils < 0
+        or p_dispute_product_amount_fils > v_snapshot.eligible_sales_fils
        or p_dispute_status is null
        or p_dispute_status not in ('open', 'won', 'lost') then
       raise exception using errcode = '22023', message = 'Invalid Stripe dispute details';
@@ -513,6 +532,7 @@ begin
   elsif p_event_type = 'charge.refunded' then
     update public.flavor_reward_order_snapshots
     set stripe_refunded_amount_minor = p_refunded_amount_minor,
+        product_refunded_fils = p_product_refunded_fils,
         stripe_checkout_session_id = p_checkout_session_id,
         stripe_payment_intent_id = p_payment_intent_id,
         stripe_payment_amount_minor = v_order.stripe_payment_amount_minor,
@@ -520,14 +540,16 @@ begin
     where customer_order_id = p_customer_order_id;
   else
     insert into public.flavor_reward_order_disputes (
-      stripe_dispute_id, customer_order_id, amount_minor, status,
+      stripe_dispute_id, customer_order_id, amount_minor, product_disputed_fils, status,
       last_event_id, last_event_created_at
     ) values (
       p_dispute_id, p_customer_order_id, p_dispute_amount_minor,
+      p_dispute_product_amount_fils,
       p_dispute_status, p_stripe_event_id, p_event_created_at
     )
     on conflict (stripe_dispute_id) do update
       set amount_minor = excluded.amount_minor,
+          product_disputed_fils = excluded.product_disputed_fils,
           status = excluded.status,
           last_event_id = excluded.last_event_id,
           last_event_created_at = excluded.last_event_created_at,
@@ -559,31 +581,30 @@ begin
   where customer_order_id = p_customer_order_id
   for update;
 
-  select coalesce(sum(amount_minor), 0)
-  into v_disputed_minor
+  select coalesce(sum(product_disputed_fils), 0)
+  into v_product_disputed_fils
   from public.flavor_reward_order_disputes
   where customer_order_id = p_customer_order_id
     and status in ('open', 'lost');
 
   update public.flavor_reward_order_snapshots
-  set disputed_amount_minor = v_disputed_minor,
+  set disputed_amount_minor = coalesce((
+        select sum(dispute.amount_minor)
+        from public.flavor_reward_order_disputes as dispute
+        where dispute.customer_order_id = p_customer_order_id
+          and dispute.status in ('open', 'lost')
+      ), 0),
+      product_disputed_fils = v_product_disputed_fils,
       updated_at = now()
   where customer_order_id = p_customer_order_id
   returning * into v_snapshot;
 
   if v_snapshot.verified_paid_at is not null then
-    v_reduction_minor := least(
-      v_snapshot.stripe_payment_amount_minor,
-      v_snapshot.stripe_refunded_amount_minor + v_snapshot.disputed_amount_minor
-    );
     v_net_sales_fils := greatest(
       0,
       v_snapshot.eligible_sales_fils
-        - round(
-          v_snapshot.eligible_sales_fils::numeric
-          * v_reduction_minor::numeric
-          / v_snapshot.stripe_payment_amount_minor::numeric
-        )::bigint
+        - v_snapshot.product_refunded_fils
+        - v_snapshot.product_disputed_fils
     );
     v_new_commission_fils := case
       when v_snapshot.eligible_order_number >= 101
@@ -639,7 +660,6 @@ begin
     update public.flavor_reward_order_snapshots
     set net_commissionable_sales_fils = v_net_sales_fils,
         commission_due_fils = v_new_commission_fils,
-        disputed_amount_minor = v_disputed_minor,
         updated_at = now()
     where customer_order_id = p_customer_order_id;
   end if;

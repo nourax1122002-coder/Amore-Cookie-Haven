@@ -52,7 +52,8 @@ revoke all on function public.link_flavor_reward_product(uuid, uuid, uuid)
 revoke all on function public.claim_flavor_reward_order(text, uuid)
   from public, anon, authenticated, service_role;
 revoke all on function public.process_flavor_reward_stripe_event(
-  text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text, timestamptz
+  text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text,
+  timestamptz, bigint, bigint
 ) from public, anon, authenticated, service_role;
 
 grant execute on function public.link_flavor_reward_product(uuid, uuid, uuid)
@@ -60,10 +61,12 @@ grant execute on function public.link_flavor_reward_product(uuid, uuid, uuid)
 grant execute on function public.claim_flavor_reward_order(text, uuid)
   to service_role;
 grant execute on function public.process_flavor_reward_stripe_event(
-  text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text, timestamptz
+  text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text,
+  timestamptz, bigint, bigint
 ) to service_role;
 
 comment on function public.process_flavor_reward_stripe_event(
-  text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text, timestamptz
+  text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text,
+  timestamptz, bigint, bigint
 ) is
   'Must only be called by the existing Stripe Edge Function after raw-body signature verification, Test Mode validation, and order/session/amount matching.';

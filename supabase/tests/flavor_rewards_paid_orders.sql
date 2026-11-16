@@ -144,12 +144,12 @@ select public.test_assert(
 select public.test_assert(
   has_function_privilege(
     'service_role',
-    'public.process_flavor_reward_stripe_event(text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text, timestamp with time zone)',
+    'public.process_flavor_reward_stripe_event(text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text, timestamp with time zone, bigint, bigint)',
     'EXECUTE'
   )
   and not has_function_privilege(
     'authenticated',
-    'public.process_flavor_reward_stripe_event(text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text, timestamp with time zone)',
+    'public.process_flavor_reward_stripe_event(text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text, timestamp with time zone, bigint, bigint)',
     'EXECUTE'
   ),
   'only the server role can invoke payment reward processing'
@@ -355,15 +355,51 @@ declare
   v_event_id text;
   v_result jsonb;
 begin
-  -- A partial then full refund adjusts only order 101's commission.
+  -- Shipping-only refunds affect the Stripe total but not the product
+  -- allocation or creator commission.
   update public.customer_orders
   set payment_status = 'partially_refunded',
-      stripe_refunded_amount_minor = 1615
+      stripe_refunded_amount_minor = 500
+  where id = 'fr-order-101';
+  v_result := public.process_flavor_reward_stripe_event(
+    'evt_testshippingrefund101', 'charge.refunded', 'fr-order-101',
+    'cs_test_session101', 'pi_testintent101', false, null, 3230,
+    500, null, null, null, now(),
+    p_product_refunded_fils => 0
+  );
+  perform public.test_assert(
+    (select product_refunded_fils = 0 and commission_due_fils = 1500
+     from public.flavor_reward_order_snapshots where customer_order_id = 'fr-order-101'),
+    'a shipping-only refund leaves product sales and commission unchanged'
+  );
+  begin
+    perform public.process_flavor_reward_stripe_event(
+      'evt_testrefundmissingallocation101', 'charge.refunded', 'fr-order-101',
+      'cs_test_session101', 'pi_testintent101', false, null, 3230,
+      700, null, null, null, now() + interval '1 second'
+    );
+    raise exception 'Expected refund without product allocation to fail closed';
+  exception when sqlstate '22023' then
+    null;
+  end;
+  perform public.test_assert(
+    not exists (
+      select 1 from public.flavor_reward_stripe_events
+      where stripe_event_id = 'evt_testrefundmissingallocation101'
+    ),
+    'an unallocated Stripe refund is not processed or prorated'
+  );
+
+  -- An explicitly attributed product refund adjusts only its order's
+  -- commissionable KWD sales.
+  update public.customer_orders
+  set stripe_refunded_amount_minor = 1615
   where id = 'fr-order-101';
   v_result := public.process_flavor_reward_stripe_event(
     'evt_testrefundhalf101', 'charge.refunded', 'fr-order-101',
     'cs_test_session101', 'pi_testintent101', false, null, 3230,
-    1615, null, null, null, now()
+    1615, null, null, null, now() + interval '2 seconds',
+    p_product_refunded_fils => 5000
   );
   perform public.test_assert(
     (select commission_due_fils = 750
@@ -386,7 +422,8 @@ begin
     v_result := public.process_flavor_reward_stripe_event(
       v_event_id, 'charge.refunded', v_order_id, v_session_id,
       v_payment_intent_id, false, null, 3230, 3230,
-      null, null, null, now() + v_index * interval '1 minute'
+      null, null, null, now() + (v_index + 2) * interval '1 minute',
+      p_product_refunded_fils => 10000
     );
   end loop;
 
@@ -423,9 +460,22 @@ begin
   -- A chargeback temporarily adjusts only order 102; a won dispute restores
   -- that order's commission without touching the milestone.
   v_result := public.process_flavor_reward_stripe_event(
+    'evt_testshippingdispute102', 'charge.dispute.created', 'fr-order-102',
+    'cs_test_session102', 'pi_testintent102', false, null, 3230,
+    null, 'dp_testshippingdispute102', 500, 'open', now(),
+    p_dispute_product_amount_fils => 0
+  );
+  perform public.test_assert(
+    (select commission_due_fils = 1500
+     from public.flavor_reward_order_snapshots where customer_order_id = 'fr-order-102'),
+    'a shipping-only dispute does not reduce product commission'
+  );
+
+  v_result := public.process_flavor_reward_stripe_event(
     'evt_testdisputeopen102', 'charge.dispute.created', 'fr-order-102',
     'cs_test_session102', 'pi_testintent102', false, null, 3230,
-    null, 'dp_testdispute102', 1615, 'open', now()
+    null, 'dp_testdispute102', 1615, 'open', now(),
+    p_dispute_product_amount_fils => 5000
   );
   perform public.test_assert(
     (select commission_due_fils = 750
@@ -436,7 +486,8 @@ begin
   v_result := public.process_flavor_reward_stripe_event(
     'evt_testdisputewon102', 'charge.dispute.closed', 'fr-order-102',
     'cs_test_session102', 'pi_testintent102', false, null, 3230,
-    null, 'dp_testdispute102', 1615, 'won', now() + interval '1 minute'
+    null, 'dp_testdispute102', 1615, 'won', now() + interval '1 minute',
+    p_dispute_product_amount_fils => 5000
   );
   perform public.test_assert(
     (select commission_due_fils = 1500
@@ -446,7 +497,8 @@ begin
   v_result := public.process_flavor_reward_stripe_event(
     'evt_testdisputeopenlate102', 'charge.dispute.updated', 'fr-order-102',
     'cs_test_session102', 'pi_testintent102', false, null, 3230,
-    null, 'dp_testdispute102', 1615, 'open', now() - interval '1 day'
+    null, 'dp_testdispute102', 1615, 'open', now() - interval '1 day',
+    p_dispute_product_amount_fils => 5000
   );
   perform public.test_assert(
     (select status = 'won'

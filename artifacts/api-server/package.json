@@ -22,8 +22,9 @@
     "test:auth": "node test/run-auth.mjs",
     "test:auth-email-limit": "esbuild src/lib/auth-email-limit.test.ts --bundle --platform=node --format=cjs --outfile=/tmp/amore-auth-email-limit.test.cjs && node --test /tmp/amore-auth-email-limit.test.cjs",
     "test:flavor-rewards": "esbuild src/lib/flavor-rewards-accounting.test.ts --bundle --platform=node --format=esm --outfile=/tmp/amore-flavor-rewards-accounting.test.mjs && node --test /tmp/amore-flavor-rewards-accounting.test.mjs",
+    "test:flavor-refund-allocation": "esbuild ../../supabase/functions/_shared/flavor-reward-refund-allocation.test.ts --bundle --platform=node --format=esm --outfile=/tmp/amore-flavor-refund-allocation.test.mjs && node --test /tmp/amore-flavor-refund-allocation.test.mjs",
     "test:assistant": "node test/run-assistant.mjs",
-    "test": "pnpm run test:orders && pnpm run test:orders:http && pnpm run test:admin:http && pnpm run test:tracking:shared && pnpm run test:delivery-address && pnpm run test:stripe && pnpm run test:flavor-rewards && pnpm run test:assistant && pnpm run test:currency && pnpm run test:auth-errors && pnpm run test:auth && pnpm run test:auth-email-limit"
+    "test": "pnpm run test:orders && pnpm run test:orders:http && pnpm run test:admin:http && pnpm run test:tracking:shared && pnpm run test:delivery-address && pnpm run test:stripe && pnpm run test:flavor-rewards && pnpm run test:flavor-refund-allocation && pnpm run test:assistant && pnpm run test:currency && pnpm run test:auth-errors && pnpm run test:auth && pnpm run test:auth-email-limit"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

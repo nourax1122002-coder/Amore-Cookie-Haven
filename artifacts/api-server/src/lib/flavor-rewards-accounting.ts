@@ -22,7 +22,7 @@ export type FlavorPaymentEvent =
     currency: "usd";
     expectedAmountMinor: number;
     actualAmountMinor: number;
-    eligibleNetSalesFils: number;
+    eligibleProductNetSalesFils: number;
   }
   | {
     eventId: string;
@@ -41,7 +41,7 @@ export type FlavorPaymentEvent =
     type: "refund_updated";
     orderId: string;
     paymentIntentId: string;
-    cumulativeEligibleRefundFils: number;
+    cumulativeProductRefundFils: number;
   }
   | {
     eventId: string;
@@ -53,7 +53,7 @@ export type FlavorPaymentEvent =
     paymentIntentId: string;
     disputeId: string;
     status: "open" | "won" | "lost";
-    eligibleDisputedFils: number;
+    eligibleProductDisputedFils: number;
   };
 
 export type FlavorRewardLedgerEntry = {
@@ -76,8 +76,7 @@ type PaymentOrder = {
   paidAt: string;
   paymentEventId: string;
   eligibleOrderNumber: number | null;
-  qualifiesForRewards: boolean;
-  eligibleNetSalesFils: number;
+  eligibleProductNetSalesFils: number;
   refundedFils: number;
   disputes: Map<string, { status: "open" | "won" | "lost"; amountFils: number }>;
 };
@@ -85,7 +84,7 @@ type PaymentOrder = {
 export type FlavorRewardSummary = {
   flavorId: string;
   verifiedEligibleOrderCount: number;
-  effectiveNetSalesFils: number;
+  effectiveProductNetSalesFils: number;
   milestoneEarned: boolean;
 };
 
@@ -129,7 +128,6 @@ function collectOrders(events: readonly FlavorPaymentEvent[]): {
     Date.parse(left.occurredAt) - Date.parse(right.occurredAt)
       || left.eventId.localeCompare(right.eventId));
   const orders = new Map<string, PaymentOrder>();
-  const firstOrderByCustomer = new Map<string, string>();
   const nextEligibleOrderNumberByFlavor = new Map<string, number>();
   const eligibleOrderCountByFlavor = new Map<string, number>();
   const milestoneEventByFlavor = new Map<string, string>();
@@ -148,7 +146,8 @@ function collectOrders(events: readonly FlavorPaymentEvent[]): {
         || event.sessionStatus !== "complete" || event.paymentStatus !== "paid"
         || event.currency !== "usd" || !isFils(event.expectedAmountMinor)
         || event.expectedAmountMinor < 1 || event.actualAmountMinor !== event.expectedAmountMinor
-        || !isFils(event.eligibleNetSalesFils) || event.eligibleNetSalesFils < 1) {
+        || !isFils(event.eligibleProductNetSalesFils)
+        || event.eligibleProductNetSalesFils < 1) {
         throw new Error("The verified payment does not match its eligible flavor order.");
       }
       const existing = orders.get(event.orderId);
@@ -157,22 +156,16 @@ function collectOrders(events: readonly FlavorPaymentEvent[]): {
           || existing.flavorId !== event.flavorId
           || existing.creatorUserId !== event.creatorUserId
           || existing.customerUserId !== event.customerUserId
-          || existing.eligibleNetSalesFils !== event.eligibleNetSalesFils) {
+          || existing.eligibleProductNetSalesFils !== event.eligibleProductNetSalesFils) {
           throw new Error("A payment order cannot change its verified payment or flavor identity.");
         }
       } else {
-        const customerKey = `${event.flavorId}:${event.customerUserId}`;
-        const qualifiesForRewards = !firstOrderByCustomer.has(customerKey);
-        let eligibleOrderNumber: number | null = null;
-        if (qualifiesForRewards) {
-          firstOrderByCustomer.set(customerKey, event.orderId);
-          eligibleOrderNumber = (nextEligibleOrderNumberByFlavor.get(event.flavorId) ?? 0) + 1;
-          nextEligibleOrderNumberByFlavor.set(event.flavorId, eligibleOrderNumber);
-          eligibleOrderCountByFlavor.set(
-            event.flavorId,
-            (eligibleOrderCountByFlavor.get(event.flavorId) ?? 0) + 1,
-          );
-        }
+        const eligibleOrderNumber = (nextEligibleOrderNumberByFlavor.get(event.flavorId) ?? 0) + 1;
+        nextEligibleOrderNumberByFlavor.set(event.flavorId, eligibleOrderNumber);
+        eligibleOrderCountByFlavor.set(
+          event.flavorId,
+          (eligibleOrderCountByFlavor.get(event.flavorId) ?? 0) + 1,
+        );
         orders.set(event.orderId, {
           orderId: event.orderId,
           paymentIntentId: event.paymentIntentId,
@@ -182,13 +175,12 @@ function collectOrders(events: readonly FlavorPaymentEvent[]): {
           paidAt: event.occurredAt,
           paymentEventId: event.eventId,
           eligibleOrderNumber,
-          qualifiesForRewards,
-          eligibleNetSalesFils: event.eligibleNetSalesFils,
+          eligibleProductNetSalesFils: event.eligibleProductNetSalesFils,
           refundedFils: 0,
           disputes: new Map(),
         });
         latestEventByOrder.set(event.orderId, event.eventId);
-        if (qualifiesForRewards) recordMilestoneIfReached(event.flavorId, event.eventId);
+        recordMilestoneIfReached(event.flavorId, event.eventId);
         continue;
       }
       latestEventByOrder.set(event.orderId, event.eventId);
@@ -198,25 +190,25 @@ function collectOrders(events: readonly FlavorPaymentEvent[]): {
     const order = orders.get(event.orderId);
     if (!order || order.paymentIntentId !== event.paymentIntentId) continue;
 
-    const wasEligible = order.qualifiesForRewards && effectiveNet(order) > 0;
+    const wasEligible = effectiveNet(order) > 0;
     if (event.type === "refund_updated") {
-      if (!isFils(event.cumulativeEligibleRefundFils)
-        || event.cumulativeEligibleRefundFils > order.eligibleNetSalesFils) {
-        throw new Error("A verified refund exceeds the eligible flavor net sales.");
+      if (!isFils(event.cumulativeProductRefundFils)
+        || event.cumulativeProductRefundFils > order.eligibleProductNetSalesFils) {
+        throw new Error("A verified product refund exceeds the eligible flavor sales.");
       }
-      order.refundedFils = Math.max(order.refundedFils, event.cumulativeEligibleRefundFils);
+      order.refundedFils = Math.max(order.refundedFils, event.cumulativeProductRefundFils);
       latestEventByOrder.set(order.orderId, event.eventId);
     } else if (event.type === "chargeback_updated") {
-      if (!event.disputeId.trim() || !isFils(event.eligibleDisputedFils)
-        || event.eligibleDisputedFils > order.eligibleNetSalesFils) {
+      if (!event.disputeId.trim() || !isFils(event.eligibleProductDisputedFils)
+        || event.eligibleProductDisputedFils > order.eligibleProductNetSalesFils) {
         throw new Error("A verified chargeback amount is invalid.");
       }
       order.disputes.set(event.disputeId, {
         status: event.status,
-        amountFils: event.eligibleDisputedFils,
+        amountFils: event.eligibleProductDisputedFils,
       });
     }
-    const isEligible = order.qualifiesForRewards && effectiveNet(order) > 0;
+    const isEligible = effectiveNet(order) > 0;
     if (wasEligible !== isEligible) {
       const currentCount = eligibleOrderCountByFlavor.get(order.flavorId) ?? 0;
       eligibleOrderCountByFlavor.set(order.flavorId, currentCount + (isEligible ? 1 : -1));
@@ -233,25 +225,8 @@ function effectiveNet(order: PaymentOrder): number {
   const disputed = [...order.disputes.values()]
     .filter(dispute => dispute.status === "open" || dispute.status === "lost")
     .reduce((sum, dispute) => sum + BigInt(dispute.amountFils), 0n);
-  const net = BigInt(order.eligibleNetSalesFils) - BigInt(order.refundedFils) - disputed;
+  const net = BigInt(order.eligibleProductNetSalesFils) - BigInt(order.refundedFils) - disputed;
   return net > 0n ? Number(net) : 0;
-}
-
-/**
- * A customer who has ever had a verified successful payment for a flavor has
- * used that flavor's one-order opportunity, even if that payment was refunded.
- * Failed and cancelled attempts do not consume it.
- */
-export function assertFlavorOrderAllowed(
-  events: readonly FlavorPaymentEvent[],
-  customerUserId: string,
-  flavorId: string | null,
-): void {
-  if (!flavorId) return; // Regular Amore shopping is deliberately unrestricted.
-  const { orders } = collectOrders(events);
-  if (orders.some(order => order.customerUserId === customerUserId && order.flavorId === flavorId)) {
-    throw new Error("This customer has already used their eligible order for this flavor.");
-  }
 }
 
 /**
@@ -271,7 +246,6 @@ export function reconcileFlavorRewards(
   const { orders, milestoneEventByFlavor, latestEventByOrder } = collectOrders(events);
   const ordersByFlavor = new Map<string, PaymentOrder[]>();
   for (const order of orders) {
-    if (!order.qualifiesForRewards) continue;
     const list = ordersByFlavor.get(order.flavorId) ?? [];
     list.push(order);
     ordersByFlavor.set(order.flavorId, list);
@@ -305,11 +279,11 @@ export function reconcileFlavorRewards(
     if (effectiveNetSales > BigInt(Number.MAX_SAFE_INTEGER)) {
       throw new Error("Flavor reward sales exceed safe integer precision.");
     }
-    const effectiveNetSalesFils = Number(effectiveNetSales);
+    const effectiveProductNetSalesFils = Number(effectiveNetSales);
     summaries.push({
       flavorId,
       verifiedEligibleOrderCount: activeOrders.length,
-      effectiveNetSalesFils,
+      effectiveProductNetSalesFils,
       milestoneEarned: false,
     });
 
