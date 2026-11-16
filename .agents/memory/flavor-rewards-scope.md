@@ -14,3 +14,9 @@ Reward eligibility is based only on verified successful eligible paid flavor ord
 **Why:** The user approved these rules in the Flavor Rewards audit and explicitly required local code/testing only until separate approval for database work.
 
 **How to apply:** Do not treat interest counts or admin-entered sales as payment evidence. Tie future persistent rewards to the existing verified Stripe Test Mode payment flow. Store the one-time milestone as a non-reversible, unique award; scope signed refund/dispute corrections to commissions only, without deleting ledger history. Obtain approval before any Supabase schema, policy, or data change.
+
+Approved Flavor Rewards creations reuse existing catalog products and inventory, but their purchases use separate flavor-only orders so payment corrections can be attributed to one flavor. Buyers may make repeat purchases; the one-per-lifetime rule applies to the creator's idea, not to buyers.
+
+**Why:** The user selected the existing-products/separate-orders model to preserve catalog and stock data while making refunds attributable.
+
+**How to apply:** Link each approved published flavor to one existing KWD catalog product. Keep ordinary carts unchanged and ensure a mapped flavor is purchased through a dedicated order; count each distinct verified paid order, including repeat purchases by the same buyer.
