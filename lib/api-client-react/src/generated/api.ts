@@ -46,12 +46,10 @@ import type {
   FlavorAssistantInput,
   FlavorCommercialReviewInput,
   FlavorIdea,
-  FlavorInterestResult,
   FlavorPayoutRequest,
   FlavorPayoutRequestInput,
   FlavorPayoutReviewInput,
   FlavorSaleInput,
-  FlavorSaleResult,
   GetAdminSession200,
   GetCurrencyConversionParams,
   GetPaymentOrderParams,
@@ -3568,9 +3566,9 @@ export const getRegisterFlavorInterestUrl = (id: string,) => {
   return `/api/flavor-rewards/${id}/interest`
 }
 
-export const registerFlavorInterest = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<FlavorInterestResult> => {
+export const registerFlavorInterest = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
 
-  return customFetch<FlavorInterestResult>(getRegisterFlavorInterestUrl(id),
+  return customFetch<unknown>(getRegisterFlavorInterestUrl(id),
   {
     ...options,
     method: 'POST'
@@ -4074,7 +4072,7 @@ export const getRecordFlavorEligibleSaleUrl = (id: string,) => {
 }
 
 export const recordFlavorEligibleSale = async (id: string,
-    flavorSaleInput: FlavorSaleInput, options?: Parameters<typeof customFetch>[1]): Promise<FlavorSaleResult> => {
+    flavorSaleInput: FlavorSaleInput, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4090,7 +4088,7 @@ export const recordFlavorEligibleSale = async (id: string,
     }
     return headers;
   };
-return customFetch<FlavorSaleResult>(getRecordFlavorEligibleSaleUrl(id),
+return customFetch<unknown>(getRecordFlavorEligibleSaleUrl(id),
   {
     ...options,
     method: 'POST',
@@ -4157,7 +4155,7 @@ export const getReviewFlavorPayoutRequestUrl = (id: string,) => {
 }
 
 export const reviewFlavorPayoutRequest = async (id: string,
-    flavorPayoutReviewInput: FlavorPayoutReviewInput, options?: Parameters<typeof customFetch>[1]): Promise<FlavorPayoutRequest> => {
+    flavorPayoutReviewInput: FlavorPayoutReviewInput, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4173,7 +4171,7 @@ export const reviewFlavorPayoutRequest = async (id: string,
     }
     return headers;
   };
-return customFetch<FlavorPayoutRequest>(getReviewFlavorPayoutRequestUrl(id),
+return customFetch<unknown>(getReviewFlavorPayoutRequestUrl(id),
   {
     ...options,
     method: 'PATCH',

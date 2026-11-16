@@ -544,6 +544,8 @@ paths:
               schema: { $ref: "#/components/schemas/FlavorIdea" }
         "401":
           description: Sign in required
+        "409":
+          description: The account already used its one lifetime flavor idea
   /flavor-rewards/drafts/{id}:
     patch:
       operationId: updateFlavorDraft
@@ -583,13 +585,10 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        "200":
-          description: Idempotent confirmed-interest result
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/FlavorInterestResult" }
         "401":
           description: Sign in required
+        "409":
+          description: Interest registration paused until reward rules are safely updated
   /flavor-rewards/assistant:
     post:
       operationId: askFlavorAssistant
@@ -649,7 +648,7 @@ paths:
         "401":
           description: Sign in required
         "409":
-          description: Insufficient available balance or duplicate request
+          description: Payout requests paused until rewards are linked to verified paid orders
   /admin/flavor-rewards:
     get:
       operationId: getAdminFlavorRewards
@@ -694,11 +693,8 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/FlavorSaleInput" }
       responses:
-        "201":
-          description: Eligible net sale and 15 percent creator commission recorded
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/FlavorSaleResult" }
+        "409":
+          description: Manual sales cannot earn rewards; verified payments are required
         "401":
           description: Sign in required
         "403":
@@ -714,11 +710,8 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/FlavorPayoutReviewInput" }
       responses:
-        "200":
-          description: Payout request decision documented
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/FlavorPayoutRequest" }
+        "409":
+          description: Payout processing paused until balances are verified
         "401":
           description: Sign in required
         "403":
@@ -1161,11 +1154,11 @@ components:
             creatorUserId: { type: string, format: uuid }
     CreateFlavorDraftInput:
       type: object
-      required: [requestKey, title]
+      required: [requestKey, title, titleAr]
       properties:
         requestKey: { type: string, format: uuid }
         title: { type: string, minLength: 2, maxLength: 120 }
-        titleAr: { type: string, maxLength: 120 }
+        titleAr: { type: string, minLength: 2, maxLength: 120 }
         description: { type: string, maxLength: 1200 }
         descriptionAr: { type: string, maxLength: 1200 }
         ingredients: { type: string, maxLength: 1200 }

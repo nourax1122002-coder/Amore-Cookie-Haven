@@ -60,19 +60,132 @@ export async function releaseOrderProductStock() { throw new Error("Unexpected s
 export async function uploadProductImage() { throw new Error("Unexpected product image upload in orders boundary test."); }
 export async function createSignedProductImageUpload() { throw new Error("Unexpected image signing in orders boundary test."); }
 export function createSupabaseUserClient(accessToken: string) {
-  return { userId: accessToken.replace("fictional.jwt.for.", "") };
+  const userId = accessToken.replace("fictional.jwt.for.", "");
+  return {
+    userId,
+    from(table: string) {
+      if (table !== "flavor_ideas") {
+        throw new Error(`Unexpected user Supabase table ${table} in orders boundary test.`);
+      }
+      return new FlavorIdeasQuery(userId);
+    },
+  };
 }
 class EmptyPublishedIdeasQuery {
   select() { return this; }
   order() { return this; }
   limit() { return Promise.resolve({ data: [], error: null }); }
 }
+
+type MockFlavorIdea = Record<string, unknown> & {
+  id: string;
+  creator_user_id: string;
+  request_key: string;
+};
+
+const flavorIdeas: MockFlavorIdea[] = [];
+let nextFlavorIdeaId = 1;
+export function resetMockFlavorIdeas() {
+  flavorIdeas.length = 0;
+  nextFlavorIdeaId = 1;
+}
+
+class FlavorIdeasQuery {
+  private action: "select" | "insert" | "update" = "select";
+  private filters = new Map<string, unknown>();
+  private payload: Record<string, unknown> | null = null;
+  private userId: string | null;
+  private maxRows = Number.POSITIVE_INFINITY;
+
+  constructor(userId: string | null) {
+    this.userId = userId;
+  }
+
+  select() { return this; }
+  order() { return this; }
+  limit(count: number) {
+    this.maxRows = count;
+    return Promise.resolve({ data: this.selectedRows(), error: null });
+  }
+  eq(column: string, value: unknown) {
+    this.filters.set(column, value);
+    return this;
+  }
+  insert(payload: Record<string, unknown>) {
+    this.action = "insert";
+    this.payload = payload;
+    return this;
+  }
+  update(payload: Record<string, unknown>) {
+    this.action = "update";
+    this.payload = payload;
+    return this;
+  }
+  async maybeSingle() {
+    const result = this.run();
+    return { data: Array.isArray(result.data) ? result.data[0] ?? null : result.data, error: result.error };
+  }
+  async single() {
+    const result = this.run();
+    const row = Array.isArray(result.data) ? result.data[0] : result.data;
+    return row
+      ? { data: row, error: result.error }
+      : { data: null, error: result.error ?? { code: "PGRST116" } };
+  }
+
+  private selectedRows() {
+    return flavorIdeas
+      .filter(row => this.matches(row))
+      .slice(0, this.maxRows);
+  }
+
+  private matches(row: MockFlavorIdea) {
+    if (this.userId && row.creator_user_id !== this.userId) return false;
+    for (const [column, value] of this.filters) {
+      if (row[column] !== value) return false;
+    }
+    return true;
+  }
+
+  private run(): { data: unknown; error: { code: string } | null } {
+    if (this.action === "select") return { data: this.selectedRows(), error: null };
+    if (this.action === "insert") {
+      if (!this.payload) return { data: null, error: { code: "22023" } };
+      const creatorUserId = this.payload.creator_user_id;
+      const requestKey = this.payload.request_key;
+      if (this.userId && creatorUserId !== this.userId) return { data: null, error: { code: "42501" } };
+      if (typeof creatorUserId !== "string" || typeof requestKey !== "string") {
+        return { data: null, error: { code: "22023" } };
+      }
+      if (flavorIdeas.some(row => row.creator_user_id === creatorUserId && row.request_key === requestKey)) {
+        return { data: null, error: { code: "23505" } };
+      }
+      const suffix = String(nextFlavorIdeaId++).padStart(12, "0");
+      const now = new Date().toISOString();
+      const row = {
+        ...this.payload,
+        id: `00000000-0000-4000-8000-${suffix}`,
+        creator_user_id: creatorUserId,
+        request_key: requestKey,
+        status: "draft",
+        commercial_status: "not_reviewed",
+        confirmed_interest_count: 0,
+        created_at: now,
+        updated_at: now,
+        published_at: null,
+      } as MockFlavorIdea;
+      flavorIdeas.push(row);
+      return { data: row, error: null };
+    }
+    return { data: null, error: { code: "22023" } };
+  }
+}
+
 export const supabase = {
   from(table: string) {
-    if (table !== "published_flavor_ideas") {
-      throw new Error(`Unexpected Supabase table ${table} in orders boundary test.`);
-    }
-    return new EmptyPublishedIdeasQuery();
+    if (table === "published_flavor_ideas") return new EmptyPublishedIdeasQuery();
+    if (table === "flavor_ideas") return new FlavorIdeasQuery(null);
+    throw new Error(`Unexpected Supabase table ${table} in orders boundary test.`);
   },
 };
 const accountOrders = [

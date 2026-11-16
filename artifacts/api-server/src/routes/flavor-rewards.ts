@@ -10,19 +10,9 @@ import {
   ListPublicFlavorRewardsResponse,
   PublishFlavorDraftParams,
   PublishFlavorDraftResponse,
-  RecordFlavorEligibleSaleBody,
-  RecordFlavorEligibleSaleParams,
-  RecordFlavorEligibleSaleResponse,
-  RegisterFlavorInterestParams,
-  RegisterFlavorInterestResponse,
-  RequestFlavorPayoutBody,
-  RequestFlavorPayoutResponse,
   ReviewFlavorCommercialOutcomeBody,
   ReviewFlavorCommercialOutcomeParams,
   ReviewFlavorCommercialOutcomeResponse,
-  ReviewFlavorPayoutRequestBody,
-  ReviewFlavorPayoutRequestParams,
-  ReviewFlavorPayoutRequestResponse,
   UpdateFlavorDraftBody,
   UpdateFlavorDraftParams,
   UpdateFlavorDraftResponse,
@@ -39,6 +29,7 @@ const router = Router();
 const groq = createGroqGateway();
 const openRouter = createOpenRouter();
 const quota = createAssistantQuota(undefined, "flavor_assistant");
+const ONE_TIME_FLAVOR_REQUEST_KEY = "00000000-0000-4000-8000-000000000100";
 type Row = Record<string, unknown>;
 
 const PUBLIC_IDEA_COLUMNS = [
@@ -227,16 +218,28 @@ router.get("/flavor-rewards/mine", async (req, res): Promise<void> => {
 router.post("/flavor-rewards/drafts", async (req, res): Promise<void> => {
   const { user, client } = await signedIn(req, res);
   const body = CreateFlavorDraftBody.parse(req.body);
-  const result = await client.from("flavor_ideas").upsert({
+  const existing = await client.from("flavor_ideas")
+    .select("id")
+    .eq("creator_user_id", user.id)
+    .limit(1)
+    .maybeSingle();
+  databaseFailure(req, "draft_limit_check", existing.error);
+  if (existing.data) {
+    throw new HttpError(409, "You have already used your one Flavor Rewards idea. Edit the existing draft instead.");
+  }
+
+  // The constant request key plus the existing (creator_user_id, request_key)
+  // uniqueness constraint makes simultaneous app requests fail closed.
+  const result = await client.from("flavor_ideas").insert({
     creator_user_id: user.id,
-    request_key: body.requestKey,
+    request_key: ONE_TIME_FLAVOR_REQUEST_KEY,
     title: body.title.trim(),
-    title_ar: body.titleAr?.trim() ?? "",
+    title_ar: body.titleAr.trim(),
     description: body.description?.trim() ?? "",
     description_ar: body.descriptionAr?.trim() ?? "",
     ingredients: body.ingredients?.trim() ?? "",
     ingredients_ar: body.ingredientsAr?.trim() ?? "",
-  }, { onConflict: "creator_user_id,request_key" })
+  })
     .select(OWNER_IDEA_COLUMNS)
     .single();
   const item = idea(rowOrFail(req, "draft_create", result));
@@ -276,12 +279,11 @@ router.post("/flavor-rewards/drafts/:id/publish", async (req, res): Promise<void
   res.json(PublishFlavorDraftResponse.parse(idea(rowOrFail(req, "published_idea", result))));
 });
 
-router.post("/flavor-rewards/:id/interest", async (req, res): Promise<void> => {
-  const { client } = await signedIn(req, res);
-  const { id } = RegisterFlavorInterestParams.parse(req.params);
-  const rpc = await client.rpc("register_flavor_interest", { p_flavor_id: id });
-  databaseFailure(req, "register_interest", rpc.error);
-  res.json(RegisterFlavorInterestResponse.parse(rpc.data));
+router.post("/flavor-rewards/:id/interest", async (_req, res): Promise<void> => {
+  await signedIn(_req, res);
+  // The existing database trigger still awards an interest-count milestone.
+  // Do not call it until the owner approves a migration to remove that trigger.
+  throw new HttpError(409, "Interest registration is paused until reward rules are safely updated.");
 });
 
 router.get("/account/flavor-rewards", async (req, res): Promise<void> => {
@@ -297,7 +299,9 @@ router.get("/account/flavor-rewards", async (req, res): Promise<void> => {
   const ledgerRows = rowsOrFail(req, "creator_ledger", ledger);
   const payoutRows = rowsOrFail(req, "creator_payouts", requests);
   const eventRows = rowsOrFail(req, "creator_payout_events", events);
-  const earnedFils = ledgerRows.reduce((sum, row) => sum + int(row, "amount_fils"), 0);
+  // Existing entries were created by interest counts or manual sale entry,
+  // neither of which is proof of a verified paid order.
+  const historicalLedgerFils = ledgerRows.reduce((sum, row) => sum + int(row, "amount_fils"), 0);
   const reservedFils = payoutRows.reduce((sum, row) =>
     ["pending", "approved", "paid"].includes(text(row, "status")) ? sum + int(row, "amount_fils") : sum, 0);
   res.json(GetMyFlavorRewardsResponse.parse({
@@ -305,27 +309,15 @@ router.get("/account/flavor-rewards", async (req, res): Promise<void> => {
     ledger: ledgerRows.map(rewardEntry),
     payoutRequests: payoutRows.map(payout),
     payoutEvents: eventRows.map(payoutEvent),
-    earnedFils,
+    earnedFils: historicalLedgerFils,
     reservedFils,
-    availableFils: Math.max(0, earnedFils - reservedFils),
+    availableFils: 0,
   }));
 });
 
 router.post("/account/flavor-rewards/payout-requests", async (req, res): Promise<void> => {
-  const { user, client } = await signedIn(req, res);
-  const body = RequestFlavorPayoutBody.parse(req.body);
-  const result = await supabase.rpc("request_flavor_payout", {
-    p_user_id: user.id,
-    p_amount_fils: body.amountFils,
-    p_request_key: body.requestKey,
-  });
-  databaseFailure(req, "payout_request", result.error);
-  const rpcResult = result.data as Record<string, unknown> | null;
-  if (!rpcResult || typeof rpcResult.id !== "string") {
-    throw new HttpError(503, "Flavor Rewards is temporarily unavailable. Please retry.");
-  }
-  const saved = await client.from("flavor_payout_requests").select("*").eq("id", rpcResult.id).single();
-  res.status(201).json(RequestFlavorPayoutResponse.parse(payout(rowOrFail(req, "payout_request_read", saved))));
+  await signedIn(req, res);
+  throw new HttpError(409, "Payout requests are paused until rewards are linked to verified paid orders.");
 });
 
 router.post("/flavor-rewards/assistant", async (req, res): Promise<void> => {
@@ -458,34 +450,13 @@ router.patch("/admin/flavor-rewards/:id/review", async (req, res): Promise<void>
 });
 
 router.post("/admin/flavor-rewards/:id/sales", async (req, res): Promise<void> => {
-  const { id } = RecordFlavorEligibleSaleParams.parse(req.params);
-  const body = RecordFlavorEligibleSaleBody.parse(req.body);
-  const user = await adminUser(req, res);
-  const result = await supabase.rpc("record_flavor_net_sale", {
-    p_admin_user_id: user.id,
-    p_flavor_id: id,
-    p_source_reference: body.sourceReference,
-    p_net_sales_fils: body.netSalesFils,
-    p_notes: body.notes ?? "",
-  });
-  databaseFailure(req, "eligible_sale", result.error);
-  res.json(RecordFlavorEligibleSaleResponse.parse(result.data));
+  await adminUser(req, res);
+  throw new HttpError(409, "Manual sales cannot earn rewards; only verified Stripe Test Mode orders will qualify.");
 });
 
 router.patch("/admin/flavor-rewards/payout-requests/:id", async (req, res): Promise<void> => {
-  const { id } = ReviewFlavorPayoutRequestParams.parse(req.params);
-  const body = ReviewFlavorPayoutRequestBody.parse(req.body);
-  const user = await adminUser(req, res);
-  const result = await supabase.rpc("review_flavor_payout_request", {
-    p_admin_user_id: user.id,
-    p_request_id: id,
-    p_status: body.status,
-    p_admin_note: body.adminNote ?? "",
-    p_payout_reference: body.payoutReference ?? "",
-  });
-  databaseFailure(req, "payout_review", result.error);
-  const saved = await supabase.from("flavor_payout_requests").select("*").eq("id", id).single();
-  res.json(ReviewFlavorPayoutRequestResponse.parse(payout(rowOrFail(req, "payout_review_read", saved))));
+  await adminUser(req, res);
+  throw new HttpError(409, "Payout processing is paused until balances are backed by verified paid orders.");
 });
 
 export default router;

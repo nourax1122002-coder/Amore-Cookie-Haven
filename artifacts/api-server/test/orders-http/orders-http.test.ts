@@ -4,7 +4,7 @@ import http, { type Server, type IncomingHttpHeaders } from "node:http";
 import { Writable } from "node:stream";
 import pino from "pino";
 import { logger } from "../../src/lib/logger";
-import { failCounters } from "./mocks/db";
+import { failCounters, resetMockFlavorIdeas } from "./mocks/db";
 
 const phone = "+96550000000";
 const address = "FICTIONAL-ADDRESS-CANARY";
@@ -47,6 +47,7 @@ beforeEach(() => {
   logs = [];
   responses = [];
   failCounters(null);
+  resetMockFlavorIdeas();
 });
 
 afterEach(async () => {
@@ -141,6 +142,66 @@ test("Flavor Rewards lists public ideas but protects creator, account, AI, and a
     assert.equal(response.status, 401, `${method} ${path}: ${JSON.stringify(response.body)}`);
   }
   assert.equal((await request("/api/admin/flavor-rewards", undefined, "visitor", freshIp(), "GET")).status, 403);
+});
+
+test("Flavor Rewards allows one draft per account and keeps drafts private", async () => {
+  const requestKey = "00000000-0000-4000-8000-000000000005";
+  const first = await request("/api/flavor-rewards/drafts", {
+    requestKey,
+    title: "Rose chocolate",
+    titleAr: "شوكولاتة الورد",
+  }, "visitor");
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+  assert.equal(first.body.title, "Rose chocolate");
+
+  const duplicate = await request("/api/flavor-rewards/drafts", {
+    requestKey: "00000000-0000-4000-8000-000000000006",
+    title: "Another flavor",
+    titleAr: "نكهة أخرى",
+  }, "visitor");
+  assert.equal(duplicate.status, 409);
+
+  const otherAccount = await request("/api/flavor-rewards/drafts", {
+    requestKey: "00000000-0000-4000-8000-000000000007",
+    title: "Vanilla rose",
+    titleAr: "فانيلا الورد",
+  }, "another");
+  assert.equal(otherAccount.status, 201, JSON.stringify(otherAccount.body));
+
+  const visitorIdeas = await request("/api/flavor-rewards/mine", undefined, "visitor", freshIp(), "GET");
+  const otherIdeas = await request("/api/flavor-rewards/mine", undefined, "another", freshIp(), "GET");
+  assert.equal(visitorIdeas.status, 200);
+  assert.deepEqual(visitorIdeas.body.map((idea: { title: string }) => idea.title), ["Rose chocolate"]);
+  assert.equal(otherIdeas.status, 200);
+  assert.deepEqual(otherIdeas.body.map((idea: { title: string }) => idea.title), ["Vanilla rose"]);
+});
+
+test("unverified interests, manual sales, and payouts fail closed without database writes", async () => {
+  const ideaId = "00000000-0000-4000-8000-000000000009";
+  const interest = await request(`/api/flavor-rewards/${ideaId}/interest`, {}, "visitor");
+  assert.equal(interest.status, 409);
+  assert.match(interest.body.error, /paused/i);
+
+  const payout = await request("/api/account/flavor-rewards/payout-requests", {
+    amountFils: 1000,
+    requestKey: "00000000-0000-4000-8000-000000000010",
+  }, "visitor");
+  assert.equal(payout.status, 409);
+
+  const manualSale = await request(`/api/admin/flavor-rewards/${ideaId}/sales`, {
+    sourceReference: "manual reference",
+    netSalesFils: 1000,
+  }, "owner");
+  assert.equal(manualSale.status, 409);
+
+  const payoutReview = await request(
+    `/api/admin/flavor-rewards/payout-requests/${ideaId}`,
+    { status: "paid" },
+    "owner",
+    freshIp(),
+    "PATCH",
+  );
+  assert.equal(payoutReview.status, 409);
 });
 
 test("account order history returns only the signed-in user's safe order details", async () => {

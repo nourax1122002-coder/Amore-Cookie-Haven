@@ -1193,6 +1193,7 @@ export const ListMyFlavorIdeasResponse = zod.array(ListMyFlavorIdeasResponseItem
 export const createFlavorDraftBodyTitleMin = 2;
 export const createFlavorDraftBodyTitleMax = 120;
 
+export const createFlavorDraftBodyTitleArMin = 2;
 export const createFlavorDraftBodyTitleArMax = 120;
 
 export const createFlavorDraftBodyDescriptionMax = 1200;
@@ -1208,7 +1209,7 @@ export const createFlavorDraftBodyIngredientsArMax = 1200;
 export const CreateFlavorDraftBody = zod.object({
   "requestKey": zod.string().uuid(),
   "title": zod.string().min(createFlavorDraftBodyTitleMin).max(createFlavorDraftBodyTitleMax),
-  "titleAr": zod.string().max(createFlavorDraftBodyTitleArMax).optional(),
+  "titleAr": zod.string().min(createFlavorDraftBodyTitleArMin).max(createFlavorDraftBodyTitleArMax),
   "description": zod.string().max(createFlavorDraftBodyDescriptionMax).optional(),
   "descriptionAr": zod.string().max(createFlavorDraftBodyDescriptionArMax).optional(),
   "ingredients": zod.string().max(createFlavorDraftBodyIngredientsMax).optional(),
@@ -1318,15 +1319,7 @@ export const RegisterFlavorInterestParams = zod.object({
   "id": zod.coerce.string().uuid()
 })
 
-export const registerFlavorInterestResponseInterestCountMin = 0;
-
-
-
-export const RegisterFlavorInterestResponse = zod.object({
-  "alreadyInterested": zod.boolean(),
-  "interestCount": zod.number().int().min(registerFlavorInterestResponseInterestCountMin),
-  "rewardUnlocked": zod.boolean()
-})
+export const RegisterFlavorInterestResponse = zod.void()
 
 
 export const askFlavorAssistantBodyOneLanguageDefault = `ar`;
@@ -1524,15 +1517,7 @@ export const RecordFlavorEligibleSaleBody = zod.object({
   "notes": zod.string().max(recordFlavorEligibleSaleBodyNotesMax).optional()
 })
 
-export const recordFlavorEligibleSaleResponseCommissionFilsMin = 0;
-
-
-
-export const RecordFlavorEligibleSaleResponse = zod.object({
-  "duplicate": zod.boolean(),
-  "saleId": zod.string().uuid(),
-  "commissionFils": zod.number().int().min(recordFlavorEligibleSaleResponseCommissionFilsMin)
-})
+export const RecordFlavorEligibleSaleResponse = zod.void()
 
 
 export const ReviewFlavorPayoutRequestParams = zod.object({
@@ -1551,17 +1536,6 @@ export const ReviewFlavorPayoutRequestBody = zod.object({
   "payoutReference": zod.string().max(reviewFlavorPayoutRequestBodyPayoutReferenceMax).optional()
 })
 
-
-
-
-export const ReviewFlavorPayoutRequestResponse = zod.object({
-  "id": zod.string().uuid(),
-  "amountFils": zod.number().int().min(1),
-  "status": zod.enum(['pending', 'approved', 'paid', 'rejected']),
-  "adminNote": zod.string(),
-  "payoutReference": zod.string(),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
-})
+export const ReviewFlavorPayoutRequestResponse = zod.void()
 
 

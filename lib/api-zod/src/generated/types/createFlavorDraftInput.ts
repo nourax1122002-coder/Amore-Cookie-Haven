@@ -13,8 +13,11 @@ export interface CreateFlavorDraftInput {
      * @maxLength 120
      */
   title: string;
-  /** @maxLength 120 */
-  titleAr?: string;
+  /**
+     * @minLength 2
+     * @maxLength 120
+     */
+  titleAr: string;
   /** @maxLength 1200 */
   description?: string;
   /** @maxLength 1200 */
