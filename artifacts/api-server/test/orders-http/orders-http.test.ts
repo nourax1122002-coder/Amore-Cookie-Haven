@@ -176,6 +176,22 @@ test("Flavor Rewards allows one draft per account and keeps drafts private", asy
   assert.deepEqual(otherIdeas.body.map((idea: { title: string }) => idea.title), ["Vanilla rose"]);
 });
 
+test("simultaneous draft requests for one account produce only one saved idea", async () => {
+  const body = (requestKey: string, title: string) => ({
+    requestKey,
+    title,
+    titleAr: "نكهة اختبار",
+  });
+  const results = await Promise.all([
+    request("/api/flavor-rewards/drafts", body("00000000-0000-4000-8000-000000000011", "First"), "race-user"),
+    request("/api/flavor-rewards/drafts", body("00000000-0000-4000-8000-000000000012", "Second"), "race-user"),
+  ]);
+  assert.deepEqual(results.map(result => result.status).sort(), [201, 409]);
+  const ideas = await request("/api/flavor-rewards/mine", undefined, "race-user", freshIp(), "GET");
+  assert.equal(ideas.status, 200);
+  assert.equal(ideas.body.length, 1);
+});
+
 test("unverified interests, manual sales, and payouts fail closed without database writes", async () => {
   const ideaId = "00000000-0000-4000-8000-000000000009";
   const interest = await request(`/api/flavor-rewards/${ideaId}/interest`, {}, "visitor");

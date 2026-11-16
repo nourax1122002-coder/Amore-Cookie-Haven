@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "wouter";
 import {
-  ArrowRight, Check, Coins, Lightbulb, LoaderCircle, Plus, RefreshCw, Send, Sparkles, Users,
+  ArrowRight, Check, Coins, Lightbulb, LoaderCircle, RefreshCw, Send, Sparkles, Users,
 } from "lucide-react";
 import type {
   AdminFlavorRewards,
@@ -58,7 +58,7 @@ function dateLabel(value: string, lang: Lang) {
 }
 
 function TextField({
-  label, value, onChange, multiline = false, maxLength, required = false,
+  label, value, onChange, multiline = false, maxLength, required = false, minLength,
 }: {
   label: string;
   value: string;
@@ -66,13 +66,14 @@ function TextField({
   multiline?: boolean;
   maxLength: number;
   required?: boolean;
+  minLength?: number;
 }) {
   const className = "mt-1 w-full rounded-xl border border-[#ead6dc] bg-white/80 px-3.5 py-3 text-sm text-[#5B0D1E] outline-none transition focus:border-[#5B0D1E] focus:ring-2 focus:ring-[#FFD6E5]";
   return <label className="block text-xs font-semibold text-[#795963]">
     {label}
     {multiline
       ? <textarea required={required} maxLength={maxLength} value={value} onChange={event => onChange(event.target.value)} className={`${className} min-h-24 resize-y`} />
-      : <input required={required} maxLength={maxLength} value={value} onChange={event => onChange(event.target.value)} className={className} />}
+      : <input required={required} minLength={minLength} maxLength={maxLength} value={value} onChange={event => onChange(event.target.value)} className={className} />}
   </label>;
 }
 
@@ -83,11 +84,7 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
   const [loading, setLoading] = useState(true);
   const [publicError, setPublicError] = useState("");
   const [accountError, setAccountError] = useState("");
-  const [busyInterest, setBusyInterest] = useState("");
   const [busySave, setBusySave] = useState(false);
-  const [payoutAmount, setPayoutAmount] = useState("");
-  const [payoutBusy, setPayoutBusy] = useState(false);
-  const [payoutRequestKey, setPayoutRequestKey] = useState(() => crypto.randomUUID());
   const [draft, setDraft] = useState<DraftFields>(emptyDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [requestKey, setRequestKey] = useState(() => crypto.randomUUID());
@@ -125,22 +122,6 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
   }, [lang, user]);
 
   useEffect(() => { void refresh(); }, [refresh]);
-
-  const registerInterest = async (id: string) => {
-    if (!user) return;
-    setBusyInterest(id);
-    setFormError("");
-    try {
-      await api<{ interestCount: number; alreadyInterested: boolean; rewardUnlocked: boolean }>(
-        `/api/flavor-rewards/${id}/interest`, "POST", {},
-      );
-      await refresh();
-    } catch (error) {
-      setFormError(errorText(error, lang));
-    } finally {
-      setBusyInterest("");
-    }
-  };
 
   const saveDraft = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -218,27 +199,6 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
     }
   };
 
-  const requestPayout = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const amount = Number(payoutAmount);
-    if (!Number.isFinite(amount) || amount <= 0) return;
-    setPayoutBusy(true);
-    setAccountError("");
-    try {
-      await api("/api/account/flavor-rewards/payout-requests", "POST", {
-        amountFils: Math.round(amount * 1000),
-        requestKey: payoutRequestKey,
-      });
-      setPayoutRequestKey(crypto.randomUUID());
-      setPayoutAmount("");
-      await refresh();
-    } catch (error) {
-      setAccountError(errorText(error, lang));
-    } finally {
-      setPayoutBusy(false);
-    }
-  };
-
   return <div className="container-wide py-10 md:py-16" dir={ar ? "rtl" : "ltr"}>
     <section className="relative overflow-hidden rounded-[30px] border border-[#f0dce2] bg-gradient-to-br from-[#fffaf8] via-white to-[#fff0f5] px-6 py-9 md:px-12 md:py-12">
       <div className="pointer-events-none absolute -end-10 -top-12 h-48 w-48 rounded-full bg-[#FFD6E5]/50 blur-3xl" />
@@ -249,13 +209,13 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
         <h1 className="mt-4 font-display text-4xl text-[#5B0D1E] md:text-6xl">{ar ? "مكافآت النكهات" : "Flavor Rewards"}</h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-[#795963] md:text-base">
           {ar
-            ? "ابتكري نكهة كوكيز وشاركيها مع مجتمع أموري. عند وصول فكرتك إلى 100 تسجيل اهتمام مؤكد، تُضاف مكافأة 200 د.ك إلى رصيدك الداخلي."
-            : "Create a cookie flavor and share it with the Amore community. A flavor that reaches 100 confirmed interests earns a 200 KWD internal reward."}
+            ? "ابتكري نكهة وشاركيها مع مجتمع أموري. تُحتسب المكافأة بعد 100 طلب مدفوع ومؤكد مؤهل، وليس من تسجيلات الاهتمام. لا تُحتسب أي مكافآت حتى ربط سجل الدفع الموثق."
+            : "Create a flavor and share it with the Amore community. The bonus is based on 100 verified eligible paid orders, never on interest registrations. Rewards stay paused until verified payment records are connected."}
         </p>
         <p className="mt-3 text-[11px] leading-5 text-[#896a71]">
           {ar
-            ? "المكافآت والأرباح تُراجع من فريق المتجر، وتُحفظ كرصيد داخلي. لا يتم تحويل أموال تلقائياً."
-            : "Rewards and eligible sales are reviewed by the store team and recorded in an internal balance. No money is transferred automatically."}
+            ? "تُحتسب عمولة 15٪ ابتداءً من الطلب المؤهل رقم 101. تسجيلات الاهتمام للعرض فقط، ولا تُنشئ رصيداً أو مكافأة."
+            : "A 15% commission applies only from eligible order 101 onward. Interest registrations are informational and do not create rewards or balances."}
         </p>
       </div>
     </section>
@@ -282,10 +242,7 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
               <p className="mt-3 text-sm text-[#795963]">{ar ? "لا توجد أفكار منشورة بعد. كوني أول من يقترح نكهة." : "No published ideas yet. Be the first to suggest a flavor."}</p>
             </div>
             : <div className="grid gap-4 md:grid-cols-2">
-              {publicIdeas.map(item => <PublicIdeaCard
-                key={item.id} idea={item} lang={lang} signedIn={Boolean(user)}
-                busy={busyInterest === item.id} onInterest={() => void registerInterest(item.id)}
-              />)}
+              {publicIdeas.map(item => <PublicIdeaCard key={item.id} idea={item} lang={lang}/>)}
             </div>}
         {formError && <p role="alert" className="mt-4 text-xs leading-5 text-red-700">{formError}</p>}
       </section>
@@ -303,10 +260,24 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
               <p className="text-sm leading-6 text-[#795963]">{ar ? "سجّلي الدخول لحفظ فكرتك والمشاركة في مكافآت النكهات." : "Sign in to save an idea and take part in Flavor Rewards."}</p>
               <Link href="/sign-in" className="btn-primary mt-4">{ar ? "تسجيل الدخول" : "Sign in"}<ArrowRight size={14}/></Link>
             </div>
-            : <form className="mt-5 grid gap-4" onSubmit={saveDraft}>
+            : loading && !wallet
+              ? <p className="mt-5 rounded-xl bg-[#fff6f8] p-4 text-xs leading-5 text-[#795963]" role="status">
+                {ar ? "جارٍ التحقق من فكرتك الحالية…" : "Checking your existing idea…"}
+              </p>
+              : !wallet
+                ? <p className="mt-5 rounded-xl bg-[#fff1f3] p-4 text-xs leading-5 text-[#763246]" role="alert">
+                  {accountError || (ar ? "تعذر التحقق من فكرتك. حدّثي الصفحة قبل إنشاء أي فكرة." : "Your idea could not be checked. Refresh before creating an idea.")}
+                </p>
+                : wallet.ideas.length > 0 && !editingId
+                  ? <div className="mt-5 rounded-2xl bg-[#fff5f7] p-5">
+                    <p className="text-sm leading-6 text-[#795963]">
+                      {ar ? "استخدمتِ بالفعل فرصة إنشاء فكرة واحدة لهذا الحساب. يمكنك تعديل مسودتك الحالية من مساحة المبدعة أدناه." : "This account has already used its one idea. You can edit your existing draft in Creator space below."}
+                    </p>
+                  </div>
+                  : <form className="mt-5 grid gap-4" onSubmit={saveDraft}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <TextField required label={ar ? "اسم النكهة بالإنجليزية" : "Flavor name"} value={draft.title} onChange={value => setDraft(current => ({ ...current, title: value }))} maxLength={120}/>
-                <TextField label={ar ? "اسم النكهة بالعربية" : "Arabic flavor name"} value={draft.titleAr} onChange={value => setDraft(current => ({ ...current, titleAr: value }))} maxLength={120}/>
+                <TextField required minLength={2} label={ar ? "اسم النكهة بالعربية" : "Arabic flavor name"} value={draft.titleAr} onChange={value => setDraft(current => ({ ...current, titleAr: value }))} maxLength={120}/>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <TextField multiline label={ar ? "وصف مختصر بالإنجليزية" : "Short description"} value={draft.description} onChange={value => setDraft(current => ({ ...current, description: value }))} maxLength={1200}/>
@@ -316,6 +287,18 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
                 <TextField multiline label={ar ? "المكونات المقترحة بالإنجليزية" : "Suggested ingredients"} value={draft.ingredients} onChange={value => setDraft(current => ({ ...current, ingredients: value }))} maxLength={1200}/>
                 <TextField multiline label={ar ? "المكونات المقترحة بالعربية" : "Suggested ingredients in Arabic"} value={draft.ingredientsAr} onChange={value => setDraft(current => ({ ...current, ingredientsAr: value }))} maxLength={1200}/>
               </div>
+              <article className="rounded-2xl border border-[#ead6dc] bg-[#fffaf8] p-4" aria-live="polite" aria-label={ar ? "معاينة الفكرة" : "Idea preview"}>
+                <span className="text-[9px] font-bold uppercase tracking-[.14em] text-[#9a6776]">{ar ? "معاينة مسودتك" : "Draft preview"}</span>
+                <h3 className="mt-1 font-display text-xl text-[#5B0D1E]">
+                  {ar ? draft.titleAr || "اسم النكهة" : draft.title || "Flavor name"}
+                </h3>
+                <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-[#795963]">
+                  {ar ? draft.descriptionAr || "سيظهر وصف النكهة هنا." : draft.description || "Your flavor description will appear here."}
+                </p>
+                {(draft.ingredients || draft.ingredientsAr) && <p className="mt-2 whitespace-pre-wrap text-[10px] leading-5 text-[#896a71]">
+                  <strong>{ar ? "المكونات: " : "Ingredients: "}</strong>{ar ? draft.ingredientsAr || draft.ingredients : draft.ingredients || draft.ingredientsAr}
+                </p>}
+              </article>
               {message && <p role="status" className="text-xs text-[#5B0D1E]">{message}</p>}
               {formError && <p role="alert" className="text-xs text-red-700">{formError}</p>}
               <div className="flex flex-wrap items-center gap-3">
@@ -323,9 +306,6 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
                   {busySave ? <LoaderCircle size={14} className="animate-spin"/> : <Check size={14}/>}
                   {editingId ? (ar ? "حفظ التعديلات" : "Save changes") : (ar ? "حفظ كمسودة" : "Save draft")}
                 </button>
-                {editingId && <button type="button" disabled={busySave} onClick={() => { setEditingId(null); setDraft(emptyDraft()); }} className="btn-outline">
-                  {ar ? "فكرة جديدة" : "New idea"}<Plus size={14}/>
-                </button>}
               </div>
             </form>}
         </section>
@@ -353,20 +333,12 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
       {accountError && <p role="alert" className="mb-4 rounded-xl bg-[#fff1f3] p-4 text-xs text-[#763246]">{accountError}</p>}
       {wallet && <div className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]">
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
-          <WalletMetric title={ar ? "إجمالي المكافآت" : "Earned"} amount={wallet.earnedFils} icon={<Coins size={18}/>} />
+          <WalletMetric title={ar ? "سجل تاريخي غير موثق" : "Historical ledger (unverified)"} amount={wallet.earnedFils} icon={<Coins size={18}/>} />
           <WalletMetric title={ar ? "قيد الحجز أو الصرف" : "Reserved or paid"} amount={wallet.reservedFils} icon={<Users size={18}/>} />
           <WalletMetric title={ar ? "الرصيد المتاح" : "Available"} amount={wallet.availableFils} icon={<Sparkles size={18}/>} />
-          <form onSubmit={requestPayout} className="card-surface p-5">
-            <h3 className="font-display text-xl text-[#5B0D1E]">{ar ? "طلب مراجعة صرف" : "Request payout review"}</h3>
-            <p className="mt-2 text-[11px] leading-5 text-[#896a71]">{ar ? "الطلب للمراجعة اليدوية فقط؛ لا يتم تحويل الأموال تلقائياً." : "Requests are reviewed manually; no money is transferred automatically."}</p>
-            <label className="mt-4 block text-xs font-semibold text-[#795963]">{ar ? "المبلغ بالدينار الكويتي" : "Amount in KWD"}
-              <input type="number" min="0.001" max={(wallet.availableFils / 1000).toFixed(3)} step="0.001" required value={payoutAmount} onChange={event => setPayoutAmount(event.target.value)} className="field mt-1"/>
-            </label>
-            <button disabled={payoutBusy || wallet.availableFils <= 0} className="btn-primary mt-4 w-full disabled:opacity-50">
-              {payoutBusy ? <LoaderCircle size={14} className="animate-spin"/> : <ArrowRight size={14}/>}
-              {ar ? "إرسال الطلب" : "Submit request"}
-            </button>
-          </form>
+          <p className="card-surface p-5 text-xs leading-6 text-[#795963]" role="status">
+            {ar ? "طلبات الصرف متوقفة مؤقتاً. لن يصبح أي رصيد متاحاً قبل ربطه بطلبات مدفوعة موثقة ومراجعة البيانات القديمة." : "Payouts are paused. No balance is available until it is tied to verified paid orders and historical entries are reviewed."}
+          </p>
         </div>
         <div className="grid gap-5">
           <div className="grid gap-3 md:grid-cols-2">
@@ -375,7 +347,7 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
                 <div><span className="text-[9px] font-bold uppercase tracking-wider text-[#9b6676]">{item.status}</span>
                   <h3 className="mt-1 font-display text-xl text-[#5B0D1E]">{ar && item.titleAr ? item.titleAr : item.title}</h3>
                 </div>
-                <span className="rounded-full bg-[#fff3f6] px-2.5 py-1 text-[9px] text-[#795963]">{item.confirmedInterestCount}/100</span>
+                 <span className="rounded-full bg-[#fff3f6] px-2.5 py-1 text-[9px] text-[#795963]">{item.confirmedInterestCount} {ar ? "اهتمام" : "interests"}</span>
               </div>
               <p className="mt-2 text-xs leading-5 text-[#795963]">{ar && item.descriptionAr ? item.descriptionAr : item.description}</p>
               <p className="mt-3 text-[10px] text-[#896a71]">{ar ? "الحالة التجارية:" : "Commercial review:"} {item.commercialStatus}</p>
@@ -391,8 +363,8 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
             <div className="mt-3 divide-y divide-[#f2e4e8]">
               {wallet.ledger.map(entry => <div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-xs">
                 <span className="text-[#795963]">{entry.entryType === "interest_milestone"
-                  ? (ar ? "مكافأة 100 اهتمام مؤكد" : "100-interest milestone")
-                  : (ar ? "عمولة مبيعات صافية مؤهلة" : "Eligible net-sales commission")}</span>
+                  ? (ar ? "مكافأة اهتمام تاريخية — غير مؤهلة للصرف" : "Legacy interest reward — not payout-eligible")
+                  : (ar ? "عمولة تاريخية غير مرتبطة بدفع موثق" : "Legacy commission — not payment-verified")}</span>
                 <strong className="text-[#5B0D1E]">{kwd(entry.amountFils, lang)}</strong>
                 <time className="text-[10px] text-[#896a71]">{dateLabel(entry.createdAt, lang)}</time>
               </div>)}
@@ -411,14 +383,9 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
   </div>;
 }
 
-function PublicIdeaCard({
-  idea, lang, signedIn, busy, onInterest,
-}: {
+function PublicIdeaCard({ idea, lang }: {
   idea: PublicFlavorIdea;
   lang: Lang;
-  signedIn: boolean;
-  busy: boolean;
-  onInterest: () => void;
 }) {
   const ar = lang === "ar";
   return <article className="card-surface flex min-h-[215px] flex-col p-5 transition hover:-translate-y-0.5 hover:shadow-md">
@@ -434,14 +401,13 @@ function PublicIdeaCard({
       <strong>{ar ? "مكونات مقترحة: " : "Suggested ingredients: "}</strong>{ar && idea.ingredientsAr ? idea.ingredientsAr : idea.ingredients}
     </p>}
     <div className="mt-auto pt-5">
-      <div className="mb-2 flex justify-between text-[10px] text-[#896a71]"><span>{idea.confirmedInterestCount}/100 {ar ? "اهتمام" : "interests"}</span><span>{dateLabel(idea.publishedAt, lang)}</span></div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-[#f5e7eb]"><div className="h-full rounded-full bg-[#a05c70]" style={{ width: `${Math.min(100, idea.confirmedInterestCount)}%` }}/></div>
-      {signedIn
-        ? <button type="button" onClick={onInterest} disabled={busy} className="btn-outline mt-4 w-full justify-center disabled:opacity-50">
-          {busy ? <LoaderCircle size={13} className="animate-spin"/> : <Check size={13}/>}
-          {ar ? "أنا مهتمة بهذه النكهة" : "I'm interested"}
-        </button>
-        : <Link href="/sign-in" className="btn-outline mt-4 w-full justify-center">{ar ? "سجّلي الدخول لإبداء اهتمامك" : "Sign in to register interest"}<ArrowRight size={13}/></Link>}
+      <div className="flex justify-between text-[10px] text-[#896a71]">
+        <span>{idea.confirmedInterestCount} {ar ? "تسجيل اهتمام" : "interest registrations"}</span>
+        <span>{dateLabel(idea.publishedAt, lang)}</span>
+      </div>
+      <p className="mt-3 text-[10px] leading-5 text-[#896a71]">
+        {ar ? "تسجيلات الاهتمام للعرض فقط ولا تُحتسب مكافآت منها." : "Interest registrations are informational and never count toward rewards."}
+      </p>
     </div>
   </article>;
 }
@@ -501,9 +467,7 @@ export function AdminFlavorRewardsPanel({ lang }: { lang: Lang }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
-  const [saleForms, setSaleForms] = useState<Record<string, { reference: string; amount: string; notes: string }>>({});
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
-  const [payoutRefs, setPayoutRefs] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState("");
 
   const refresh = useCallback(async () => {
@@ -534,21 +498,6 @@ export function AdminFlavorRewardsPanel({ lang }: { lang: Lang }) {
     }
   };
 
-  const recordSale = async (event: FormEvent<HTMLFormElement>, id: string) => {
-    event.preventDefault();
-    const form = saleForms[id] ?? { reference: "", amount: "", notes: "" };
-    const amountFils = Math.round(Number(form.amount) * 1000);
-    if (!Number.isSafeInteger(amountFils) || amountFils < 1) {
-      setError(ar ? "أدخلي صافي المبيعات بالدينار الكويتي." : "Enter eligible net sales in KWD.");
-      return;
-    }
-    await submit(id, `/api/admin/flavor-rewards/${id}/sales`, "POST", {
-      sourceReference: form.reference,
-      netSalesFils: amountFils,
-      notes: form.notes,
-    });
-  };
-
   if (loading && !data) return <div className="card-surface p-8 text-center text-sm text-[#896a71]"><LoaderCircle className="mx-auto mb-3 animate-spin" size={20}/>{ar ? "جارٍ تحميل مكافآت النكهات…" : "Loading Flavor Rewards…"}</div>;
   if (error && !data) return <div className="rounded-2xl bg-[#fff1f3] p-5 text-sm text-[#763246]" role="alert">{error}<button type="button" onClick={() => void refresh()} className="ms-3 underline">{ar ? "إعادة المحاولة" : "Retry"}</button></div>;
 
@@ -556,7 +505,7 @@ export function AdminFlavorRewardsPanel({ lang }: { lang: Lang }) {
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div><span className="eyebrow">{ar ? "لوحة المتجر" : "Store management"}</span>
         <h2 className="mt-1 font-display text-3xl text-[#5B0D1E]">{ar ? "مراجعة النكهات والمكافآت" : "Flavor and reward review"}</h2>
-        <p className="mt-2 max-w-2xl text-xs leading-6 text-[#795963]">{ar ? "تسجّل هذه اللوحة قرارات المراجعة والمبيعات المؤهلة وطلبات الصرف فقط. لا تنفّذ تحويلات مالية." : "This panel records review decisions, eligible sales, and payout requests only. It does not transfer funds."}</p>
+        <p className="mt-2 max-w-2xl text-xs leading-6 text-[#795963]">{ar ? "المراجعة التجارية متاحة، أما المبيعات والمكافآت وطلبات الصرف فمتوقفة حتى ربطها بطلبات مدفوعة موثقة." : "Commercial review remains available. Sales, rewards, and payouts are paused until linked to verified paid orders."}</p>
       </div>
       <button type="button" onClick={() => void refresh()} className="btn-outline"><RefreshCw size={14}/>{ar ? "تحديث" : "Refresh"}</button>
     </div>
@@ -571,7 +520,7 @@ export function AdminFlavorRewardsPanel({ lang }: { lang: Lang }) {
             <div><span className="text-[9px] uppercase tracking-wider text-[#896a71]">{item.status} · {item.commercialStatus}</span>
               <h4 className="mt-1 font-display text-xl text-[#5B0D1E]">{ar && item.titleAr ? item.titleAr : item.title}</h4>
             </div>
-            <span className="rounded-full bg-[#fff2f6] px-3 py-1 text-[10px] text-[#795963]">{item.confirmedInterestCount}/100</span>
+            <span className="rounded-full bg-[#fff2f6] px-3 py-1 text-[10px] text-[#795963]">{item.confirmedInterestCount} {ar ? "تسجيل اهتمام" : "interest registrations"}</span>
           </div>
           <p className="mt-2 text-xs leading-5 text-[#795963]">{ar && item.descriptionAr ? item.descriptionAr : item.description}</p>
           <p className="mt-2 break-all text-[9px] text-[#9a7b83]">{ar ? "معرّف الحساب:" : "Creator account ID:"} {item.creatorUserId}</p>
@@ -585,15 +534,9 @@ export function AdminFlavorRewardsPanel({ lang }: { lang: Lang }) {
               <button type="button" disabled={busyId === item.id} onClick={() => void submit(item.id, `/api/admin/flavor-rewards/${item.id}/review`, "PATCH", { decision: "rejected", notes: reviewNotes[item.id] ?? "" })} className="btn-outline px-3 py-2 text-[10px] disabled:opacity-50">{ar ? "رفض" : "Reject"}</button>
             </div>
           </div>}
-          {item.status === "published" && item.commercialStatus === "approved" && <form onSubmit={event => void recordSale(event, item.id)} className="mt-4 grid gap-2 rounded-xl bg-[#fff7f8] p-4 sm:grid-cols-2">
-            <label className="text-[10px] text-[#795963]">{ar ? "مرجع البيع" : "Sale reference"}
-              <input required maxLength={120} value={saleForms[item.id]?.reference ?? ""} onChange={event => setSaleForms(current => ({ ...current, [item.id]: { ...(current[item.id] ?? { reference: "", amount: "", notes: "" }), reference: event.target.value } }))} className="field mt-1"/>
-            </label>
-            <label className="text-[10px] text-[#795963]">{ar ? "صافي البيع (د.ك)" : "Net sales (KWD)"}
-              <input required type="number" min="0.001" step="0.001" value={saleForms[item.id]?.amount ?? ""} onChange={event => setSaleForms(current => ({ ...current, [item.id]: { ...(current[item.id] ?? { reference: "", amount: "", notes: "" }), amount: event.target.value } }))} className="field mt-1"/>
-            </label>
-            <button disabled={busyId === item.id} className="btn-outline sm:col-span-2">{ar ? "تسجيل البيع واحتساب 15%" : "Record sale and calculate 15%"}</button>
-          </form>}
+          {item.status === "published" && item.commercialStatus === "approved" && <p className="mt-4 rounded-xl bg-[#fff7f8] p-4 text-[10px] leading-5 text-[#795963]" role="status">
+            {ar ? "لن تُسجل عمولات يدوية. يجب أن تأتي المبيعات من تحقق دفع Stripe الموثق بعد اعتماد ربط قاعدة البيانات." : "Manual sales cannot earn commission. Sales must come from verified Stripe payments after the database integration is approved."}
+          </p>}
         </article>)}
         {(data?.ideas.length ?? 0) === 0 && <p className="card-surface p-6 text-xs text-[#896a71]">{ar ? "لا توجد أفكار حتى الآن." : "No flavor ideas yet."}</p>}
       </div>
@@ -607,24 +550,17 @@ export function AdminFlavorRewardsPanel({ lang }: { lang: Lang }) {
             <p className="mt-1 text-[10px] text-[#896a71]">{item.status} · {dateLabel(item.createdAt, lang)}</p>
             {item.adminNote && <p className="mt-1 text-xs text-[#795963]">{item.adminNote}</p>}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {item.status === "pending" && <>
-              <button type="button" disabled={busyId === item.id} onClick={() => void submit(item.id, `/api/admin/flavor-rewards/payout-requests/${item.id}`, "PATCH", { status: "approved" })} className="btn-outline px-3 py-2 text-[10px]">{ar ? "موافقة" : "Approve"}</button>
-              <button type="button" disabled={busyId === item.id} onClick={() => void submit(item.id, `/api/admin/flavor-rewards/payout-requests/${item.id}`, "PATCH", { status: "rejected" })} className="btn-outline px-3 py-2 text-[10px]">{ar ? "رفض" : "Reject"}</button>
-            </>}
-            {item.status === "approved" && <>
-              <input maxLength={200} placeholder={ar ? "مرجع التحويل اليدوي" : "Manual payout reference"} value={payoutRefs[item.id] ?? ""} onChange={event => setPayoutRefs(current => ({ ...current, [item.id]: event.target.value }))} className="field max-w-56"/>
-              <button type="button" disabled={busyId === item.id} onClick={() => void submit(item.id, `/api/admin/flavor-rewards/payout-requests/${item.id}`, "PATCH", { status: "paid", payoutReference: payoutRefs[item.id] ?? "" })} className="btn-primary px-3 py-2 text-[10px]">{ar ? "تسجيل الصرف" : "Record paid"}<Check size={12}/></button>
-              <button type="button" disabled={busyId === item.id} onClick={() => void submit(item.id, `/api/admin/flavor-rewards/payout-requests/${item.id}`, "PATCH", { status: "rejected" })} className="btn-outline px-3 py-2 text-[10px]">{ar ? "رفض" : "Reject"}</button>
-            </>}
-          </div>
+          <p className="max-w-sm text-[10px] leading-5 text-[#896a71]">
+            {ar ? "تم إيقاف إجراءات الصرف مؤقتاً لحماية الأرصدة التاريخية حتى مراجعتها." : "Payout actions are paused while historical balances are reviewed."}
+          </p>
         </article>)}
         {(data?.payoutRequests.length ?? 0) === 0 && <p className="card-surface p-6 text-xs text-[#896a71]">{ar ? "لا توجد طلبات صرف للمراجعة." : "No payout requests to review."}</p>}
       </div>
     </section>
 
     <section>
-      <h3 className="mb-3 font-display text-2xl text-[#5B0D1E]">{ar ? "المبيعات المؤهلة المسجلة" : "Recorded eligible sales"}</h3>
+      <h3 className="mb-2 font-display text-2xl text-[#5B0D1E]">{ar ? "سجلات المبيعات التاريخية" : "Historical sales records"}</h3>
+      <p className="mb-3 text-[10px] leading-5 text-[#896a71]">{ar ? "لا تُعد هذه السجلات دليلاً على الدفع ولا تُنشئ عمولات جديدة." : "These records are not proof of payment and cannot create new commissions."}</p>
       <div className="card-surface divide-y divide-[#f2e4e8] px-4">
         {(data?.sales ?? []).map(item => <div key={item.id} className="flex flex-wrap justify-between gap-2 py-3 text-xs">
           <span className="text-[#795963]">{item.sourceReference}</span>

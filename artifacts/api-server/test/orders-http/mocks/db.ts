@@ -105,7 +105,7 @@ class FlavorIdeasQuery {
   order() { return this; }
   limit(count: number) {
     this.maxRows = count;
-    return Promise.resolve({ data: this.selectedRows(), error: null });
+    return this;
   }
   eq(column: string, value: unknown) {
     this.filters.set(column, value);
@@ -131,6 +131,12 @@ class FlavorIdeasQuery {
     return row
       ? { data: row, error: result.error }
       : { data: null, error: result.error ?? { code: "PGRST116" } };
+  }
+  then<TResult1 = { data: unknown; error: { code: string } | null }, TResult2 = never>(
+    onfulfilled?: ((value: { data: unknown; error: { code: string } | null }) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): Promise<TResult1 | TResult2> {
+    return Promise.resolve(this.run()).then(onfulfilled, onrejected);
   }
 
   private selectedRows() {

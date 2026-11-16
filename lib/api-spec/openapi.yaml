@@ -634,17 +634,7 @@ paths:
   /account/flavor-rewards/payout-requests:
     post:
       operationId: requestFlavorPayout
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/FlavorPayoutRequestInput" }
       responses:
-        "201":
-          description: Payout request saved
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/FlavorPayoutRequest" }
         "401":
           description: Sign in required
         "409":
@@ -687,11 +677,6 @@ paths:
       operationId: recordFlavorEligibleSale
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/FlavorSaleInput" }
       responses:
         "409":
           description: Manual sales cannot earn rewards; verified payments are required
@@ -704,11 +689,6 @@ paths:
       operationId: reviewFlavorPayoutRequest
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/FlavorPayoutReviewInput" }
       responses:
         "409":
           description: Payout processing paused until balances are verified

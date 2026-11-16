@@ -105,6 +105,22 @@ test("replaying payment events is idempotent", () => {
   const replay = reconcileFlavorRewards([...events, events[100]!], first.ledgerEntries);
   assert.equal(first.summaries[0]?.verifiedEligibleOrderCount, 101);
   assert.deepEqual(replay.ledgerEntries, []);
+  assert.deepEqual(
+    reconcileFlavorRewards([...events, events[100]!]).ledgerEntries.map(entry => entry.idempotencyKey),
+    first.ledgerEntries.map(entry => entry.idempotencyKey),
+  );
+});
+
+test("two verified event types for the same Stripe payment count as one order", () => {
+  const payments = Array.from({ length: 100 }, (_, index) => paidOrder(index + 1));
+  const duplicatePaymentObject = {
+    ...payments[99]!,
+    eventId: "evt-payment-confirmation-alias",
+    occurredAt: "2026-01-01T00:02:00.000Z",
+  };
+  const result = reconcileFlavorRewards([...payments, duplicatePaymentObject]);
+  assert.equal(result.summaries[0]?.verifiedEligibleOrderCount, 100);
+  assert.deepEqual(result.ledgerEntries.map(entry => entry.type), ["milestone_bonus"]);
 });
 
 test("failed and cancelled attempts do not create eligible orders or rewards", () => {

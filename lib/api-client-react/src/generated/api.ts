@@ -46,10 +46,6 @@ import type {
   FlavorAssistantInput,
   FlavorCommercialReviewInput,
   FlavorIdea,
-  FlavorPayoutRequest,
-  FlavorPayoutRequestInput,
-  FlavorPayoutReviewInput,
-  FlavorSaleInput,
   GetAdminSession200,
   GetCurrencyConversionParams,
   GetPaymentOrderParams,
@@ -3811,28 +3807,14 @@ export const getRequestFlavorPayoutUrl = () => {
   return `/api/account/flavor-rewards/payout-requests`
 }
 
-export const requestFlavorPayout = async (flavorPayoutRequestInput: FlavorPayoutRequestInput, options?: Parameters<typeof customFetch>[1]): Promise<FlavorPayoutRequest> => {
+export const requestFlavorPayout = async ( options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return customFetch<FlavorPayoutRequest>(getRequestFlavorPayoutUrl(),
+  return customFetch<unknown>(getRequestFlavorPayoutUrl(),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(flavorPayoutRequestInput)
+    method: 'POST'
+
+
   }
 );}
 
@@ -3843,8 +3825,8 @@ return customFetch<FlavorPayoutRequest>(getRequestFlavorPayoutUrl(),
 export const getRequestFlavorPayoutMutationKey = () => ['requestFlavorPayout'] as const;
 
 export const getRequestFlavorPayoutMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestFlavorPayout>>, TError,RequestFlavorPayoutMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof requestFlavorPayout>>, TError,RequestFlavorPayoutMutationVariables, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestFlavorPayout>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestFlavorPayout>>, TError,void, TContext> => {
 
 const mutationKey = getRequestFlavorPayoutMutationKey();
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -3856,10 +3838,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestFlavorPayout>>, RequestFlavorPayoutMutationVariables> = (props) => {
-          const {data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestFlavorPayout>>, void> = () => {
 
-          return  requestFlavorPayout(data,requestOptions)
+
+          return  requestFlavorPayout(requestOptions)
         }
 
 
@@ -3870,16 +3852,16 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type RequestFlavorPayoutMutationResult = NonNullable<Awaited<ReturnType<typeof requestFlavorPayout>>>
-    export type RequestFlavorPayoutMutationBody = BodyType<FlavorPayoutRequestInput>
+
     export type RequestFlavorPayoutMutationError = ErrorType<void>
-    export type RequestFlavorPayoutMutationVariables = {data: BodyType<FlavorPayoutRequestInput>}
+
 
     export const useRequestFlavorPayout = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestFlavorPayout>>, TError,RequestFlavorPayoutMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestFlavorPayout>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof requestFlavorPayout>>,
         TError,
-        RequestFlavorPayoutMutationVariables,
+        void,
         TContext
       > => {
       return useMutation(getRequestFlavorPayoutMutationOptions(options), queryClient);
@@ -4071,29 +4053,14 @@ export const getRecordFlavorEligibleSaleUrl = (id: string,) => {
   return `/api/admin/flavor-rewards/${id}/sales`
 }
 
-export const recordFlavorEligibleSale = async (id: string,
-    flavorSaleInput: FlavorSaleInput, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+export const recordFlavorEligibleSale = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return customFetch<unknown>(getRecordFlavorEligibleSaleUrl(id),
+  return customFetch<unknown>(getRecordFlavorEligibleSaleUrl(id),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(flavorSaleInput)
+    method: 'POST'
+
+
   }
 );}
 
@@ -4118,9 +4085,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordFlavorEligibleSale>>, RecordFlavorEligibleSaleMutationVariables> = (props) => {
-          const {id,data} = props ?? {};
+          const {id} = props ?? {};
 
-          return  recordFlavorEligibleSale(id,data,requestOptions)
+          return  recordFlavorEligibleSale(id,requestOptions)
         }
 
 
@@ -4131,9 +4098,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type RecordFlavorEligibleSaleMutationResult = NonNullable<Awaited<ReturnType<typeof recordFlavorEligibleSale>>>
-    export type RecordFlavorEligibleSaleMutationBody = BodyType<FlavorSaleInput>
+
     export type RecordFlavorEligibleSaleMutationError = ErrorType<void>
-    export type RecordFlavorEligibleSaleMutationVariables = {id: string;data: BodyType<FlavorSaleInput>}
+    export type RecordFlavorEligibleSaleMutationVariables = {id: string}
 
     export const useRecordFlavorEligibleSale = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordFlavorEligibleSale>>, TError,RecordFlavorEligibleSaleMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -4154,29 +4121,14 @@ export const getReviewFlavorPayoutRequestUrl = (id: string,) => {
   return `/api/admin/flavor-rewards/payout-requests/${id}`
 }
 
-export const reviewFlavorPayoutRequest = async (id: string,
-    flavorPayoutReviewInput: FlavorPayoutReviewInput, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+export const reviewFlavorPayoutRequest = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return customFetch<unknown>(getReviewFlavorPayoutRequestUrl(id),
+  return customFetch<unknown>(getReviewFlavorPayoutRequestUrl(id),
   {
     ...options,
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(flavorPayoutReviewInput)
+    method: 'PATCH'
+
+
   }
 );}
 
@@ -4201,9 +4153,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewFlavorPayoutRequest>>, ReviewFlavorPayoutRequestMutationVariables> = (props) => {
-          const {id,data} = props ?? {};
+          const {id} = props ?? {};
 
-          return  reviewFlavorPayoutRequest(id,data,requestOptions)
+          return  reviewFlavorPayoutRequest(id,requestOptions)
         }
 
 
@@ -4214,9 +4166,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type ReviewFlavorPayoutRequestMutationResult = NonNullable<Awaited<ReturnType<typeof reviewFlavorPayoutRequest>>>
-    export type ReviewFlavorPayoutRequestMutationBody = BodyType<FlavorPayoutReviewInput>
+
     export type ReviewFlavorPayoutRequestMutationError = ErrorType<void>
-    export type ReviewFlavorPayoutRequestMutationVariables = {id: string;data: BodyType<FlavorPayoutReviewInput>}
+    export type ReviewFlavorPayoutRequestMutationVariables = {id: string}
 
     export const useReviewFlavorPayoutRequest = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewFlavorPayoutRequest>>, TError,ReviewFlavorPayoutRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}

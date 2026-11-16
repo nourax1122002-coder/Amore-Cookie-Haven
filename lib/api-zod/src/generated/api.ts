@@ -1405,26 +1405,7 @@ export const GetMyFlavorRewardsResponse = zod.object({
 })
 
 
-
-
-
-export const RequestFlavorPayoutBody = zod.object({
-  "amountFils": zod.number().int().min(1),
-  "requestKey": zod.string().uuid()
-})
-
-
-
-
-export const RequestFlavorPayoutResponse = zod.object({
-  "id": zod.string().uuid(),
-  "amountFils": zod.number().int().min(1),
-  "status": zod.enum(['pending', 'approved', 'paid', 'rejected']),
-  "adminNote": zod.string(),
-  "payoutReference": zod.string(),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
-})
+export const RequestFlavorPayoutResponse = zod.void()
 
 
 export const getAdminFlavorRewardsResponseIdeasItemOneConfirmedInterestCountMin = 0;
@@ -1503,37 +1484,11 @@ export const RecordFlavorEligibleSaleParams = zod.object({
   "id": zod.coerce.string().uuid()
 })
 
-export const recordFlavorEligibleSaleBodySourceReferenceMin = 2;
-export const recordFlavorEligibleSaleBodySourceReferenceMax = 120;
-
-
-export const recordFlavorEligibleSaleBodyNotesMax = 2000;
-
-
-
-export const RecordFlavorEligibleSaleBody = zod.object({
-  "sourceReference": zod.string().min(recordFlavorEligibleSaleBodySourceReferenceMin).max(recordFlavorEligibleSaleBodySourceReferenceMax),
-  "netSalesFils": zod.number().int().min(1),
-  "notes": zod.string().max(recordFlavorEligibleSaleBodyNotesMax).optional()
-})
-
 export const RecordFlavorEligibleSaleResponse = zod.void()
 
 
 export const ReviewFlavorPayoutRequestParams = zod.object({
   "id": zod.coerce.string().uuid()
-})
-
-export const reviewFlavorPayoutRequestBodyAdminNoteMax = 2000;
-
-export const reviewFlavorPayoutRequestBodyPayoutReferenceMax = 200;
-
-
-
-export const ReviewFlavorPayoutRequestBody = zod.object({
-  "status": zod.enum(['approved', 'rejected', 'paid']),
-  "adminNote": zod.string().max(reviewFlavorPayoutRequestBodyAdminNoteMax).optional(),
-  "payoutReference": zod.string().max(reviewFlavorPayoutRequestBodyPayoutReferenceMax).optional()
 })
 
 export const ReviewFlavorPayoutRequestResponse = zod.void()

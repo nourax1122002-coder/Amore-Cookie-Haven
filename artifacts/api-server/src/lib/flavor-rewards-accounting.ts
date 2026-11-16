@@ -139,7 +139,9 @@ function collectOrders(events: readonly FlavorPaymentEvent[]): {
       if (existing) {
         if (existing.paymentIntentId !== event.paymentIntentId
           || existing.flavorId !== event.flavorId
-          || existing.customerUserId !== event.customerUserId) {
+          || existing.creatorUserId !== event.creatorUserId
+          || existing.customerUserId !== event.customerUserId
+          || existing.eligibleNetSalesFils !== event.eligibleNetSalesFils) {
           throw new Error("A payment order cannot change its verified payment or flavor identity.");
         }
       } else {
@@ -189,8 +191,9 @@ function collectOrders(events: readonly FlavorPaymentEvent[]): {
 function effectiveNet(order: PaymentOrder): number {
   const disputed = [...order.disputes.values()]
     .filter(dispute => dispute.status === "open" || dispute.status === "lost")
-    .reduce((sum, dispute) => sum + dispute.amountFils, 0);
-  return Math.max(0, order.eligibleNetSalesFils - order.refundedFils - disputed);
+    .reduce((sum, dispute) => sum + BigInt(dispute.amountFils), 0n);
+  const net = BigInt(order.eligibleNetSalesFils) - BigInt(order.refundedFils) - disputed;
+  return net > 0n ? Number(net) : 0;
 }
 
 /**
@@ -218,6 +221,11 @@ export function reconcileFlavorRewards(
   events: readonly FlavorPaymentEvent[],
   existingLedger: readonly FlavorRewardLedgerEntry[] = [],
 ): FlavorRewardReconciliation {
+  for (const entry of existingLedger) {
+    if (!entry.targetKey.trim() || !entry.flavorId.trim() || !Number.isSafeInteger(entry.amountFils)) {
+      throw new Error("Existing reward ledger entries must have stable keys and integer fils.");
+    }
+  }
   const { orders, latestEventByFlavor } = collectOrders(events);
 
   const firstOrderByCustomer = new Map<string, PaymentOrder>();
@@ -251,7 +259,11 @@ export function reconcileFlavorRewards(
     flavorOrders.sort((left, right) =>
       Date.parse(left.paidAt) - Date.parse(right.paidAt)
         || left.orderId.localeCompare(right.orderId));
-    const effectiveNetSalesFils = flavorOrders.reduce((sum, order) => sum + effectiveNet(order), 0);
+    const effectiveNetSales = flavorOrders.reduce((sum, order) => sum + BigInt(effectiveNet(order)), 0n);
+    if (effectiveNetSales > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error("Flavor reward sales exceed safe integer precision.");
+    }
+    const effectiveNetSalesFils = Number(effectiveNetSales);
     summaries.push({
       flavorId,
       verifiedEligibleOrderCount: flavorOrders.length,
@@ -305,7 +317,12 @@ export function reconcileFlavorRewards(
 
   for (const targetKey of keys) {
     const oldEntries = ledgerByTarget.get(targetKey) ?? [];
-    const previousAmount = oldEntries.reduce((sum, entry) => sum + entry.amountFils, 0);
+    const previousAmountBig = oldEntries.reduce((sum, entry) => sum + BigInt(entry.amountFils), 0n);
+    if (previousAmountBig > BigInt(Number.MAX_SAFE_INTEGER)
+      || previousAmountBig < BigInt(Number.MIN_SAFE_INTEGER)) {
+      throw new Error("Existing reward ledger balance exceeds safe integer precision.");
+    }
+    const previousAmount = Number(previousAmountBig);
     const target = desired.get(targetKey);
     const targetAmount = target?.amountFils ?? 0;
     const delta = targetAmount - previousAmount;
@@ -318,11 +335,11 @@ export function reconcileFlavorRewards(
       ?? "reconciliation";
     const reason = target?.reason ?? "refund_or_dispute_adjustment";
     entries.push({
-      idempotencyKey: `flavor-reward:${sourceEventId}:${targetKey}:${delta}`,
+      idempotencyKey: `flavor-reward:${sourceEventId}:${targetKey}`,
       targetKey,
       flavorId,
       orderId: target?.orderId ?? oldEntries[0]?.orderId ?? null,
-      type: delta > 0 ? (target?.type ?? "correction") : "correction",
+      type: delta > 0 && oldEntries.length === 0 ? (target?.type ?? "correction") : "correction",
       amountFils: delta,
       sourceEventId,
       reason,
