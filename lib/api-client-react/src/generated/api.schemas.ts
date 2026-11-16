@@ -336,6 +336,8 @@ export type CheckoutAddressInput = DeliveryAddressInput;
 
 export interface CheckoutInput {
   requestKey?: string;
+  /** Optional published Flavor Rewards purchase; the server creates a separate one-line order without modifying the cart. */
+  flavorId?: string;
   lang?: CheckoutInputLang;
   email?: string;
   /** @maxLength 30 */
@@ -633,6 +635,15 @@ export interface FlavorIdea {
   publishedAt?: string | null;
 }
 
+export interface FlavorCheckoutProduct {
+  id: string;
+  title: string;
+  titleAr: string;
+  /** @minimum 1 */
+  priceFils: number;
+  available: boolean;
+}
+
 export interface PublicFlavorIdea {
   id: string;
   title: string;
@@ -644,6 +655,99 @@ export interface PublicFlavorIdea {
   /** @minimum 0 */
   confirmedInterestCount: number;
   publishedAt: string;
+  checkoutProduct?: null | FlavorCheckoutProduct;
+}
+
+export type AdminFlavorPaymentReviewsReviewsItemCurrency = typeof AdminFlavorPaymentReviewsReviewsItemCurrency[keyof typeof AdminFlavorPaymentReviewsReviewsItemCurrency];
+
+
+export const AdminFlavorPaymentReviewsReviewsItemCurrency = {
+  usd: 'usd',
+} as const;
+
+export type AdminFlavorPaymentReviewsReviewsItemReviewStatus = typeof AdminFlavorPaymentReviewsReviewsItemReviewStatus[keyof typeof AdminFlavorPaymentReviewsReviewsItemReviewStatus];
+
+
+export const AdminFlavorPaymentReviewsReviewsItemReviewStatus = {
+  pending: 'pending',
+  reviewed: 'reviewed',
+  dismissed: 'dismissed',
+} as const;
+
+export type AdminFlavorPaymentReviewsReviewsItem = {
+  stripe_event_id: string;
+  event_type: string;
+  stripe_object_type: string;
+  stripe_object_id: string;
+  customer_order_id: string;
+  stripe_payment_intent_id: string;
+  /** @minimum 1 */
+  amount_minor: number;
+  currency: AdminFlavorPaymentReviewsReviewsItemCurrency;
+  reason_code: string;
+  review_status: AdminFlavorPaymentReviewsReviewsItemReviewStatus;
+  /** @nullable */
+  reviewed_by?: string | null;
+  /** @nullable */
+  reviewed_at?: string | null;
+  review_note?: string;
+  event_created_at: string;
+  created_at: string;
+};
+
+export interface AdminFlavorPaymentReviews {
+  reviews: AdminFlavorPaymentReviewsReviewsItem[];
+}
+
+export type ResolveFlavorPaymentReviewInputDecision = typeof ResolveFlavorPaymentReviewInputDecision[keyof typeof ResolveFlavorPaymentReviewInputDecision];
+
+
+export const ResolveFlavorPaymentReviewInputDecision = {
+  reviewed: 'reviewed',
+  dismissed: 'dismissed',
+} as const;
+
+export interface ResolveFlavorPaymentReviewInput {
+  decision: ResolveFlavorPaymentReviewInputDecision;
+  /**
+     * @minLength 5
+     * @maxLength 2000
+     */
+  note: string;
+}
+
+export type CreateFlavorRefundInputComponent = typeof CreateFlavorRefundInputComponent[keyof typeof CreateFlavorRefundInputComponent];
+
+
+export const CreateFlavorRefundInputComponent = {
+  flavor_product: 'flavor_product',
+  delivery: 'delivery',
+} as const;
+
+export interface CreateFlavorRefundInput {
+  component: CreateFlavorRefundInputComponent;
+  requestKey: string;
+  /**
+     * Flavor product units only; the server derives the KWD and USD amounts from the saved order.
+     * @minimum 1
+     * @maximum 1000
+     */
+  quantity?: number;
+}
+
+export type CreateFlavorRefundResultCurrency = typeof CreateFlavorRefundResultCurrency[keyof typeof CreateFlavorRefundResultCurrency];
+
+
+export const CreateFlavorRefundResultCurrency = {
+  usd: 'usd',
+} as const;
+
+export interface CreateFlavorRefundResult {
+  refundId: string;
+  status: string;
+  /** @minimum 1 */
+  amountMinor: number;
+  currency: CreateFlavorRefundResultCurrency;
 }
 
 export type AdminFlavorIdea = FlavorIdea & {

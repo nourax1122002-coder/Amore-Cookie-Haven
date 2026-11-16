@@ -5,6 +5,7 @@ import {
   CreateFlavorDraftBody,
   CreateFlavorDraftResponse,
   GetAdminFlavorRewardsResponse,
+  GetAdminFlavorPaymentReviewsResponse,
   GetMyFlavorRewardsResponse,
   ListMyFlavorIdeasResponse,
   ListPublicFlavorRewardsResponse,
@@ -13,16 +14,24 @@ import {
   ReviewFlavorCommercialOutcomeBody,
   ReviewFlavorCommercialOutcomeParams,
   ReviewFlavorCommercialOutcomeResponse,
+  ResolveAdminFlavorPaymentReviewBody,
+  ResolveAdminFlavorPaymentReviewParams,
+  ResolveAdminFlavorPaymentReviewResponse,
+  CreateAdminFlavorTestRefundBody,
+  CreateAdminFlavorTestRefundParams,
+  CreateAdminFlavorTestRefundResponse,
   UpdateFlavorDraftBody,
   UpdateFlavorDraftParams,
   UpdateFlavorDraftResponse,
 } from "@workspace/api-zod";
 import { createSupabaseUserClient, supabase } from "@workspace/db";
+import { getCatalog } from "../lib/catalog";
 import { getAuthenticatedUserContext } from "../lib/auth";
 import { AssistantError, createOpenRouter, validatePrivateInput } from "../lib/assistant/openrouter";
 import { createGroqGateway } from "../lib/assistant/groq";
 import { createAssistantQuota } from "../lib/assistant/quota";
 import { HttpError } from "../lib/errors";
+import { createStripeFlavorTestRefund } from "../lib/stripe-functions";
 import { requireAdmin } from "../middlewares/security";
 
 const router = Router();
@@ -82,7 +91,16 @@ function idea(row: Row) {
   };
 }
 
-function publicIdea(row: Row) {
+function publicIdea(
+  row: Row,
+  checkoutProduct: {
+    id: string;
+    title: string;
+    titleAr: string;
+    priceFils: number;
+    available: boolean;
+  } | null = null,
+) {
   return {
     id: text(row, "id"),
     title: text(row, "title"),
@@ -93,6 +111,7 @@ function publicIdea(row: Row) {
     ingredientsAr: text(row, "ingredients_ar"),
     confirmedInterestCount: int(row, "confirmed_interest_count"),
     publishedAt: iso(row, "published_at"),
+    checkoutProduct,
   };
 }
 
@@ -200,7 +219,35 @@ router.get("/flavor-rewards", async (req, res): Promise<void> => {
     .select(PUBLIC_IDEA_COLUMNS)
     .order("published_at", { ascending: false })
     .limit(60);
-  const items = rowsOrFail(req, "public_list", result).map(publicIdea);
+  const ideaRows = rowsOrFail(req, "public_list", result);
+  const mappings = ideaRows.length
+    ? await supabase.from("flavor_reward_products")
+      .select("flavor_id,product_id")
+      .in("flavor_id", ideaRows.map(row => text(row, "id")))
+    : { data: [], error: null };
+  const mappingRows = mappings.error
+    && ["42P01", "PGRST205"].includes(mappings.error.code ?? "")
+    ? []
+    : rowsOrFail(req, "public_product_mappings", mappings);
+  const catalog = mappingRows.length ? await getCatalog(true) : [];
+  const byFlavor = new Map(mappingRows.map(mapping => [
+    text(mapping as Row, "flavor_id"),
+    text(mapping as Row, "product_id"),
+  ]));
+  const items = ideaRows.map(row => {
+    const productId = byFlavor.get(text(row, "id"));
+    const product = productId ? catalog.find(item => item.variantId === productId) : undefined;
+    const priceFils = product ? Math.round(product.price * 1000) : 0;
+    return publicIdea(row, product && Number.isSafeInteger(priceFils) && priceFils > 0
+      ? {
+        id: product.variantId,
+        title: product.title,
+        titleAr: product.titleAr,
+        priceFils,
+        available: product.available,
+      }
+      : null);
+  });
   res.json(ListPublicFlavorRewardsResponse.parse(items));
 });
 
@@ -361,7 +408,7 @@ router.post("/flavor-rewards/assistant", async (req, res): Promise<void> => {
       .select(PUBLIC_IDEA_COLUMNS)
       .order("published_at", { ascending: false })
       .limit(10);
-    const context = JSON.stringify(rowsOrFail(req, "assistant_context", publicIdeas).map(publicIdea));
+    const context = JSON.stringify(rowsOrFail(req, "assistant_context", publicIdeas).map(row => publicIdea(row)));
     let answer;
     if (process.env.GROQ_API_KEY) {
       provider = "groq";
@@ -439,13 +486,42 @@ router.get("/admin/flavor-rewards/payment-reviews", async (req, res): Promise<vo
   await adminUser(req, res);
   const result = await supabase.from("flavor_reward_event_reviews")
     .select(
-      "stripe_event_id,event_type,stripe_object_type,stripe_object_id,customer_order_id,stripe_payment_intent_id,amount_minor,currency,reason_code,allocation_metadata,review_status,event_created_at,created_at",
+      "stripe_event_id,event_type,stripe_object_type,stripe_object_id,customer_order_id,stripe_payment_intent_id,amount_minor,currency,reason_code,review_status,reviewed_by,reviewed_by_snapshot,reviewed_at,review_note,event_created_at,created_at",
     )
-    .eq("review_status", "pending")
     .order("event_created_at", { ascending: false })
     .limit(100);
-  const reviews = rowsOrFail(req, "payment_review_events", result);
-  res.json({ reviews });
+  const reviews = rowsOrFail(req, "payment_review_events", result).map(row => ({
+    ...row,
+    reviewed_by: row.reviewed_by_snapshot ?? row.reviewed_by ?? null,
+  }));
+  res.json(GetAdminFlavorPaymentReviewsResponse.parse({ reviews }));
+});
+
+router.patch("/admin/flavor-rewards/payment-reviews/:eventId", async (req, res): Promise<void> => {
+  const { eventId } = ResolveAdminFlavorPaymentReviewParams.parse(req.params);
+  const body = ResolveAdminFlavorPaymentReviewBody.parse(req.body);
+  const user = await adminUser(req, res);
+  const result = await supabase.rpc("resolve_flavor_reward_event_review", {
+    p_admin_user_id: user.id,
+    p_stripe_event_id: eventId,
+    p_decision: body.decision,
+    p_note: body.note,
+  });
+  databaseFailure(req, "payment_review_resolution", result.error);
+  res.json(ResolveAdminFlavorPaymentReviewResponse.parse({ ok: true }));
+});
+
+router.post("/admin/flavor-rewards/orders/:orderId/refunds", async (req, res): Promise<void> => {
+  const { orderId } = CreateAdminFlavorTestRefundParams.parse(req.params);
+  const body = CreateAdminFlavorTestRefundBody.parse(req.body);
+  await adminUser(req, res);
+  const refund = await createStripeFlavorTestRefund({
+    orderId,
+    component: body.component,
+    requestKey: body.requestKey,
+    ...(body.quantity === undefined ? {} : { quantity: body.quantity }),
+  });
+  res.status(201).json(CreateAdminFlavorTestRefundResponse.parse(refund));
 });
 
 router.patch("/admin/flavor-rewards/:id/review", async (req, res): Promise<void> => {

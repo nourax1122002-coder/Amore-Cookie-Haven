@@ -69,6 +69,68 @@ export type DisputeAllocationAttestation = {
   productDisputeFils: string;
 };
 
+export type FlavorRefundComponentAllocation =
+  | { ok: true; amountMinor: number; productRefundFils: number }
+  | { ok: false; reason: "invalid_order" | "invalid_quantity" | "already_refunded" | "amount_unavailable" };
+
+/**
+ * Derive a refund from saved order components. The caller supplies only a
+ * component and product-unit count; it never accepts a client money amount.
+ * Product USD cents are split across units deterministically so partial
+ * refunds sum exactly to the Stripe Checkout product line.
+ */
+export function deriveFlavorRefundComponentAllocation(input: {
+  component: "flavor_product" | "delivery";
+  quantity?: number;
+  orderQuantity: number;
+  unitPriceFils: number;
+  productLineAmountMinor: number;
+  deliveryLineAmountMinor: number;
+  previouslyRefundedProductFils: number;
+  previouslyRefundedDeliveryMinor: number;
+}): FlavorRefundComponentAllocation {
+  const integers = [
+    input.orderQuantity,
+    input.unitPriceFils,
+    input.productLineAmountMinor,
+    input.deliveryLineAmountMinor,
+    input.previouslyRefundedProductFils,
+    input.previouslyRefundedDeliveryMinor,
+  ];
+  if (integers.some(value => !Number.isSafeInteger(value) || value < 0)
+    || input.orderQuantity < 1 || input.unitPriceFils < 1
+    || input.productLineAmountMinor < 1
+    || input.previouslyRefundedProductFils > input.orderQuantity * input.unitPriceFils) {
+    return { ok: false, reason: "invalid_order" };
+  }
+  if (input.component === "delivery") {
+    if (input.deliveryLineAmountMinor < 1) return { ok: false, reason: "amount_unavailable" };
+    if (input.previouslyRefundedDeliveryMinor > 0) return { ok: false, reason: "already_refunded" };
+    return { ok: true, amountMinor: input.deliveryLineAmountMinor, productRefundFils: 0 };
+  }
+  const quantity = input.quantity;
+  if (!Number.isSafeInteger(quantity) || (quantity ?? 0) < 1) {
+    return { ok: false, reason: "invalid_quantity" };
+  }
+  if (input.previouslyRefundedProductFils % input.unitPriceFils !== 0) {
+    return { ok: false, reason: "invalid_order" };
+  }
+  const startingUnit = input.previouslyRefundedProductFils / input.unitPriceFils;
+  if (startingUnit + quantity! > input.orderQuantity) return { ok: false, reason: "already_refunded" };
+  const base = Math.floor(input.productLineAmountMinor / input.orderQuantity);
+  const extraCents = input.productLineAmountMinor % input.orderQuantity;
+  let amountMinor = 0;
+  for (let unit = startingUnit; unit < startingUnit + quantity!; unit += 1) {
+    amountMinor += base + (unit < extraCents ? 1 : 0);
+  }
+  if (amountMinor < 1) return { ok: false, reason: "amount_unavailable" };
+  return {
+    ok: true,
+    amountMinor,
+    productRefundFils: input.unitPriceFils * quantity!,
+  };
+}
+
 function toHex(bytes: Uint8Array): string {
   return [...bytes].map(value => value.toString(16).padStart(2, "0")).join("");
 }

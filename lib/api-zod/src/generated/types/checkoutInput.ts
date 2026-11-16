@@ -10,6 +10,8 @@ import type { CheckoutInputLang } from './checkoutInputLang';
 
 export interface CheckoutInput {
   requestKey?: string;
+  /** Optional published Flavor Rewards purchase; the server creates a separate one-line order without modifying the cart. */
+  flavorId?: string;
   lang?: CheckoutInputLang;
   email?: string;
   /** @maxLength 30 */

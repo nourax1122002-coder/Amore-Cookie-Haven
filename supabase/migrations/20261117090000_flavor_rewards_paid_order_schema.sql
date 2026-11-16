@@ -206,6 +206,7 @@ create table public.flavor_reward_event_reviews (
   review_status text not null default 'pending'
     check (review_status in ('pending', 'reviewed', 'dismissed')),
   reviewed_by uuid references auth.users(id) on delete set null,
+  reviewed_by_snapshot uuid,
   reviewed_at timestamptz,
   review_note text not null default '' check (char_length(review_note) <= 2000),
   created_at timestamptz not null default now(),
@@ -568,6 +569,71 @@ begin
     p_reason_code, p_allocation_metadata, p_event_created_at
   );
   return jsonb_build_object('duplicate', false, 'reviewId', p_stripe_event_id);
+end;
+$function$;
+
+create or replace function public.resolve_flavor_reward_event_review(
+  p_admin_user_id uuid,
+  p_stripe_event_id text,
+  p_decision text,
+  p_note text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_review public.flavor_reward_event_reviews%rowtype;
+begin
+  perform private.assert_flavor_rewards_admin(p_admin_user_id);
+  if p_stripe_event_id is null
+     or p_stripe_event_id !~ '^evt_[A-Za-z0-9]+$'
+     or p_decision is null
+     or p_decision not in ('reviewed', 'dismissed')
+     or p_note is null
+     or char_length(btrim(p_note)) < 5
+     or char_length(p_note) > 2000 then
+    raise exception using errcode = '22023', message = 'Invalid Flavor Rewards review decision';
+  end if;
+
+  update public.flavor_reward_event_reviews
+  set review_status = p_decision,
+      reviewed_by = p_admin_user_id,
+      reviewed_by_snapshot = p_admin_user_id,
+      reviewed_at = now(),
+      review_note = btrim(p_note)
+  where stripe_event_id = p_stripe_event_id
+    and review_status = 'pending'
+  returning * into v_review;
+
+  if found then
+    return jsonb_build_object(
+      'reviewId', v_review.stripe_event_id,
+      'status', v_review.review_status,
+      'reviewedBy', v_review.reviewed_by_snapshot,
+      'reviewedAt', v_review.reviewed_at
+    );
+  end if;
+
+  select * into v_review
+  from public.flavor_reward_event_reviews
+  where stripe_event_id = p_stripe_event_id;
+  if not found then
+    raise exception using errcode = 'P0002', message = 'Flavor Rewards review event not found';
+  end if;
+  if v_review.review_status = p_decision
+     and v_review.reviewed_by_snapshot = p_admin_user_id
+     and v_review.review_note = btrim(p_note) then
+    return jsonb_build_object(
+      'reviewId', v_review.stripe_event_id,
+      'status', v_review.review_status,
+      'reviewedBy', v_review.reviewed_by_snapshot,
+      'reviewedAt', v_review.reviewed_at,
+      'duplicate', true
+    );
+  end if;
+  raise exception using errcode = '23505', message = 'Flavor Rewards review event was already resolved';
 end;
 $function$;
 

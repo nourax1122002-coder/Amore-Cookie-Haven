@@ -7,9 +7,9 @@ import {
   useGetAdminSettings, useGetAdminSummary, useGetCart, useGetProduct, useGetStore,
   useListAdminProducts, useListInquiries, useListProducts, useSaveProduct, useSaveSettings,
    useStartCheckout, useTrackOrder, useUpdateCart, useUpdateInquiry,
-   useGetPaymentAvailability, useCancelStripeCheckout,
+  useGetPaymentAvailability, useCancelStripeCheckout, useListPublicFlavorRewards,
 } from '@workspace/api-client-react';
-import type { Cart, Inquiry, Product, ProductInput, StoreSettings, TrackingResult } from '@workspace/api-client-react';
+import type { Cart, Inquiry, Product, ProductInput, PublicFlavorIdea, StoreSettings, TrackingResult } from '@workspace/api-client-react';
 import { OrderDetails } from '@/components/order-status';
 import { PaymentResult, LocalOrdersAdmin } from '@/components/payments';
 import { AdminFlavorRewardsPanel, FlavorRewardsPage } from '@/components/flavor-rewards';
@@ -416,6 +416,102 @@ function isKuwaitCheckoutPhone(value: string) {
 }
 
 function CheckoutPage({lang}:{lang:Lang}) {
+  const flavorId=new URLSearchParams(window.location.search).get('flavorId')??'';
+  return flavorId
+    ? <FlavorRewardsCheckoutPage lang={lang} flavorId={flavorId}/>
+    : <StandardCheckoutPage lang={lang}/>;
+}
+function FlavorRewardsCheckoutPage({lang,flavorId}:{lang:Lang;flavorId:string}) {
+  const ar=lang==='ar', c=copy[lang];
+  const flavors=useListPublicFlavorRewards({query:{enabled:true}});
+  const idea=flavors.data?.find((item:PublicFlavorIdea)=>item.id===flavorId);
+  const product=idea?.checkoutProduct;
+  const availability=useGetPaymentAvailability({query:{refetchInterval:60000}});
+  const start=useStartCheckout();
+  const shipping=availability.data?.shippingFils;
+  const [phone,setPhone]=useState(''),[note,setNote]=useState(''),[phoneError,setPhoneError]=useState('');
+  const [address,setAddress]=useState({area:'',block:'',street:'',house:''});
+  const [resume,setResume]=useState<ExistingStripeCheckout|null>(null);
+  const [requestKey]=useState(()=>{
+    try {
+      const storageKey=`amore-flavor-checkout:${flavorId}`;
+      const existing=sessionStorage.getItem(storageKey);
+      if(existing&&/^[0-9a-f-]{36}$/i.test(existing))return existing;
+      const next=crypto.randomUUID();
+      sessionStorage.setItem(storageKey,next);
+      return next;
+    } catch {
+      return crypto.randomUUID();
+    }
+  });
+  const {formatAmount}=useCurrency();
+  const ready=availability.data?.stripeTestEnabled===true&&typeof shipping==='number'&&Boolean(product?.available);
+  const submit=(event:FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    if(!ready||start.isPending||Object.values(address).some(value=>!value.trim()))return;
+    if(!isKuwaitCheckoutPhone(phone)){
+      setPhoneError(ar?'أدخلي رقم هاتف كويتي من 8 أرقام، أو أضيفي مفتاح الدولة +965.':'Enter an 8-digit Kuwait number, or include the +965 country code.');
+      return;
+    }
+    setPhoneError('');
+    start.mutate({data:{
+      requestKey,flavorId,lang,
+      address:{area:address.area.trim(),block:address.block.trim(),street:address.street.trim(),house:address.house.trim()},
+      phone:phone.trim(),note:note||undefined,
+    }},{onSuccess:result=>{
+      if(result.resume){setResume(result.resume);return;}
+      window.location.assign(result.url);
+    }});
+  };
+  if(flavors.isLoading)return <div className="container-wide py-14"><LoadingBlock lang={lang}/></div>;
+  if(flavors.isError||!idea||!product)return <div className="container-wide py-14">
+    <p role="alert" className="rounded-xl bg-[#fff1f3] p-5 text-sm text-[#763246]">{ar?'هذه النكهة غير متاحة للطلب حالياً.':'This flavor is not currently available to order.'}</p>
+    <Link href="/flavor-rewards" className="btn-outline mt-5">{ar?'العودة إلى مكافآت النكهات':'Back to Flavor Rewards'}</Link>
+  </div>;
+  return <div className="container-wide py-12 md:py-16" dir={ar?'rtl':'ltr'}>
+    <span className="eyebrow">{ar?'طلب نكهة من المجتمع':'Community flavor order'}</span>
+    <h1 className="mt-2 font-display text-3xl text-[#5B0D1E]">{ar&&idea.titleAr?idea.titleAr:idea.title}</h1>
+    <p className="mt-3 max-w-2xl text-xs leading-6 text-[#795963]">
+      {ar?'سيُنشأ طلب منفصل لهذه النكهة. ستبقى سلة أموري العادية كما هي.':'This creates a separate order for this flavor. Your regular Amore bag will remain unchanged.'}
+    </p>
+    <div className="mt-7 grid gap-7 lg:grid-cols-[1fr_.75fr]">
+      <form onSubmit={submit} className="card-surface grid gap-5 p-6 md:p-8">
+        <fieldset className="grid gap-4 sm:grid-cols-2">
+          <legend className="field-label mb-3">{ar?'عنوان التوصيل':'Delivery address'}</legend>
+          {([
+            ['area',ar?'المنطقة':'Area'],['block',ar?'القطعة':'Block'],
+            ['street',ar?'الشارع':'Street'],['house',ar?'رقم المنزل':'House number'],
+          ] as const).map(([field,label])=><label key={field}>
+            <span className="field-label">{label} *</span>
+            <input className="field" required maxLength={100} value={address[field]}
+              onChange={event=>setAddress(current=>({...current,[field]:event.target.value}))}/>
+          </label>)}
+        </fieldset>
+        <label><span className="field-label">{c.phone} *</span><input className="field" type="tel" required minLength={8} maxLength={30} autoComplete="tel" value={phone} onChange={event=>{setPhone(event.target.value);setPhoneError('')}}/></label>
+        <label><span className="field-label">{c.note}</span><textarea className="field min-h-24" maxLength={2000} value={note} onChange={event=>setNote(event.target.value)}/></label>
+        <p role="status" className={`rounded-xl p-4 text-xs leading-6 ${ready?'bg-[#edf6ec] text-[#42643c]':'bg-[#fff1f3] text-[#763246]'}`}>
+          {ready?(ar?'الدفع عبر Stripe التجريبي فقط؛ لن تُحصّل أموال حقيقية.':'Stripe Test Mode only; no real money will be collected.')
+            :(ar?'الدفع التجريبي أو توفر النكهة غير جاهز حالياً.':'Test checkout or flavor availability is not ready yet.')}
+        </p>
+        {(phoneError||start.error)&&<p role="alert" className="text-xs text-red-700">{phoneError||start.error?.message}</p>}
+        {resume&&<div className="rounded-xl border border-[#efdee2] bg-[#fff6f4] p-4 text-xs">
+          <p>{ar?'توجد جلسة دفع سابقة لهذا الطلب.':'An earlier payment session exists for this order.'} {resume.number}</p>
+          <a className="btn-primary mt-3 w-full justify-center" href={resume.url}>{ar?'استئناف الدفع السابق':'Resume previous payment'}<ExternalLink size={14}/></a>
+        </div>}
+        <button disabled={!ready||start.isPending||Boolean(resume)} className="btn-primary w-full disabled:opacity-50">
+          {start.isPending?c.loading:(ar?'الدفع التجريبي عبر Stripe':'Pay with Stripe Test Mode')}<ExternalLink size={14}/>
+        </button>
+      </form>
+      <aside className="card-surface h-fit p-6">
+        <h2 className="font-display text-2xl text-[#5B0D1E]">{ar?'ملخص الطلب':'Order summary'}</h2>
+        <div className="mt-5 flex justify-between gap-4 text-sm"><span>{ar&&product.titleAr?product.titleAr:product.title} × 1</span><strong dir="ltr">{formatAmount(product.priceFils/1000,'KWD',lang)}</strong></div>
+        <div className="mt-4 flex justify-between text-sm text-[#795963]"><span>{ar?'التوصيل':'Delivery'}</span><span dir="ltr">{typeof shipping==='number'?formatAmount(shipping/1000,'KWD',lang):(ar?'بانتظار الاعتماد':'Awaiting approval')}</span></div>
+        <div className="mt-5 border-t border-[#efdee2] pt-5 flex justify-between font-semibold"><span>{c.total}</span><strong dir="ltr">{formatAmount((product.priceFils+(shipping??0))/1000,'KWD',lang)}</strong></div>
+      </aside>
+    </div>
+  </div>;
+}
+function StandardCheckoutPage({lang}:{lang:Lang}) {
   const c=copy[lang], cartQ=useGetCart({query:{queryKey:getGetCartQueryKey()}}), cart=cartQ.data;
   const start=useStartCheckout(), cancelExisting=useCancelStripeCheckout();const [phone,setPhone]=useState(''),[note,setNote]=useState(''),[phoneError,setPhoneError]=useState('');
   const {currency:displayCurrency,formatAmount,rateFor,loading:ratesLoading,error:ratesError}=useCurrency();

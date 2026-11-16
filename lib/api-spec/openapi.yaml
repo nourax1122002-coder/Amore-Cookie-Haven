@@ -652,6 +652,59 @@ paths:
           description: Sign in required
         "403":
           description: Approved administrator required
+  /admin/flavor-rewards/payment-reviews:
+    get:
+      operationId: getAdminFlavorPaymentReviews
+      responses:
+        "200":
+          description: Recent pending and resolved Stripe payment review cases
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminFlavorPaymentReviews" }
+        "401":
+          description: Sign in required
+        "403":
+          description: Approved administrator required
+  /admin/flavor-rewards/payment-reviews/{eventId}:
+    patch:
+      operationId: resolveAdminFlavorPaymentReview
+      parameters:
+        - { name: eventId, in: path, required: true, schema: { type: string, pattern: "^evt_[A-Za-z0-9]+$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveFlavorPaymentReviewInput" }
+      responses:
+        "200":
+          description: Review decision recorded by an administrator
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResult" }
+        "401":
+          description: Sign in required
+        "403":
+          description: Approved administrator required
+  /admin/flavor-rewards/orders/{orderId}/refunds:
+    post:
+      operationId: createAdminFlavorTestRefund
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 100 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFlavorRefundInput" }
+      responses:
+        "201":
+          description: Refund created in Stripe Test Mode from server-verified order components
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateFlavorRefundResult" }
+        "401":
+          description: Sign in required
+        "403":
+          description: Approved administrator required
   /admin/flavor-rewards/{id}/review:
     patch:
       operationId: reviewFlavorCommercialOutcome
@@ -894,6 +947,7 @@ components:
       type: object
       properties:
         requestKey: { type: string, format: uuid }
+        flavorId: { type: string, format: uuid, description: "Optional published Flavor Rewards purchase; the server creates a separate one-line order without modifying the cart." }
         lang: { type: string, enum: [ar, en] }
         email: { type: string, format: email }
         phone: { type: string, maxLength: 30 }
@@ -1125,6 +1179,65 @@ components:
         ingredientsAr: { type: string }
         confirmedInterestCount: { type: integer, minimum: 0 }
         publishedAt: { type: string, format: date-time }
+        checkoutProduct:
+          oneOf:
+            - { type: "null" }
+            - $ref: "#/components/schemas/FlavorCheckoutProduct"
+    FlavorCheckoutProduct:
+      type: object
+      required: [id, title, titleAr, priceFils, available]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        titleAr: { type: string }
+        priceFils: { type: integer, minimum: 1 }
+        available: { type: boolean }
+    AdminFlavorPaymentReviews:
+      type: object
+      required: [reviews]
+      properties:
+        reviews:
+          type: array
+          items:
+            type: object
+            required: [stripe_event_id, event_type, stripe_object_type, stripe_object_id, customer_order_id, stripe_payment_intent_id, amount_minor, currency, reason_code, review_status, event_created_at, created_at]
+            properties:
+              stripe_event_id: { type: string }
+              event_type: { type: string }
+              stripe_object_type: { type: string }
+              stripe_object_id: { type: string }
+              customer_order_id: { type: string }
+              stripe_payment_intent_id: { type: string }
+              amount_minor: { type: integer, minimum: 1 }
+              currency: { type: string, enum: [usd] }
+              reason_code: { type: string }
+              review_status: { type: string, enum: [pending, reviewed, dismissed] }
+              reviewed_by: { type: [string, "null"] }
+              reviewed_at: { type: [string, "null"], format: date-time }
+              review_note: { type: string }
+              event_created_at: { type: string, format: date-time }
+              created_at: { type: string, format: date-time }
+    ResolveFlavorPaymentReviewInput:
+      type: object
+      required: [decision, note]
+      properties:
+        decision: { type: string, enum: [reviewed, dismissed] }
+        note: { type: string, minLength: 5, maxLength: 2000 }
+    CreateFlavorRefundInput:
+      type: object
+      required: [component, requestKey]
+      properties:
+        component: { type: string, enum: [flavor_product, delivery] }
+        requestKey: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1, maximum: 1000, description: "Flavor product units only; the server derives the KWD and USD amounts from the saved order." }
+    CreateFlavorRefundResult:
+      type: object
+      required: [refundId, status, amountMinor, currency]
+      properties:
+        refundId: { type: string }
+        status: { type: string }
+        amountMinor: { type: integer, minimum: 1 }
+        currency: { type: string, enum: [usd] }
     AdminFlavorIdea:
       allOf:
         - { $ref: "#/components/schemas/FlavorIdea" }

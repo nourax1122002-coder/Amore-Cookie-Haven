@@ -137,6 +137,8 @@ test("Flavor Rewards lists public ideas but protects creator, account, AI, and a
     ["/api/account/flavor-rewards/payout-requests", { amountFils: 1000, requestKey: key }, "POST"],
     ["/api/admin/flavor-rewards", undefined, "GET"],
     ["/api/admin/flavor-rewards/payment-reviews", undefined, "GET"],
+    ["/api/admin/flavor-rewards/payment-reviews/evt_testreview1", { decision: "reviewed", note: "Checked event" }, "PATCH"],
+    ["/api/admin/flavor-rewards/orders/fr-test-order/refunds", { component: "delivery", requestKey: key }, "POST"],
   ] as const;
   for (const [path, body, method] of requests) {
     const response = await request(path, body, undefined, freshIp(), method);
@@ -150,6 +152,16 @@ test("Flavor Rewards lists public ideas but protects creator, account, AI, and a
       "visitor",
       freshIp(),
       "GET",
+    )).status,
+    403,
+  );
+  assert.equal(
+    (await request(
+      "/api/admin/flavor-rewards/payment-reviews/evt_testreview1",
+      { decision: "reviewed", note: "Checked event" },
+      "visitor",
+      freshIp(),
+      "PATCH",
     )).status,
     403,
   );

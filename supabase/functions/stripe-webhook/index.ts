@@ -10,6 +10,7 @@ import {
   KWD_USD_RATE_SOURCE,
 } from "../_shared/kwd-usd-settlement.ts";
 import {
+  createDisputeAllocationSignature,
   FLAVOR_REWARD_REFUND_METADATA,
   resolveFlavorRewardDispute,
   resolveFlavorRewardRefunds,
@@ -480,7 +481,7 @@ async function processFlavorDispute(
   eventDispute: Stripe.Dispute,
   signingKey: string,
 ) {
-  const dispute = await stripe.disputes.retrieve(eventDispute.id);
+  let dispute = await stripe.disputes.retrieve(eventDispute.id);
   if (dispute.livemode !== false || dispute.currency !== "usd" || !safeUsdMinor(dispute.amount)
     || dispute.amount < 1) {
     throw new Error("Invalid Stripe Test Mode dispute");
@@ -508,6 +509,63 @@ async function processFlavorDispute(
   }
   const snapshot = await getFlavorRewardSnapshot(supabase, order.id);
   if (!snapshot) return;
+  const originalDisputeMetadata = { ...(dispute.metadata ?? {}) };
+  const hasAnyFlavorAllocation = [
+    FLAVOR_REWARD_REFUND_METADATA.version,
+    FLAVOR_REWARD_REFUND_METADATA.orderId,
+    FLAVOR_REWARD_REFUND_METADATA.productDisputeFils,
+    FLAVOR_REWARD_REFUND_METADATA.allocationSignature,
+  ].some(key => originalDisputeMetadata[key] !== undefined);
+  const allocationMetadataMatchesOrder =
+    originalDisputeMetadata[FLAVOR_REWARD_REFUND_METADATA.version] === "1"
+    && originalDisputeMetadata[FLAVOR_REWARD_REFUND_METADATA.orderId] === order.id
+    && originalDisputeMetadata[FLAVOR_REWARD_REFUND_METADATA.chargeId] === charge.id
+    && originalDisputeMetadata[FLAVOR_REWARD_REFUND_METADATA.paymentIntentId] === paymentIntentId
+    && originalDisputeMetadata[FLAVOR_REWARD_REFUND_METADATA.stripeAmountMinor] === String(dispute.amount)
+    && originalDisputeMetadata[FLAVOR_REWARD_REFUND_METADATA.productDisputeFils]
+      === String(snapshot.eligible_sales_fils);
+  if (dispute.amount === charge.amount && charge.amount === storedUsdAmount(order)
+    && (!hasAnyFlavorAllocation || allocationMetadataMatchesOrder)) {
+    // A full-charge dispute has an exact product component from the saved
+    // one-line order snapshot; shipping is excluded rather than prorated.
+    // Partial disputes remain ambiguous and are sent to the review queue.
+    try {
+      const signature = await createDisputeAllocationSignature({
+        disputeId: dispute.id,
+        chargeId: charge.id,
+        paymentIntentId,
+        orderId: order.id,
+        amountMinor: dispute.amount,
+        currency: dispute.currency,
+        productDisputeFils: String(snapshot.eligible_sales_fils),
+      }, signingKey);
+      dispute = await stripe.disputes.update(dispute.id, {
+        metadata: {
+          ...originalDisputeMetadata,
+          [FLAVOR_REWARD_REFUND_METADATA.version]: "1",
+          [FLAVOR_REWARD_REFUND_METADATA.orderId]: order.id,
+          [FLAVOR_REWARD_REFUND_METADATA.productDisputeFils]: String(snapshot.eligible_sales_fils),
+          [FLAVOR_REWARD_REFUND_METADATA.stripeAmountMinor]: String(dispute.amount),
+          [FLAVOR_REWARD_REFUND_METADATA.chargeId]: charge.id,
+          [FLAVOR_REWARD_REFUND_METADATA.paymentIntentId]: paymentIntentId,
+          [FLAVOR_REWARD_REFUND_METADATA.allocationSignature]: signature,
+          [FLAVOR_REWARD_REFUND_METADATA.disputeStatus]: dispute.status,
+        },
+      });
+    } catch {
+      await queueFlavorRewardReview(
+        supabase,
+        event,
+        order,
+        "dispute",
+        dispute.id,
+        dispute.amount,
+        "missing_dispute_metadata",
+        { disputeId: dispute.id, amount: dispute.amount, currency: dispute.currency, status: dispute.status },
+      );
+      return;
+    }
+  }
   const disputeMetadata = dispute.metadata ?? {};
   const reviewMetadataValue = (key: string, maxLength = 64) => {
     const value = disputeMetadata[key];

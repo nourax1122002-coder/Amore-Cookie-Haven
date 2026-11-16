@@ -16,6 +16,10 @@ type StripeFunctionResponse = {
   sessionCheck?: unknown;
   paymentIntentCheck?: unknown;
   error?: unknown;
+  refundId?: unknown;
+  refundStatus?: unknown;
+  amountMinor?: unknown;
+  currency?: unknown;
 };
 
 function functionUrl(): string | null {
@@ -32,7 +36,7 @@ function functionUrl(): string | null {
 }
 
 async function callStripeFunction(
-  action: "availability" | "create" | "cancel" | "diagnostics",
+  action: "availability" | "create" | "cancel" | "diagnostics" | "refund",
   payload: Record<string, unknown> = {},
 ): Promise<StripeFunctionResponse> {
   const url = functionUrl();
@@ -99,6 +103,26 @@ export async function cancelStripeTestCheckout(input: { orderId: string; token: 
 
 export async function diagnoseStripeTestCheckout(input: { orderId: string; createdAt: string }) {
   return callStripeFunction("diagnostics", input);
+}
+
+export async function createStripeFlavorTestRefund(input: {
+  orderId: string;
+  component: "flavor_product" | "delivery";
+  requestKey: string;
+  quantity?: number;
+}): Promise<{ refundId: string; status: string; amountMinor: number; currency: "usd" }> {
+  const result = await callStripeFunction("refund", input);
+  if (typeof result.refundId !== "string" || typeof result.refundStatus !== "string"
+    || !Number.isSafeInteger(result.amountMinor) || typeof result.amountMinor !== "number"
+    || result.amountMinor < 1 || result.currency !== "usd") {
+    throw new HttpError(503, "Stripe did not confirm the requested test refund.");
+  }
+  return {
+    refundId: result.refundId,
+    status: result.refundStatus,
+    amountMinor: result.amountMinor,
+    currency: "usd",
+  };
 }
 
 export function safeStripeTestCheckoutUrl(value: string): string {

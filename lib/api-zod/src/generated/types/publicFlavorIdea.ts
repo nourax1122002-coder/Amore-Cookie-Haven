@@ -5,6 +5,7 @@
  * Amore Cookies storefront and management API
  * OpenAPI spec version: 1.0.0
  */
+import type { FlavorCheckoutProduct } from './flavorCheckoutProduct';
 
 export interface PublicFlavorIdea {
   id: string;
@@ -17,4 +18,5 @@ export interface PublicFlavorIdea {
   /** @minimum 0 */
   confirmedInterestCount: number;
   publishedAt: Date;
+  checkoutProduct?: null | FlavorCheckoutProduct;
 }

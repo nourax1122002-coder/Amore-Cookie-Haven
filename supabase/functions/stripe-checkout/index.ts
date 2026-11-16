@@ -12,6 +12,13 @@ import {
   KWD_USD_RATE_SOURCE,
   kwdUsdRateProvider,
 } from "../_shared/kwd-usd-settlement.ts";
+import {
+  createRefundAllocationSignature,
+  deriveFlavorRefundComponentAllocation,
+  FLAVOR_REWARD_REFUND_METADATA,
+  resolveFlavorRewardRefunds,
+  type StripeRefundAllocationInput,
+} from "../_shared/flavor-reward-refund-allocation.ts";
 
 type CheckoutItem = { title: string; quantity: number; unitFils: number };
 type CheckoutOrder = {
@@ -35,6 +42,8 @@ type CheckoutOrder = {
   stripe_exchange_rate_source: string | null;
   stripe_exchange_rate_updated_at: string | null;
   payment_url: string | null;
+  stripe_charge_id: string | null;
+  stripe_refunded_amount_minor: number | string;
 };
 
 const responseHeaders = { "content-type": "application/json", "cache-control": "no-store" };
@@ -139,6 +148,27 @@ async function loadAuthorizedOrder(
   const order = data as CheckoutOrder;
   const tokenHash = await sha256Hex(token);
   return constantTimeEqual(order.token_hash, tokenHash) ? order : null;
+}
+
+type FlavorRewardSnapshot = {
+  customer_order_id: string;
+  eligible_sales_fils: number;
+  product_refunded_fils: number;
+};
+
+async function loadFlavorRewardSnapshot(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  orderId: string,
+): Promise<FlavorRewardSnapshot | null> {
+  const { data, error } = await supabase.from("flavor_reward_order_snapshots")
+    .select("customer_order_id,eligible_sales_fils,product_refunded_fils")
+    .eq("customer_order_id", orderId)
+    .maybeSingle();
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205") return null;
+    throw new Error("Unable to load Flavor Rewards order snapshot");
+  }
+  return data as FlavorRewardSnapshot | null;
 }
 
 function makeUsdLineItems(
@@ -294,6 +324,12 @@ async function createSession(input: Record<string, unknown>) {
     return respond(409, { error: "This order is not available for Stripe checkout." });
   }
 
+  const flavorSnapshot = await loadFlavorRewardSnapshot(supabase, order.id);
+  if (flavorSnapshot && (order.items.length !== 1
+    || order.items[0].unitFils * order.items[0].quantity !== flavorSnapshot.eligible_sales_fils
+    || order.subtotal_fils !== flavorSnapshot.eligible_sales_fils)) {
+    return respond(409, { error: "Flavor Rewards order snapshot does not match the saved order." });
+  }
   const stripe = stripeClient(settings.keys.secretKey);
   const existingId = order.stripe_checkout_session_id;
   if (order.payment_status === "review" && !existingId) {
@@ -307,7 +343,14 @@ async function createSession(input: Record<string, unknown>) {
       || existing.currency !== "usd" || existing.amount_total !== settlement?.amountMinor
       || !settlement
       || existing.metadata.original_total_fils !== String(order.total_fils)
-      || existing.metadata.stripe_payment_amount_minor !== String(settlement.amountMinor)) {
+      || existing.metadata.stripe_payment_amount_minor !== String(settlement.amountMinor)
+      || (flavorSnapshot
+        ? existing.metadata.flavor_reward_order_id !== order.id
+          || existing.metadata.flavor_reward_product_fils !== String(flavorSnapshot.eligible_sales_fils)
+          || !Number.isSafeInteger(Number(existing.metadata.flavor_reward_product_amount_minor))
+          || Number(existing.metadata.flavor_reward_product_amount_minor) < 1
+          || Number(existing.metadata.flavor_reward_product_amount_minor) > settlement.amountMinor
+        : Boolean(existing.metadata.flavor_reward_order_id))) {
       return respond(409, { error: "Stripe session does not match this test order." });
     }
     if (existing.status === "open" && existing.url) {
@@ -361,6 +404,21 @@ async function createSession(input: Record<string, unknown>) {
   if (usdLineItems.totalMinor !== settlement.amountMinor) {
     return respond(409, { error: "The converted amount does not match the saved order." });
   }
+  const flavorProductAmountMinor = flavorSnapshot
+    ? usdLineItems.lines.at(0)?.price_data?.unit_amount ?? 0
+    : 0;
+  if (flavorSnapshot && (!Number.isSafeInteger(flavorProductAmountMinor)
+    || flavorProductAmountMinor < 1 || flavorProductAmountMinor > settlement.amountMinor)) {
+    return respond(409, { error: "Flavor Rewards product settlement needs review." });
+  }
+  const flavorSessionMetadata: Record<string, string> = {};
+  if (flavorSnapshot) {
+    Object.assign(flavorSessionMetadata, {
+      flavor_reward_order_id: order.id,
+      flavor_reward_product_fils: String(flavorSnapshot.eligible_sales_fils),
+      flavor_reward_product_amount_minor: String(flavorProductAmountMinor),
+    });
+  }
   const successUrl = new URL("/payment/success", input.origin);
   successUrl.searchParams.set("order", order.id);
   successUrl.searchParams.set("token", token);
@@ -392,6 +450,7 @@ async function createSession(input: Record<string, unknown>) {
       exchange_rate: settlement.rate.toFixed(10),
       exchange_rate_source: KWD_USD_RATE_SOURCE,
       exchange_rate_updated_at: settlement.updatedAt,
+      ...flavorSessionMetadata,
     },
     payment_intent_data: {
       metadata: {
@@ -404,6 +463,7 @@ async function createSession(input: Record<string, unknown>) {
         exchange_rate: settlement.rate.toFixed(10),
         exchange_rate_source: KWD_USD_RATE_SOURCE,
         exchange_rate_updated_at: settlement.updatedAt,
+        ...flavorSessionMetadata,
       },
     },
     success_url: successUrl.toString(),
@@ -437,6 +497,217 @@ async function createSession(input: Record<string, unknown>) {
   }).eq("id", order.id).in("payment_status", ["creating", "pending"]);
   if (saveError) throw new Error("Unable to save Stripe test checkout session");
   return respond(200, { url: session.url, mode: "test", checkoutStatus: "open" });
+}
+
+async function listRefundsForCharge(
+  stripe: Stripe,
+  chargeId: string,
+): Promise<{ refunds: StripeRefundAllocationInput[]; complete: boolean }> {
+  const refunds: StripeRefundAllocationInput[] = [];
+  let startingAfter: string | undefined;
+  for (let page = 0; page < 10; page += 1) {
+    const result = await stripe.refunds.list({
+      charge: chargeId,
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    refunds.push(...result.data.map(refund => ({
+      id: refund.id,
+      amount: refund.amount,
+      currency: refund.currency,
+      status: refund.status ?? "",
+      chargeId,
+      metadata: refund.metadata,
+    })));
+    if (!result.has_more) return { refunds, complete: true };
+    startingAfter = result.data.at(-1)?.id;
+    if (!startingAfter) return { refunds, complete: false };
+  }
+  return { refunds, complete: false };
+}
+
+async function createFlavorRefund(input: Record<string, unknown>) {
+  const settings = stripeTestSettings();
+  if (!settings.ready) return respond(503, { error: "Stripe Test Mode is not configured." });
+  const orderId = input.orderId;
+  const component = input.component;
+  const requestKey = input.requestKey;
+  const requestedQuantity = input.quantity;
+  if (typeof orderId !== "string" || !/^[a-f0-9-]{36}$/i.test(orderId)
+    || !["flavor_product", "delivery"].includes(String(component))
+    || typeof requestKey !== "string" || !/^[a-f0-9-]{36}$/i.test(requestKey)
+    || (requestedQuantity !== undefined
+      && (!Number.isSafeInteger(requestedQuantity) || Number(requestedQuantity) < 1))
+    || (component === "flavor_product" && requestedQuantity === undefined)
+    || (component === "delivery" && requestedQuantity !== undefined)) {
+    return respond(400, { error: "Invalid Flavor Rewards refund request." });
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data: order, error: orderError } = await supabase.from("customer_orders")
+    .select("*")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (orderError || !order || order.payment_provider !== "stripe"
+    || !["paid", "partially_refunded"].includes(order.payment_status)
+    || !order.stripe_checkout_session_id || !order.stripe_payment_intent_id
+    || order.stripe_payment_currency !== "USD") {
+    return respond(409, { error: "The paid Flavor Rewards order could not be verified." });
+  }
+  const snapshot = await loadFlavorRewardSnapshot(supabase, orderId);
+  if (!snapshot) return respond(409, { error: "Flavor Rewards order snapshot is missing." });
+  const orderItems = Array.isArray(order.items) ? order.items as CheckoutItem[] : [];
+  if (orderItems.length !== 1 || !Number.isSafeInteger(orderItems[0].quantity)
+    || orderItems[0].quantity < 1 || !Number.isSafeInteger(orderItems[0].unitFils)
+    || orderItems[0].unitFils < 1
+    || orderItems[0].unitFils * orderItems[0].quantity !== snapshot.eligible_sales_fils
+    || order.subtotal_fils !== snapshot.eligible_sales_fils) {
+    return respond(409, { error: "Flavor Rewards order lines need review before refund." });
+  }
+
+  const stripe = stripeClient(settings.keys.secretKey);
+  const session = await stripe.checkout.sessions.retrieve(order.stripe_checkout_session_id);
+  if (session.livemode !== false || session.payment_status !== "paid"
+    || session.currency !== "usd" || session.client_reference_id !== orderId
+    || session.metadata?.order_id !== orderId
+    || session.metadata?.flavor_reward_order_id !== orderId
+    || session.metadata.flavor_reward_product_fils !== String(snapshot.eligible_sales_fils)
+    || !Number.isSafeInteger(Number(session.metadata.flavor_reward_product_amount_minor))) {
+    return respond(409, { error: "Stripe Checkout does not match this test order." });
+  }
+  const paymentIntentId = typeof session.payment_intent === "string"
+    ? session.payment_intent
+    : session.payment_intent?.id;
+  if (!paymentIntentId) return respond(409, { error: "Stripe payment reference is missing." });
+  if (paymentIntentId !== order.stripe_payment_intent_id) {
+    return respond(409, { error: "Stripe payment reference does not match this order." });
+  }
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] });
+  const charge = typeof paymentIntent.latest_charge === "string"
+    ? await stripe.charges.retrieve(paymentIntent.latest_charge)
+    : paymentIntent.latest_charge;
+  if (!charge || charge.livemode !== false || charge.currency !== "usd"
+    || charge.payment_intent !== paymentIntentId
+    || charge.amount !== Number(order.stripe_payment_amount_minor)
+    || session.amount_total !== charge.amount || charge.amount_refunded > charge.amount) {
+    return respond(409, { error: "Stripe charge does not match the saved test payment." });
+  }
+
+  const { refunds, complete } = await listRefundsForCharge(stripe, charge.id);
+  if (!complete || refunds.some(refund => refund.status === "pending")) {
+    return respond(409, { error: "Existing refunds need to settle or be reviewed before another refund." });
+  }
+  const matchingRequest = refunds.find(
+    refund => refund.metadata?.amore_flavor_refund_request_id === requestKey,
+  );
+  // The webhook uses the same server-only Stripe Test key as the HMAC key,
+  // so this flow requires no additional secret and cannot accept live keys.
+  const signingKey = settings.keys.secretKey;
+  if (matchingRequest) {
+    const declaredProductFils = matchingRequest.metadata?.[FLAVOR_REWARD_REFUND_METADATA.productRefundFils];
+    const declaredAmountMinor = matchingRequest.metadata?.[FLAVOR_REWARD_REFUND_METADATA.stripeAmountMinor];
+    const expectedProductFils = component === "flavor_product"
+      ? orderItems[0].unitFils * Number(requestedQuantity)
+      : 0;
+    if (matchingRequest.chargeId !== charge.id
+      || matchingRequest.metadata?.[FLAVOR_REWARD_REFUND_METADATA.orderId] !== orderId
+      || matchingRequest.metadata?.[FLAVOR_REWARD_REFUND_METADATA.chargeId] !== charge.id
+      || declaredAmountMinor !== String(matchingRequest.amount)
+      || !Number.isSafeInteger(Number(declaredProductFils))
+      || Number(declaredProductFils) !== expectedProductFils
+      || (component === "flavor_product"
+        && (!Number.isSafeInteger(requestedQuantity) || Number(requestedQuantity) < 1))) {
+      return respond(409, { error: "The existing Stripe refund request does not match this retry." });
+    }
+    const signature = await createRefundAllocationSignature({
+      refundId: matchingRequest.id,
+      chargeId: charge.id,
+      orderId,
+      amountMinor: matchingRequest.amount,
+      currency: matchingRequest.currency,
+      productRefundFils: matchingRequest.metadata?.[FLAVOR_REWARD_REFUND_METADATA.productRefundFils] ?? "",
+    }, signingKey);
+    const metadata = { ...matchingRequest.metadata, [FLAVOR_REWARD_REFUND_METADATA.allocationSignature]: signature };
+    const updated = await stripe.refunds.update(matchingRequest.id, { metadata });
+    return respond(200, {
+      refundId: updated.id,
+      refundStatus: updated.status ?? "unknown",
+      amountMinor: updated.amount,
+      currency: updated.currency,
+    });
+  }
+
+  let previouslyRefundedProductFils = 0;
+  let previouslyRefundedDeliveryMinor = 0;
+  if (charge.amount_refunded > 0) {
+    const allocation = await resolveFlavorRewardRefunds(
+      refunds,
+      orderId,
+      snapshot.eligible_sales_fils,
+      charge.amount_refunded,
+      charge.id,
+      signingKey,
+    );
+    if (allocation.status !== "allocated"
+      || allocation.cumulativeProductRefundFils !== snapshot.product_refunded_fils) {
+      return respond(409, { error: "Existing refund allocations need admin review before another refund." });
+    }
+    previouslyRefundedProductFils = allocation.cumulativeProductRefundFils;
+    for (const refund of refunds) {
+      if (refund.status !== "succeeded") continue;
+      const productFils = Number(refund.metadata?.[FLAVOR_REWARD_REFUND_METADATA.productRefundFils]);
+      if (productFils === 0) previouslyRefundedDeliveryMinor += refund.amount;
+    }
+  }
+
+  const productLineAmountMinor = Number(session.metadata.flavor_reward_product_amount_minor);
+  const totalAmountMinor = Number(session.amount_total);
+  const allocation = deriveFlavorRefundComponentAllocation({
+    component: component as "flavor_product" | "delivery",
+    ...(requestedQuantity === undefined ? {} : { quantity: Number(requestedQuantity) }),
+    orderQuantity: orderItems[0].quantity,
+    unitPriceFils: orderItems[0].unitFils,
+    productLineAmountMinor,
+    deliveryLineAmountMinor: totalAmountMinor - productLineAmountMinor,
+    previouslyRefundedProductFils,
+    previouslyRefundedDeliveryMinor,
+  });
+  if (!allocation.ok || allocation.amountMinor > charge.amount - charge.amount_refunded) {
+    return respond(409, { error: "The requested refund component is unavailable or exceeds the remaining payment." });
+  }
+
+  const metadata: Record<string, string> = {
+    [FLAVOR_REWARD_REFUND_METADATA.version]: "1",
+    [FLAVOR_REWARD_REFUND_METADATA.orderId]: orderId,
+    [FLAVOR_REWARD_REFUND_METADATA.productRefundFils]: String(allocation.productRefundFils),
+    [FLAVOR_REWARD_REFUND_METADATA.stripeAmountMinor]: String(allocation.amountMinor),
+    [FLAVOR_REWARD_REFUND_METADATA.chargeId]: charge.id,
+    [FLAVOR_REWARD_REFUND_METADATA.paymentIntentId]: paymentIntentId,
+    amore_flavor_refund_request_id: requestKey,
+  };
+  const refund = await stripe.refunds.create({
+    charge: charge.id,
+    amount: allocation.amountMinor,
+    reason: "requested_by_customer",
+    metadata,
+  }, { idempotencyKey: `amore-flavor-refund-${orderId}-${requestKey}` });
+  const signature = await createRefundAllocationSignature({
+    refundId: refund.id,
+    chargeId: charge.id,
+    orderId,
+    amountMinor: refund.amount,
+    currency: refund.currency,
+    productRefundFils: String(allocation.productRefundFils),
+  }, signingKey);
+  const signedRefund = await stripe.refunds.update(refund.id, {
+    metadata: { ...metadata, [FLAVOR_REWARD_REFUND_METADATA.allocationSignature]: signature },
+  });
+  return respond(201, {
+    refundId: signedRefund.id,
+    refundStatus: signedRefund.status ?? "unknown",
+    amountMinor: signedRefund.amount,
+    currency: signedRefund.currency,
+  });
 }
 
 async function diagnoseStripe(input: Record<string, unknown>) {
@@ -613,6 +884,7 @@ Deno.serve(async req => {
     if (action === "diagnostics") return await diagnoseStripe(input);
     if (action === "create") return await createSession(input);
     if (action === "cancel") return await cancelSession(input);
+    if (action === "refund") return await createFlavorRefund(input);
     return respond(400, { error: "Unknown Stripe checkout action." });
   } catch (error) {
     const details = safeStripeError(error);

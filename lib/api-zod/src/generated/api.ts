@@ -295,6 +295,7 @@ export const startCheckoutBodyAddressOneLocationLongitudeMax = 180;
 
 export const StartCheckoutBody = zod.object({
   "requestKey": zod.string().uuid().optional(),
+  "flavorId": zod.string().uuid().optional().describe('Optional published Flavor Rewards purchase; the server creates a separate one-line order without modifying the cart.'),
   "lang": zod.enum(['ar', 'en']).optional(),
   "email": zod.string().email().optional(),
   "phone": zod.string().max(startCheckoutBodyPhoneMax).optional(),
@@ -1153,6 +1154,7 @@ export const listPublicFlavorRewardsResponseConfirmedInterestCountMin = 0;
 
 
 
+
 export const ListPublicFlavorRewardsResponseItem = zod.object({
   "id": zod.string().uuid(),
   "title": zod.string(),
@@ -1162,7 +1164,14 @@ export const ListPublicFlavorRewardsResponseItem = zod.object({
   "ingredients": zod.string(),
   "ingredientsAr": zod.string(),
   "confirmedInterestCount": zod.number().int().min(listPublicFlavorRewardsResponseConfirmedInterestCountMin),
-  "publishedAt": zod.coerce.date()
+  "publishedAt": zod.coerce.date(),
+  "checkoutProduct": zod.union([zod.null(),zod.object({
+  "id": zod.string().uuid(),
+  "title": zod.string(),
+  "titleAr": zod.string(),
+  "priceFils": zod.number().int().min(1),
+  "available": zod.boolean()
+})]).optional()
 })
 export const ListPublicFlavorRewardsResponse = zod.array(ListPublicFlavorRewardsResponseItem)
 
@@ -1459,6 +1468,81 @@ export const GetAdminFlavorRewardsResponse = zod.object({
   "payoutReference": zod.string(),
   "createdAt": zod.coerce.date()
 }))
+})
+
+
+
+
+
+export const GetAdminFlavorPaymentReviewsResponse = zod.object({
+  "reviews": zod.array(zod.object({
+  "stripe_event_id": zod.string(),
+  "event_type": zod.string(),
+  "stripe_object_type": zod.string(),
+  "stripe_object_id": zod.string(),
+  "customer_order_id": zod.string(),
+  "stripe_payment_intent_id": zod.string(),
+  "amount_minor": zod.number().int().min(1),
+  "currency": zod.enum(['usd']),
+  "reason_code": zod.string(),
+  "review_status": zod.enum(['pending', 'reviewed', 'dismissed']),
+  "reviewed_by": zod.string().nullish(),
+  "reviewed_at": zod.coerce.date().nullish(),
+  "review_note": zod.string().optional(),
+  "event_created_at": zod.coerce.date(),
+  "created_at": zod.coerce.date()
+}))
+})
+
+
+export const resolveAdminFlavorPaymentReviewPathEventIdRegExp = new RegExp('^evt_[A-Za-z0-9]+$');
+
+
+export const ResolveAdminFlavorPaymentReviewParams = zod.object({
+  "eventId": zod.coerce.string().regex(resolveAdminFlavorPaymentReviewPathEventIdRegExp)
+})
+
+export const resolveAdminFlavorPaymentReviewBodyNoteMin = 5;
+export const resolveAdminFlavorPaymentReviewBodyNoteMax = 2000;
+
+
+
+export const ResolveAdminFlavorPaymentReviewBody = zod.object({
+  "decision": zod.enum(['reviewed', 'dismissed']),
+  "note": zod.string().min(resolveAdminFlavorPaymentReviewBodyNoteMin).max(resolveAdminFlavorPaymentReviewBodyNoteMax)
+})
+
+export const ResolveAdminFlavorPaymentReviewResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+export const createAdminFlavorTestRefundPathOrderIdMax = 100;
+
+
+
+export const CreateAdminFlavorTestRefundParams = zod.object({
+  "orderId": zod.coerce.string().min(1).max(createAdminFlavorTestRefundPathOrderIdMax)
+})
+
+export const createAdminFlavorTestRefundBodyQuantityMax = 1000;
+
+
+
+export const CreateAdminFlavorTestRefundBody = zod.object({
+  "component": zod.enum(['flavor_product', 'delivery']),
+  "requestKey": zod.string().uuid(),
+  "quantity": zod.number().int().min(1).max(createAdminFlavorTestRefundBodyQuantityMax).optional().describe('Flavor product units only; the server derives the KWD and USD amounts from the saved order.')
+})
+
+
+
+
+export const CreateAdminFlavorTestRefundResponse = zod.object({
+  "refundId": zod.string(),
+  "status": zod.string(),
+  "amountMinor": zod.number().int().min(1),
+  "currency": zod.enum(['usd'])
 })
 
 

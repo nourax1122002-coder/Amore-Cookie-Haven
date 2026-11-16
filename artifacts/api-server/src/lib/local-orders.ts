@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import {
   getCustomerOrder, getCustomerOrderByNumber, getCustomerOrderByRequestKey,
   getLatestOrderForCart, insertCustomerOrder,
-  listCustomerOrders, updateCustomerOrder,
+  listCustomerOrders, supabase, updateCustomerOrder,
   type CustomerOrder, type OrderItem,
 } from "@workspace/db";
 import { StartCheckoutBody } from "@workspace/api-zod";
@@ -15,6 +15,7 @@ import { HttpError } from "./errors";
 import { checkoutAddress } from "./delivery-address";
 import { reserveStock, releaseStock, stockLock } from "./order-stock";
 import { getAuthenticatedUser } from "./auth";
+import { resolveFlavorRewardProduct } from "./flavor-reward-checkout";
 import {
   cancelStripeTestCheckout, createStripeTestCheckout, diagnoseStripeTestCheckout, stripeTestAvailability,
 } from "./stripe-functions";
@@ -188,26 +189,85 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
   if (!phone || !phone.startsWith("965") || phone.length !== 11) throw new HttpError(400, "Enter a Kuwait phone number. / يرجى إدخال رقم هاتف كويتي صحيح.");
   const address = checkoutAddress(body.address);
   if (!body.requestKey) throw new HttpError(400, "Checkout reference is missing. Refresh the page.");
-  const id = cartId(req);
-  const cart = await rawCart(id);
-  if (!id || !cart?.lines.nodes.length) throw new HttpError(409, "Your bag is empty. / السلة فارغة.");
   const account = res ? await getAuthenticatedUser(req, res) : null;
-  if (cart.discountCodes.some(c => c.applicable)) throw new HttpError(409, "Discount codes must be removed before direct payment. / يرجى إزالة رمز الخصم قبل الدفع المباشر.");
   const catalog = await getCatalog(true);
-  const aggregate = new Map<string, number>();
-  for (const line of cart.lines.nodes) aggregate.set(line.merchandise.id, (aggregate.get(line.merchandise.id) ?? 0) + line.quantity);
-  const items: OrderItem[] = [...aggregate].sort(([a], [b]) => a.localeCompare(b)).map(([variantId, quantity]) => {
-    const product = catalog.find(p => p.variantId === variantId);
-    if (!product || !Number.isInteger(quantity) || quantity <= 0) throw new HttpError(409, "Requested stock is not available. / الكمية المطلوبة غير متوفرة.");
+  const flavorId = body.flavorId;
+  let items: OrderItem[];
+  let cartHash: string;
+  if (flavorId) {
+    if (!/^[a-f0-9-]{36}$/i.test(flavorId)) throw new HttpError(400, "Invalid Flavor Rewards flavor.");
+    const [published, mapping] = await Promise.all([
+      supabase.from("published_flavor_ideas").select("id").eq("id", flavorId).maybeSingle(),
+      supabase.from("flavor_reward_products").select("product_id").eq("flavor_id", flavorId).maybeSingle(),
+    ]);
+    const missingSchema = [published.error, mapping.error].some(error =>
+      error && ["42P01", "PGRST205"].includes(error.code ?? ""));
+    if (missingSchema) {
+      throw new HttpError(503, "Flavor Rewards checkout is awaiting its approved database migration. No payment was started.");
+    }
+    if (published.error || mapping.error) {
+      req.log.error({
+        operation: "flavor_checkout_product_lookup",
+        databaseCodes: [published.error?.code ?? null, mapping.error?.code ?? null],
+      }, "Flavor Rewards checkout lookup failed");
+      throw new HttpError(503, "Flavor Rewards checkout is temporarily unavailable.");
+    }
+    const mappedProductId = typeof mapping.data?.product_id === "string" ? mapping.data.product_id : null;
+    const resolution = resolveFlavorRewardProduct(Boolean(published.data), mappedProductId, catalog);
+    if (resolution.status === "not_published" || resolution.status === "not_mapped") {
+      throw new HttpError(404, "This flavor is not available for purchase.");
+    }
+    if (resolution.status !== "ready") throw new HttpError(409, "This flavor is currently unavailable.");
+    const product = resolution.product;
     const unitFils = moneyToFils(product.price);
     if (!unitFils) throw new HttpError(409, "A product price requires review.");
-    return { variantId, quantity, title: product.title, unitFils };
-  });
+    items = [{ variantId: product.variantId, quantity: 1, title: product.title, unitFils }];
+    // A Flavor Rewards purchase is its own idempotent order. It never reads,
+    // clears, or changes the customer's ordinary cart.
+    cartHash = digest(`flavor-purchase:${flavorId}:${body.requestKey}`);
+  } else {
+    const id = cartId(req);
+    const cart = await rawCart(id);
+    if (!id || !cart?.lines.nodes.length) throw new HttpError(409, "Your bag is empty. / السلة فارغة.");
+    if (cart.discountCodes.some(c => c.applicable)) {
+      throw new HttpError(409, "Discount codes must be removed before direct payment. / يرجى إزالة رمز الخصم قبل الدفع المباشر.");
+    }
+    const aggregate = new Map<string, number>();
+    for (const line of cart.lines.nodes) {
+      aggregate.set(line.merchandise.id, (aggregate.get(line.merchandise.id) ?? 0) + line.quantity);
+    }
+    items = [...aggregate].sort(([a], [b]) => a.localeCompare(b)).map(([variantId, quantity]) => {
+      const product = catalog.find(p => p.variantId === variantId);
+      if (!product || !Number.isInteger(quantity) || quantity <= 0) {
+        throw new HttpError(409, "Requested stock is not available. / الكمية المطلوبة غير متوفرة.");
+      }
+      const unitFils = moneyToFils(product.price);
+      if (!unitFils) throw new HttpError(409, "A product price requires review.");
+      return { variantId, quantity, title: product.title, unitFils };
+    });
+    const rewardProducts = await supabase.from("flavor_reward_products")
+      .select("product_id")
+      .in("product_id", items.map(item => item.variantId));
+    if (rewardProducts.error
+      && !["42P01", "PGRST205"].includes(rewardProducts.error.code ?? "")) {
+      req.log.error({
+        operation: "normal_checkout_flavor_product_check",
+        databaseCode: rewardProducts.error.code ?? "unknown",
+      }, "Flavor Rewards product check failed");
+      throw new HttpError(503, "Checkout is temporarily unavailable. Please retry.");
+    }
+    if (rewardProducts.data?.length) {
+      throw new HttpError(
+        409,
+        "Flavor Rewards creations need a separate order. Use the order button on the published flavor page; your regular bag is unchanged.",
+      );
+    }
+    cartHash = digest(id);
+  }
   const subtotalFils = items.reduce((sum, item) => sum + item.unitFils * item.quantity, 0);
   const totalFils = subtotalFils + shippingFils;
   if (!Number.isSafeInteger(totalFils) || totalFils > 2_000_000_000) throw new HttpError(409, "Invalid order total.");
-  const cartHash = digest(id);
-  const requestPayload = { cartHash, items, address, phone, note: body.note ?? "", totalFils };
+  const requestPayload = { cartHash, items, flavorId: flavorId ?? null, address, phone, note: body.note ?? "", totalFils };
   const requestHash = digest(JSON.stringify({ ...requestPayload, provider: "stripe" }));
   return stockLock(async () => {
     let order = await getLatestOrderForCart(cartHash);
@@ -234,6 +294,21 @@ export async function localCheckout(req: Request, body: ReturnType<typeof StartC
       expiresAt: new Date(Date.now() + 40 * 60_000),
     });
     if (!order) throw new HttpError(503, "Order could not be saved.");
+    if (flavorId) {
+      const claim = await supabase.rpc("claim_flavor_reward_order", {
+        p_customer_order_id: order.id,
+        p_flavor_id: flavorId,
+      });
+      if (claim.error) {
+        req.log.error({
+          operation: "claim_flavor_reward_order",
+          databaseCode: claim.error.code ?? "unknown",
+          orderId: order.id,
+        }, "Flavor Rewards order snapshot could not be secured");
+        await updateCustomerOrder(order.id, { paymentStatus: "review", updatedAt: new Date() });
+        throw new HttpError(503, "This flavor order could not be verified, so no payment was started. Contact support before retrying.");
+      }
+    }
     // No payment request is sent until reservation is durably confirmed.
     await reserveStock(order);
     await updateCustomerOrder(order.id, { paymentStatus: "creating", updatedAt: new Date() });

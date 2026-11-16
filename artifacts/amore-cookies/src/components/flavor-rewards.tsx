@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import type {
   AdminFlavorRewards,
+  AdminFlavorPaymentReviews,
   CreatorFlavorRewards,
   FlavorIdea,
   PublicFlavorIdea,
@@ -405,6 +406,12 @@ function PublicIdeaCard({ idea, lang }: {
         <span>{idea.confirmedInterestCount} {ar ? "تسجيل اهتمام" : "interest registrations"}</span>
         <span>{dateLabel(idea.publishedAt, lang)}</span>
       </div>
+      {idea.checkoutProduct?.available && <div className="mt-3 flex items-center justify-between gap-3">
+        <span className="text-xs font-semibold text-[#5B0D1E]">{kwd(idea.checkoutProduct.priceFils, lang)}</span>
+        <Link href={`/checkout?flavorId=${encodeURIComponent(idea.id)}`} className="btn-primary px-3 py-2 text-[10px]">
+          {ar ? "اطلبي هذه النكهة" : "Order this flavor"}<ArrowRight size={12}/>
+        </Link>
+      </div>}
       <p className="mt-3 text-[10px] leading-5 text-[#896a71]">
         {ar ? "تسجيلات الاهتمام للعرض فقط ولا تُحتسب مكافآت منها." : "Interest registrations are informational and never count toward rewards."}
       </p>
@@ -464,10 +471,13 @@ function FlavorAssistant({
 export function AdminFlavorRewardsPanel({ lang }: { lang: Lang }) {
   const ar = lang === "ar";
   const [data, setData] = useState<AdminFlavorRewards | null>(null);
+  const [paymentReviews, setPaymentReviews] = useState<AdminFlavorPaymentReviews | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [paymentReviewError, setPaymentReviewError] = useState("");
   const [busyId, setBusyId] = useState("");
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [paymentReviewNotes, setPaymentReviewNotes] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState("");
 
   const refresh = useCallback(async () => {
@@ -475,6 +485,13 @@ export function AdminFlavorRewardsPanel({ lang }: { lang: Lang }) {
     setError("");
     try {
       setData(await api<AdminFlavorRewards>("/api/admin/flavor-rewards"));
+      try {
+        setPaymentReviews(await api<AdminFlavorPaymentReviews>("/api/admin/flavor-rewards/payment-reviews"));
+        setPaymentReviewError("");
+      } catch (cause) {
+        setPaymentReviews(null);
+        setPaymentReviewError(errorText(cause, lang));
+      }
     } catch (cause) {
       setError(errorText(cause, lang));
     } finally {
@@ -497,6 +514,19 @@ export function AdminFlavorRewardsPanel({ lang }: { lang: Lang }) {
       setBusyId("");
     }
   };
+  const resolvePaymentReview = (eventId: string, decision: "reviewed" | "dismissed") => {
+    const note = paymentReviewNotes[eventId]?.trim() ?? "";
+    if (note.length < 5) {
+      setPaymentReviewError(ar ? "أضيفي ملاحظة مراجعة من 5 أحرف على الأقل." : "Add a review note of at least 5 characters.");
+      return;
+    }
+    void submit(
+      eventId,
+      `/api/admin/flavor-rewards/payment-reviews/${encodeURIComponent(eventId)}`,
+      "PATCH",
+      { decision, note },
+    );
+  };
 
   if (loading && !data) return <div className="card-surface p-8 text-center text-sm text-[#896a71]"><LoaderCircle className="mx-auto mb-3 animate-spin" size={20}/>{ar ? "جارٍ تحميل مكافآت النكهات…" : "Loading Flavor Rewards…"}</div>;
   if (error && !data) return <div className="rounded-2xl bg-[#fff1f3] p-5 text-sm text-[#763246]" role="alert">{error}<button type="button" onClick={() => void refresh()} className="ms-3 underline">{ar ? "إعادة المحاولة" : "Retry"}</button></div>;
@@ -511,6 +541,53 @@ export function AdminFlavorRewardsPanel({ lang }: { lang: Lang }) {
     </div>
     {error && <p role="alert" className="rounded-xl bg-[#fff1f3] p-4 text-xs text-[#763246]">{error}</p>}
     {success && <p role="status" className="rounded-xl bg-[#eef7ee] p-4 text-xs text-[#36583d]">{success}</p>}
+
+    <section>
+      <h3 className="mb-2 font-display text-2xl text-[#5B0D1E]">{ar ? "مراجعة استردادات ونزاعات Stripe" : "Stripe refund and dispute reviews"}</h3>
+      <p className="mb-3 text-[10px] leading-5 text-[#896a71]">
+        {ar
+          ? "تسجيل قرار المراجعة لا يغيّر عمولة أو مكافأة. لا تُعدّل السجلات المالية إلا بعد تحقق خادمي من توزيع المنتج."
+          : "Recording a review decision does not change commissions or bonuses. Financial entries change only after server verification of the product allocation."}
+      </p>
+      {paymentReviewError && <p role="alert" className="mb-3 rounded-xl bg-[#fff1f3] p-3 text-xs text-[#763246]">{paymentReviewError}</p>}
+      <div className="grid gap-3">
+        {(paymentReviews?.reviews ?? []).map(item => <article key={item.stripe_event_id} className="card-surface p-4">
+          <div className="flex flex-wrap justify-between gap-2">
+            <strong className="text-xs text-[#5B0D1E]">{item.event_type} · {item.review_status}</strong>
+            <time className="text-[10px] text-[#896a71]">{dateLabel(item.event_created_at, lang)}</time>
+          </div>
+          <p className="mt-2 break-all text-[10px] text-[#795963]">
+            {item.stripe_object_type}: {item.stripe_object_id} · {item.amount_minor / 100} USD · {item.reason_code}
+          </p>
+          <p className="mt-1 break-all text-[9px] text-[#896a71]">
+            {ar ? "الطلب / الحدث:" : "Order / event:"} {item.customer_order_id} · {item.stripe_event_id}
+          </p>
+          {item.review_status === "pending" ? <div className="mt-3">
+            <label className="block text-[10px] font-semibold text-[#795963]">{ar ? "سبب قرار المراجعة" : "Reason for review decision"}
+              <textarea minLength={5} maxLength={2000} required value={paymentReviewNotes[item.stripe_event_id] ?? ""}
+                onChange={event => setPaymentReviewNotes(current => ({ ...current, [item.stripe_event_id]: event.target.value }))}
+                className="field mt-1 min-h-16"/>
+            </label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" disabled={busyId === item.stripe_event_id}
+                onClick={() => resolvePaymentReview(item.stripe_event_id, "reviewed")}
+                className="btn-primary px-3 py-2 text-[10px] disabled:opacity-50">
+                {ar ? "تمت المراجعة" : "Mark reviewed"}
+              </button>
+              <button type="button" disabled={busyId === item.stripe_event_id}
+                onClick={() => resolvePaymentReview(item.stripe_event_id, "dismissed")}
+                className="btn-outline px-3 py-2 text-[10px] disabled:opacity-50">
+                {ar ? "استبعاد الحالة" : "Dismiss case"}
+              </button>
+            </div>
+          </div> : <p className="mt-2 text-[10px] leading-5 text-[#795963]">
+            {item.review_note} · {item.reviewed_by ?? "—"} · {item.reviewed_at ? dateLabel(item.reviewed_at, lang) : "—"}
+          </p>}
+        </article>)}
+        {paymentReviews?.reviews.length === 0 && <p className="card-surface p-5 text-xs text-[#896a71]">{ar ? "لا توجد حالات مراجعة." : "No payment review cases."}</p>}
+        {!paymentReviews && !paymentReviewError && <p className="card-surface p-5 text-xs text-[#896a71]">{ar ? "جارٍ تحميل حالات المراجعة…" : "Loading payment review cases…"}</p>}
+      </div>
+    </section>
 
     <section>
       <h3 className="mb-3 font-display text-2xl text-[#5B0D1E]">{ar ? "أفكار النكهات" : "Flavor ideas"}</h3>

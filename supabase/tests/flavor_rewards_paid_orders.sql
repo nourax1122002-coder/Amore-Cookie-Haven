@@ -649,6 +649,11 @@ select public.test_assert(
     and not has_table_privilege('authenticated', 'public.flavor_reward_event_reviews', 'UPDATE'),
   'authenticated clients cannot create or resolve payment review events directly'
 );
+select public.test_assert(
+  not has_function_privilege('authenticated',
+    'public.resolve_flavor_reward_event_review(uuid,text,text,text)', 'EXECUTE'),
+  'authenticated clients cannot resolve payment review cases through the RPC'
+);
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
 select public.test_assert(
   (select count(*) = 0 from public.flavor_reward_paid_order_ledger),
@@ -659,6 +664,39 @@ select public.test_assert(
   'a different creator cannot read another account claim'
 );
 reset role;
+
+do $$
+declare
+  v_result jsonb;
+  v_count_before bigint;
+  v_total_before bigint;
+begin
+  select count(*), coalesce(sum(amount_fils), 0)
+  into v_count_before, v_total_before
+  from public.flavor_reward_paid_order_ledger;
+  v_result := public.resolve_flavor_reward_event_review(
+    '30000000-0000-4000-8000-000000000001',
+    'evt_testrefundreview101',
+    'reviewed',
+    'Verified the Stripe refund allocation; no ledger adjustment.'
+  );
+  perform public.test_assert(
+    v_result->>'status' = 'reviewed'
+      and (select reviewed_by_snapshot = '30000000-0000-4000-8000-000000000001'
+             and reviewed_at is not null
+             and review_note = 'Verified the Stripe refund allocation; no ledger adjustment.'
+           from public.flavor_reward_event_reviews
+           where stripe_event_id = 'evt_testrefundreview101'),
+    'admin payment review records the reviewer, timestamp, and reason'
+  );
+  perform public.test_assert(
+    (select count(*) = v_count_before
+       and coalesce(sum(amount_fils), 0) = v_total_before
+     from public.flavor_reward_paid_order_ledger),
+    'review resolution alone never changes reward ledger balances'
+  );
+end;
+$$;
 
 select public.test_assert(
   not exists (

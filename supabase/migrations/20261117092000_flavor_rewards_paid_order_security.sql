@@ -63,6 +63,8 @@ revoke all on function public.claim_flavor_reward_order(text, uuid)
 revoke all on function public.record_flavor_reward_review_event(
   text, text, text, text, text, text, bigint, text, text, jsonb, timestamptz
 ) from public, anon, authenticated, service_role;
+revoke all on function public.resolve_flavor_reward_event_review(uuid, text, text, text)
+  from public, anon, authenticated, service_role;
 revoke all on function public.process_flavor_reward_stripe_event(
   text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text,
   timestamptz, bigint, bigint
@@ -75,6 +77,8 @@ grant execute on function public.claim_flavor_reward_order(text, uuid)
 grant execute on function public.record_flavor_reward_review_event(
   text, text, text, text, text, text, bigint, text, text, jsonb, timestamptz
 ) to service_role;
+grant execute on function public.resolve_flavor_reward_event_review(uuid, text, text, text)
+  to service_role;
 grant execute on function public.process_flavor_reward_stripe_event(
   text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text,
   timestamptz, bigint, bigint
