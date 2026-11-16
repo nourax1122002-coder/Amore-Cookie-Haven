@@ -78,6 +78,14 @@ create table public.customer_orders (
 );
 grant usage on schema public to anon, authenticated, service_role;
 
+-- Reproduce the connected Supabase project's public-schema defaults. New
+-- tables inherit API-role table grants, and new functions inherit EXECUTE
+-- grants, unless the migration explicitly revokes them before commit.
+alter default privileges for role postgres in schema public
+  grant all on tables to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public
+  grant execute on functions to anon, authenticated, service_role;
+
 create or replace function public.test_assert(p_ok boolean, p_description text)
 returns void
 language plpgsql
