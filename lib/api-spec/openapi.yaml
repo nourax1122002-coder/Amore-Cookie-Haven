@@ -1307,9 +1307,72 @@ components:
         currency: { type: string, enum: [KWD] }
         metadata: { type: object, additionalProperties: true }
         createdAt: { type: string, format: date-time }
+    CreatorFlavorTransaction:
+      type: object
+      required:
+        - orderReference
+        - eligibleOrderNumber
+        - paidAt
+        - eligibleProductAmountFils
+        - commissionFils
+        - productRefundedFils
+        - productDisputedFils
+        - commissionAdjustmentFils
+        - netCommissionFils
+        - milestoneBonusFils
+      properties:
+        orderReference: { type: string }
+        eligibleOrderNumber: { type: integer, minimum: 1 }
+        paidAt: { type: string, format: date-time }
+        eligibleProductAmountFils: { type: integer, minimum: 1 }
+        commissionFils: { type: integer, minimum: 0 }
+        productRefundedFils: { type: integer, minimum: 0 }
+        productDisputedFils: { type: integer, minimum: 0 }
+        commissionAdjustmentFils: { type: integer }
+        netCommissionFils: { type: integer, minimum: 0 }
+        milestoneBonusFils: { type: integer, minimum: 0 }
+    CreatorFlavorPerformance:
+      type: object
+      required:
+        - flavorId
+        - flavorTitle
+        - flavorTitleAr
+        - verifiedPaidOrderCount
+        - ordersRemainingToMilestone
+        - progressPercent
+        - milestoneStatus
+        - milestoneBonusFils
+        - commissionEarnedFils
+        - confirmedEarningsFils
+        - pendingEarningsFils
+        - transactions
+      properties:
+        flavorId: { type: string, format: uuid }
+        flavorTitle: { type: string }
+        flavorTitleAr: { type: string }
+        verifiedPaidOrderCount: { type: integer, minimum: 0 }
+        ordersRemainingToMilestone: { type: integer, minimum: 0, maximum: 100 }
+        progressPercent: { type: integer, minimum: 0, maximum: 100 }
+        milestoneStatus: { type: string, enum: [locked, achieved, awarded] }
+        milestoneBonusFils: { type: integer, minimum: 0 }
+        commissionEarnedFils: { type: integer, minimum: 0 }
+        confirmedEarningsFils: { type: integer, minimum: 0 }
+        pendingEarningsFils: { type: integer, minimum: 0, nullable: true }
+        transactions:
+          type: array
+          items: { $ref: "#/components/schemas/CreatorFlavorTransaction" }
     CreatorFlavorRewards:
       type: object
-      required: [ideas, ledger, payoutRequests, payoutEvents, earnedFils, reservedFils, availableFils]
+      required:
+        - ideas
+        - ledger
+        - payoutRequests
+        - payoutEvents
+        - earnedFils
+        - reservedFils
+        - availableFils
+        - performanceStatus
+        - performanceFlavors
       properties:
         ideas:
           type: array
@@ -1326,6 +1389,10 @@ components:
         earnedFils: { type: integer, minimum: 0 }
         reservedFils: { type: integer, minimum: 0 }
         availableFils: { type: integer, minimum: 0 }
+        performanceStatus: { type: string, enum: [ready, migration_required] }
+        performanceFlavors:
+          type: array
+          items: { $ref: "#/components/schemas/CreatorFlavorPerformance" }
     FlavorPayoutRequestInput:
       type: object
       required: [amountFils, requestKey]

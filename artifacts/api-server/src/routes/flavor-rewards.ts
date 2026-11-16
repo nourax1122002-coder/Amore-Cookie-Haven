@@ -32,6 +32,11 @@ import { createGroqGateway } from "../lib/assistant/groq";
 import { createAssistantQuota } from "../lib/assistant/quota";
 import { HttpError } from "../lib/errors";
 import { createStripeFlavorTestRefund } from "../lib/stripe-functions";
+import {
+  buildCreatorFlavorPerformance,
+  type VerifiedFlavorOrderSnapshot,
+  type VerifiedFlavorRewardEntry,
+} from "../lib/flavor-rewards-wallet";
 import { requireAdmin } from "../middlewares/security";
 
 const router = Router();
@@ -70,6 +75,140 @@ function iso(row: Row, key: string): string {
 function nullableIso(row: Row, key: string): string | null {
   const value = row[key];
   return typeof value === "string" || value instanceof Date ? iso(row, key) : null;
+}
+
+function requiredText(row: Row, key: string): string {
+  const value = row[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new HttpError(503, "Verified creator performance is temporarily unavailable.");
+  }
+  return value;
+}
+
+function requiredInteger(row: Row, key: string, allowNegative = false): number {
+  const raw = row[key];
+  const value = typeof raw === "number"
+    ? raw
+    : typeof raw === "string" && /^-?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  if (!Number.isSafeInteger(value) || (!allowNegative && value < 0)) {
+    throw new HttpError(503, "Verified creator performance is temporarily unavailable.");
+  }
+  return value;
+}
+
+function isFlavorPerformanceSchemaMissing(error: { code?: string } | null): boolean {
+  return Boolean(error && ["42P01", "42703", "PGRST204", "PGRST205"].includes(error.code ?? ""));
+}
+
+type QueryResult = { data: unknown; error: { code?: string } | null };
+
+async function readFlavorRewardPages(
+  req: Request,
+  operation: string,
+  loadPage: (from: number, to: number) => PromiseLike<QueryResult>,
+): Promise<Row[] | null> {
+  const pageSize = 500;
+  const rows: Row[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const result = await loadPage(from, from + pageSize - 1);
+    if (isFlavorPerformanceSchemaMissing(result.error)) {
+      req.log.warn(
+        { operation, databaseCode: result.error?.code ?? "unknown" },
+        "Verified Flavor Rewards performance tables are not available yet",
+      );
+      return null;
+    }
+    const page = rowsOrFail(req, operation, result);
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+}
+
+async function creatorPerformance(
+  req: Request,
+  userId: string,
+  ideaRows: Row[],
+  client: ReturnType<typeof createSupabaseUserClient>,
+) {
+  const publishedFlavors = ideaRows
+    .filter(row => text(row, "status") === "published")
+    .map(row => ({
+      id: requiredText(row, "id"),
+      title: text(row, "title"),
+      titleAr: text(row, "title_ar"),
+    }));
+  if (!publishedFlavors.length) {
+    return { performanceStatus: "ready" as const, performanceFlavors: [] };
+  }
+
+  const flavorIds = publishedFlavors.map(flavor => flavor.id);
+  const snapshots = await readFlavorRewardPages(req, "creator_paid_order_snapshots", (from, to) =>
+    supabase.from("flavor_reward_order_snapshots")
+      .select(
+        "customer_order_id,flavor_id,creator_user_id,eligible_order_number,verified_paid_at,eligible_sales_fils,product_refunded_fils,product_disputed_fils",
+      )
+      .eq("creator_user_id", userId)
+      .in("flavor_id", flavorIds)
+      .not("verified_paid_at", "is", null)
+      .order("verified_paid_at", { ascending: true })
+      .range(from, to));
+  if (!snapshots) {
+    return { performanceStatus: "migration_required" as const, performanceFlavors: [] };
+  }
+
+  const ledgerRows = await readFlavorRewardPages(req, "creator_verified_reward_ledger", (from, to) =>
+    client.from("flavor_reward_paid_order_ledger")
+      .select("flavor_id,creator_user_id,customer_order_id,eligible_order_number,entry_type,amount_fils")
+      .eq("creator_user_id", userId)
+      .in("flavor_id", flavorIds)
+      .order("created_at", { ascending: true })
+      .range(from, to));
+  if (!ledgerRows) {
+    return { performanceStatus: "migration_required" as const, performanceFlavors: [] };
+  }
+
+  const verifiedSnapshots: VerifiedFlavorOrderSnapshot[] = snapshots.map(row => {
+    if (requiredText(row, "creator_user_id") !== userId) {
+      throw new HttpError(503, "Verified creator performance is temporarily unavailable.");
+    }
+    const paidAt = nullableIso(row, "verified_paid_at");
+    const orderNumber = row.eligible_order_number === null
+      ? null
+      : requiredInteger(row, "eligible_order_number");
+    if (!paidAt || !orderNumber) {
+      throw new HttpError(503, "A paid creator order is missing its verified payment record.");
+    }
+    return {
+      orderReference: requiredText(row, "customer_order_id"),
+      flavorId: requiredText(row, "flavor_id"),
+      eligibleOrderNumber: orderNumber,
+      verifiedPaidAt: paidAt,
+      eligibleSalesFils: requiredInteger(row, "eligible_sales_fils"),
+      productRefundedFils: requiredInteger(row, "product_refunded_fils"),
+      productDisputedFils: requiredInteger(row, "product_disputed_fils"),
+    };
+  });
+  const verifiedLedger: VerifiedFlavorRewardEntry[] = ledgerRows.map(row => {
+    if (requiredText(row, "creator_user_id") !== userId) {
+      throw new HttpError(503, "Verified creator performance is temporarily unavailable.");
+    }
+    const entryType = requiredText(row, "entry_type");
+    if (!["milestone_bonus", "commission", "commission_adjustment"].includes(entryType)) {
+      throw new HttpError(503, "A creator reward ledger entry has an unsupported type.");
+    }
+    return {
+      flavorId: requiredText(row, "flavor_id"),
+      orderReference: requiredText(row, "customer_order_id"),
+      eligibleOrderNumber: requiredInteger(row, "eligible_order_number"),
+      entryType: entryType as VerifiedFlavorRewardEntry["entryType"],
+      amountFils: requiredInteger(row, "amount_fils", true),
+    };
+  });
+
+  return {
+    performanceStatus: "ready" as const,
+    performanceFlavors: buildCreatorFlavorPerformance(publishedFlavors, verifiedSnapshots, verifiedLedger),
+  };
 }
 
 function idea(row: Row) {
@@ -346,6 +485,7 @@ router.get("/account/flavor-rewards", async (req, res): Promise<void> => {
   const ledgerRows = rowsOrFail(req, "creator_ledger", ledger);
   const payoutRows = rowsOrFail(req, "creator_payouts", requests);
   const eventRows = rowsOrFail(req, "creator_payout_events", events);
+  const performance = await creatorPerformance(req, user.id, ideaRows, client);
   // Existing entries were created by interest counts or manual sale entry,
   // neither of which is proof of a verified paid order.
   const historicalLedgerFils = ledgerRows.reduce((sum, row) => sum + int(row, "amount_fils"), 0);
@@ -359,6 +499,7 @@ router.get("/account/flavor-rewards", async (req, res): Promise<void> => {
     earnedFils: historicalLedgerFils,
     reservedFils,
     availableFils: 0,
+    ...performance,
   }));
 });
 

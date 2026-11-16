@@ -5,6 +5,8 @@
  * Amore Cookies storefront and management API
  * OpenAPI spec version: 1.0.0
  */
+import type { CreatorFlavorPerformance } from './creatorFlavorPerformance';
+import type { CreatorFlavorRewardsPerformanceStatus } from './creatorFlavorRewardsPerformanceStatus';
 import type { FlavorIdea } from './flavorIdea';
 import type { FlavorPayoutEvent } from './flavorPayoutEvent';
 import type { FlavorPayoutRequest } from './flavorPayoutRequest';
@@ -21,4 +23,6 @@ export interface CreatorFlavorRewards {
   reservedFils: number;
   /** @minimum 0 */
   availableFils: number;
+  performanceStatus: CreatorFlavorRewardsPerformanceStatus;
+  performanceFlavors: CreatorFlavorPerformance[];
 }

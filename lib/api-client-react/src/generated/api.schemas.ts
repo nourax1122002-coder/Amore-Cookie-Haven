@@ -874,6 +874,74 @@ export interface FlavorRewardEntry {
   createdAt: string;
 }
 
+export interface CreatorFlavorTransaction {
+  orderReference: string;
+  /** @minimum 1 */
+  eligibleOrderNumber: number;
+  paidAt: string;
+  /** @minimum 1 */
+  eligibleProductAmountFils: number;
+  /** @minimum 0 */
+  commissionFils: number;
+  /** @minimum 0 */
+  productRefundedFils: number;
+  /** @minimum 0 */
+  productDisputedFils: number;
+  commissionAdjustmentFils: number;
+  /** @minimum 0 */
+  netCommissionFils: number;
+  /** @minimum 0 */
+  milestoneBonusFils: number;
+}
+
+export type CreatorFlavorPerformanceMilestoneStatus = typeof CreatorFlavorPerformanceMilestoneStatus[keyof typeof CreatorFlavorPerformanceMilestoneStatus];
+
+
+export const CreatorFlavorPerformanceMilestoneStatus = {
+  locked: 'locked',
+  achieved: 'achieved',
+  awarded: 'awarded',
+} as const;
+
+export interface CreatorFlavorPerformance {
+  flavorId: string;
+  flavorTitle: string;
+  flavorTitleAr: string;
+  /** @minimum 0 */
+  verifiedPaidOrderCount: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  ordersRemainingToMilestone: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progressPercent: number;
+  milestoneStatus: CreatorFlavorPerformanceMilestoneStatus;
+  /** @minimum 0 */
+  milestoneBonusFils: number;
+  /** @minimum 0 */
+  commissionEarnedFils: number;
+  /** @minimum 0 */
+  confirmedEarningsFils: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  pendingEarningsFils: number | null;
+  transactions: CreatorFlavorTransaction[];
+}
+
+export type CreatorFlavorRewardsPerformanceStatus = typeof CreatorFlavorRewardsPerformanceStatus[keyof typeof CreatorFlavorRewardsPerformanceStatus];
+
+
+export const CreatorFlavorRewardsPerformanceStatus = {
+  ready: 'ready',
+  migration_required: 'migration_required',
+} as const;
+
 export interface CreatorFlavorRewards {
   ideas: FlavorIdea[];
   ledger: FlavorRewardEntry[];
@@ -885,6 +953,8 @@ export interface CreatorFlavorRewards {
   reservedFils: number;
   /** @minimum 0 */
   availableFils: number;
+  performanceStatus: CreatorFlavorRewardsPerformanceStatus;
+  performanceFlavors: CreatorFlavorPerformance[];
 }
 
 export interface FlavorPayoutRequestInput {

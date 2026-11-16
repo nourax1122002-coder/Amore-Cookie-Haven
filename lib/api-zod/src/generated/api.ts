@@ -1363,6 +1363,34 @@ export const getMyFlavorRewardsResponseReservedFilsMin = 0;
 
 export const getMyFlavorRewardsResponseAvailableFilsMin = 0;
 
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemVerifiedPaidOrderCountMin = 0;
+
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemOrdersRemainingToMilestoneMin = 0;
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemOrdersRemainingToMilestoneMax = 100;
+
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemProgressPercentMin = 0;
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemProgressPercentMax = 100;
+
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemMilestoneBonusFilsMin = 0;
+
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemCommissionEarnedFilsMin = 0;
+
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemConfirmedEarningsFilsMin = 0;
+
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemPendingEarningsFilsMin = 0;
+
+
+
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemTransactionsItemCommissionFilsMin = 0;
+
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemTransactionsItemProductRefundedFilsMin = 0;
+
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemTransactionsItemProductDisputedFilsMin = 0;
+
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemTransactionsItemNetCommissionFilsMin = 0;
+
+export const getMyFlavorRewardsResponsePerformanceFlavorsItemTransactionsItemMilestoneBonusFilsMin = 0;
+
 
 
 export const GetMyFlavorRewardsResponse = zod.object({
@@ -1410,7 +1438,33 @@ export const GetMyFlavorRewardsResponse = zod.object({
 })),
   "earnedFils": zod.number().int().min(getMyFlavorRewardsResponseEarnedFilsMin),
   "reservedFils": zod.number().int().min(getMyFlavorRewardsResponseReservedFilsMin),
-  "availableFils": zod.number().int().min(getMyFlavorRewardsResponseAvailableFilsMin)
+  "availableFils": zod.number().int().min(getMyFlavorRewardsResponseAvailableFilsMin),
+  "performanceStatus": zod.enum(['ready', 'migration_required']),
+  "performanceFlavors": zod.array(zod.object({
+  "flavorId": zod.string().uuid(),
+  "flavorTitle": zod.string(),
+  "flavorTitleAr": zod.string(),
+  "verifiedPaidOrderCount": zod.number().int().min(getMyFlavorRewardsResponsePerformanceFlavorsItemVerifiedPaidOrderCountMin),
+  "ordersRemainingToMilestone": zod.number().int().min(getMyFlavorRewardsResponsePerformanceFlavorsItemOrdersRemainingToMilestoneMin).max(getMyFlavorRewardsResponsePerformanceFlavorsItemOrdersRemainingToMilestoneMax),
+  "progressPercent": zod.number().int().min(getMyFlavorRewardsResponsePerformanceFlavorsItemProgressPercentMin).max(getMyFlavorRewardsResponsePerformanceFlavorsItemProgressPercentMax),
+  "milestoneStatus": zod.enum(['locked', 'achieved', 'awarded']),
+  "milestoneBonusFils": zod.number().int().min(getMyFlavorRewardsResponsePerformanceFlavorsItemMilestoneBonusFilsMin),
+  "commissionEarnedFils": zod.number().int().min(getMyFlavorRewardsResponsePerformanceFlavorsItemCommissionEarnedFilsMin),
+  "confirmedEarningsFils": zod.number().int().min(getMyFlavorRewardsResponsePerformanceFlavorsItemConfirmedEarningsFilsMin),
+  "pendingEarningsFils": zod.number().int().min(getMyFlavorRewardsResponsePerformanceFlavorsItemPendingEarningsFilsMin).nullable(),
+  "transactions": zod.array(zod.object({
+  "orderReference": zod.string(),
+  "eligibleOrderNumber": zod.number().int().min(1),
+  "paidAt": zod.coerce.date(),
+  "eligibleProductAmountFils": zod.number().int().min(1),
+  "commissionFils": zod.number().int().min(getMyFlavorRewardsResponsePerformanceFlavorsItemTransactionsItemCommissionFilsMin),
+  "productRefundedFils": zod.number().int().min(getMyFlavorRewardsResponsePerformanceFlavorsItemTransactionsItemProductRefundedFilsMin),
+  "productDisputedFils": zod.number().int().min(getMyFlavorRewardsResponsePerformanceFlavorsItemTransactionsItemProductDisputedFilsMin),
+  "commissionAdjustmentFils": zod.number().int(),
+  "netCommissionFils": zod.number().int().min(getMyFlavorRewardsResponsePerformanceFlavorsItemTransactionsItemNetCommissionFilsMin),
+  "milestoneBonusFils": zod.number().int().min(getMyFlavorRewardsResponsePerformanceFlavorsItemTransactionsItemMilestoneBonusFilsMin)
+}))
+}))
 })
 
 

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import {
-  ArrowRight, Check, Coins, Lightbulb, LoaderCircle, RefreshCw, Send, Sparkles, Users,
+  ArrowRight, Award, Check, Lightbulb, LoaderCircle, RefreshCw, Send, Sparkles,
 } from "lucide-react";
 import type {
   AdminFlavorRewards,
@@ -123,6 +123,13 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
   }, [lang, user]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    if (!user) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [refresh, user]);
 
   const saveDraft = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -332,16 +339,36 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
         <button type="button" onClick={() => void refresh()} className="text-xs font-semibold text-[#795963] underline">{ar ? "تحديث" : "Refresh"}</button>
       </div>
       {accountError && <p role="alert" className="mb-4 rounded-xl bg-[#fff1f3] p-4 text-xs text-[#763246]">{accountError}</p>}
-      {wallet && <div className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]">
-        <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
-          <WalletMetric title={ar ? "سجل تاريخي غير موثق" : "Historical ledger (unverified)"} amount={wallet.earnedFils} icon={<Coins size={18}/>} />
-          <WalletMetric title={ar ? "قيد الحجز أو الصرف" : "Reserved or paid"} amount={wallet.reservedFils} icon={<Users size={18}/>} />
-          <WalletMetric title={ar ? "الرصيد المتاح" : "Available"} amount={wallet.availableFils} icon={<Sparkles size={18}/>} />
-          <p className="card-surface p-5 text-xs leading-6 text-[#795963]" role="status">
-            {ar ? "طلبات الصرف متوقفة مؤقتاً. لن يصبح أي رصيد متاحاً قبل ربطه بطلبات مدفوعة موثقة ومراجعة البيانات القديمة." : "Payouts are paused. No balance is available until it is tied to verified paid orders and historical entries are reviewed."}
+      {wallet && <div className="grid gap-5">
+        <section aria-label={ar ? "أداء النكهة الموثق" : "Verified flavor performance"} className="grid gap-4">
+          {wallet.performanceStatus === "migration_required"
+            ? <div className="rounded-2xl border border-[#ead6dc] bg-[#fffaf8] p-5 text-sm leading-6 text-[#795963]" role="status">
+              {ar
+                ? "لوحة الأداء الموثق بانتظار اعتماد وإتاحة جداول سجل المدفوعات. لن نعرض أرصدة تقديرية أو عمليات شراء تجريبية."
+                : "The verified performance dashboard is waiting for the approved payment-ledger tables. No estimated balances or simulated purchases are shown."}
+            </div>
+            : wallet.performanceFlavors.length === 0
+              ? <div className="rounded-2xl border border-[#ead6dc] bg-[#fffaf8] p-5 text-sm leading-6 text-[#795963]">
+                {ar ? "لا توجد نكهة منشورة لعرض أداء الطلبات حتى الآن." : "There is no published flavor with performance to display yet."}
+              </div>
+              : <div className="grid gap-4 xl:grid-cols-2">
+                {wallet.performanceFlavors.map(performance =>
+                  <CreatorPerformanceCard key={performance.flavorId} performance={performance} lang={lang}/>)}
+              </div>}
+          <p className="rounded-xl bg-[#fff6f8] px-4 py-3 text-[11px] leading-5 text-[#795963]" role="note">
+            {ar
+              ? "يُحدّث الأداء تلقائياً كل دقيقة أثناء فتح الصفحة. تُعرض المكافآت من سجل موثق فقط؛ المدفوعات غير المؤكدة مستبعدة، والصرف متوقف."
+              : "Performance refreshes every minute while this page is open. Earnings come only from the verified ledger; unconfirmed payments are excluded and payouts remain disabled."}
           </p>
-        </div>
-        <div className="grid gap-5">
+        </section>
+
+        <div className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]">
+          <div className="card-surface p-5 text-xs leading-6 text-[#795963]" role="status">
+            {ar
+              ? "السجلات المالية القديمة معروضة منفصلة أدناه ولا تدخل في أرباح المحفظة الموثقة. طلبات الصرف متوقفة."
+              : "Legacy financial records are listed separately below and are excluded from verified wallet earnings. Payouts are paused."}
+          </div>
+          <div className="grid gap-5">
           <div className="grid gap-3 md:grid-cols-2">
             {wallet.ideas.map(item => <article key={item.id} className="card-surface p-5">
               <div className="flex items-start justify-between gap-3">
@@ -378,6 +405,7 @@ export function FlavorRewardsPage({ lang }: { lang: Lang }) {
               </p>)}
             </div>}
           </div>
+        </div>
         </div>
       </div>}
     </section>}
@@ -419,10 +447,150 @@ function PublicIdeaCard({ idea, lang }: {
   </article>;
 }
 
-function WalletMetric({ title, amount, icon }: { title: string; amount: number; icon: ReactNode }) {
-  return <div className="card-surface flex items-center justify-between gap-3 p-5">
-    <div><p className="text-[10px] text-[#896a71]">{title}</p><strong className="mt-1 block font-display text-2xl text-[#5B0D1E]">{kwd(amount, "en")}</strong></div>
-    <span className="grid h-10 w-10 place-items-center rounded-full bg-[#fff0f5] text-[#6b1d32]">{icon}</span>
+type CreatorPerformance = CreatorFlavorRewards["performanceFlavors"][number];
+
+function CreatorPerformanceCard({ performance, lang }: { performance: CreatorPerformance; lang: Lang }) {
+  const ar = lang === "ar";
+  const title = ar && performance.flavorTitleAr ? performance.flavorTitleAr : performance.flavorTitle;
+  const milestoneLabel = performance.milestoneStatus === "awarded"
+    ? (ar ? "ممنوحة نهائياً" : "Awarded permanently")
+    : performance.milestoneStatus === "achieved"
+      ? (ar ? "تحقق العدد؛ ننتظر تسجيل المكافأة" : "Threshold reached; award not in ledger yet")
+      : (ar ? "مقفلة" : "Locked");
+  const metrics = [
+    {
+      label: ar ? "طلبات مدفوعة موثقة" : "Verified paid orders",
+      value: String(performance.verifiedPaidOrderCount),
+    },
+    {
+      label: ar ? "المتبقي للمئوية" : "Orders to milestone",
+      value: String(performance.ordersRemainingToMilestone),
+    },
+    {
+      label: ar ? "عمولة موثقة صافية" : "Net verified commission",
+      value: kwd(performance.commissionEarnedFils, lang),
+    },
+    {
+      label: ar ? "أرباح موثقة مؤكدة" : "Confirmed verified earnings",
+      value: kwd(performance.confirmedEarningsFils, lang),
+    },
+    {
+      label: ar ? "مبالغ مكافآت معلّقة" : "Pending reward amounts",
+      value: performance.pendingEarningsFils === null
+        ? (ar ? "غير مسجّلة" : "Not tracked")
+        : kwd(performance.pendingEarningsFils, lang),
+    },
+  ];
+
+  return <article className="card-surface min-w-0 overflow-hidden">
+    <div className="flex items-start justify-between gap-3 bg-gradient-to-r from-[#fff6f8] to-[#fffaf8] p-5">
+      <div className="min-w-0">
+        <span className="text-[9px] font-bold uppercase tracking-[.14em] text-[#9a6776]">
+          {ar ? "أداء النكهة المنشورة" : "Published flavor performance"}
+        </span>
+        <h3 className="mt-1 break-words font-display text-xl text-[#5B0D1E]">{title}</h3>
+      </div>
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#FFD6E5] text-[#5B0D1E]" aria-hidden="true">
+        <Award size={19}/>
+      </span>
+    </div>
+    <div className="grid grid-cols-2 gap-2.5 p-4 sm:grid-cols-3">
+      {metrics.map(metric => <div key={metric.label} className="min-w-0 rounded-xl border border-[#f0e1e5] bg-[#fffdfc] p-3">
+        <p className="min-h-8 text-[10px] leading-4 text-[#896a71]">{metric.label}</p>
+        <strong className="mt-1 block break-words font-display text-lg leading-6 text-[#5B0D1E]">{metric.value}</strong>
+      </div>)}
+    </div>
+    <div className="px-4 pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <p className="font-semibold text-[#5B0D1E]">
+          {ar ? "مكافأة 200 د.ك عند الطلب 100" : "200 KWD bonus at order 100"}
+        </p>
+        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+          performance.milestoneStatus === "awarded"
+            ? "bg-[#edf7ef] text-[#356744]"
+            : performance.milestoneStatus === "achieved"
+              ? "bg-[#fff3df] text-[#815b24]"
+              : "bg-[#fff0f5] text-[#795963]"
+        }`}>
+          {milestoneLabel}
+        </span>
+      </div>
+      <div className="mt-2 flex items-center gap-3">
+        <div
+          className="h-2.5 flex-1 overflow-hidden rounded-full bg-[#f4e8eb]"
+          role="progressbar"
+          aria-label={ar ? "التقدم نحو 100 طلب" : "Progress toward 100 verified orders"}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={performance.progressPercent}
+        >
+          <div className="h-full rounded-full bg-[#5B0D1E] transition-[width]" style={{ width: `${performance.progressPercent}%` }}/>
+        </div>
+        <span className="shrink-0 text-[10px] font-semibold tabular-nums text-[#795963]">{performance.progressPercent}/100</span>
+      </div>
+      <p className="mt-2 text-[10px] leading-5 text-[#896a71]">
+        {ar
+          ? "تستمر عمولة 15٪ على صافي مبيعات المنتج المؤهل من الطلب 101 فصاعداً، ولا تشمل التوصيل. لا تُسحب المكافأة بعد منحها."
+          : "The 15% commission continues on net eligible product sales from order 101 onward, excluding delivery. An awarded milestone is never reversed."}
+      </p>
+    </div>
+    <div className="border-t border-[#f0e1e5] p-4">
+      <h4 className="font-display text-lg text-[#5B0D1E]">{ar ? "سجل الطلبات الموثقة" : "Verified order history"}</h4>
+      {performance.transactions.length === 0
+        ? <p className="mt-3 rounded-xl bg-[#fffaf8] p-4 text-xs text-[#896a71]">
+          {ar ? "لا توجد طلبات مدفوعة موثقة لهذه النكهة بعد." : "No verified paid orders for this flavor yet."}
+        </p>
+        : <>
+          <div className="mt-3 hidden overflow-x-auto lg:block">
+            <table className="w-full min-w-[760px] border-collapse text-start text-[10px]">
+              <thead><tr className="border-b border-[#f0e1e5] text-[#896a71]">
+                <th className="px-2 py-2 font-medium">{ar ? "الطلب / التاريخ" : "Order / date"}</th>
+                <th className="px-2 py-2 font-medium">{ar ? "المنتج المؤهل" : "Eligible product"}</th>
+                <th className="px-2 py-2 font-medium">{ar ? "العمولة" : "Commission"}</th>
+                <th className="px-2 py-2 font-medium">{ar ? "استرداد المنتج" : "Product refunds"}</th>
+                <th className="px-2 py-2 font-medium">{ar ? "النزاع" : "Disputes"}</th>
+                <th className="px-2 py-2 font-medium">{ar ? "تعديل العمولة" : "Commission adjustment"}</th>
+                <th className="px-2 py-2 font-medium">{ar ? "مكافأة" : "Bonus"}</th>
+              </tr></thead>
+              <tbody>{performance.transactions.map(transaction => <tr key={transaction.orderReference} className="border-b border-[#f6edf0] align-top text-[#795963]">
+                <td className="px-2 py-2">
+                  <span className="block max-w-28 break-all font-medium text-[#5B0D1E]">{transaction.orderReference}</span>
+                  <time className="mt-1 block whitespace-nowrap">{dateLabel(transaction.paidAt, lang)}</time>
+                </td>
+                <td className="px-2 py-2 whitespace-nowrap">{kwd(transaction.eligibleProductAmountFils, lang)}</td>
+                <td className="px-2 py-2 whitespace-nowrap">{kwd(transaction.netCommissionFils, lang)}</td>
+                <td className="px-2 py-2 whitespace-nowrap">{kwd(transaction.productRefundedFils, lang)}</td>
+                <td className="px-2 py-2 whitespace-nowrap">{kwd(transaction.productDisputedFils, lang)}</td>
+                <td className="px-2 py-2 whitespace-nowrap">{kwd(transaction.commissionAdjustmentFils, lang)}</td>
+                <td className="px-2 py-2 whitespace-nowrap">{transaction.milestoneBonusFils ? kwd(transaction.milestoneBonusFils, lang) : "—"}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+          <ol className="mt-3 grid gap-3 lg:hidden">
+            {performance.transactions.map(transaction => <li key={transaction.orderReference} className="min-w-0 rounded-xl border border-[#f0e1e5] bg-[#fffdfc] p-3">
+              <div className="flex items-start justify-between gap-3">
+                <span className="min-w-0 break-all text-[10px] font-semibold text-[#5B0D1E]">{transaction.orderReference}</span>
+                <time className="shrink-0 text-[9px] text-[#896a71]">{dateLabel(transaction.paidAt, lang)}</time>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[10px]">
+                <WalletDetail label={ar ? "المنتج المؤهل" : "Eligible product"} value={kwd(transaction.eligibleProductAmountFils, lang)}/>
+                <WalletDetail label={ar ? "العمولة الصافية" : "Net commission"} value={kwd(transaction.netCommissionFils, lang)}/>
+                <WalletDetail label={ar ? "استرداد المنتج" : "Product refund"} value={kwd(transaction.productRefundedFils, lang)}/>
+                <WalletDetail label={ar ? "النزاع" : "Dispute"} value={kwd(transaction.productDisputedFils, lang)}/>
+                <WalletDetail label={ar ? "تعديل العمولة" : "Commission adjustment"} value={kwd(transaction.commissionAdjustmentFils, lang)}/>
+                <WalletDetail label={ar ? "المكافأة" : "Milestone bonus"} value={transaction.milestoneBonusFils ? kwd(transaction.milestoneBonusFils, lang) : "—"}/>
+              </dl>
+            </li>)}
+          </ol>
+        </>}
+    </div>
+  </article>;
+}
+
+function WalletDetail({ label, value }: { label: string; value: string }) {
+  return <div className="min-w-0">
+    <dt className="text-[#896a71]">{label}</dt>
+    <dd className="mt-0.5 break-words font-semibold text-[#5B0D1E]">{value}</dd>
   </div>;
 }
 
