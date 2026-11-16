@@ -74,6 +74,9 @@ type PaymentOrder = {
   creatorUserId: string;
   customerUserId: string;
   paidAt: string;
+  paymentEventId: string;
+  eligibleOrderNumber: number | null;
+  qualifiesForRewards: boolean;
   eligibleNetSalesFils: number;
   refundedFils: number;
   disputes: Map<string, { status: "open" | "won" | "lost"; amountFils: number }>;
@@ -83,6 +86,7 @@ export type FlavorRewardSummary = {
   flavorId: string;
   verifiedEligibleOrderCount: number;
   effectiveNetSalesFils: number;
+  milestoneEarned: boolean;
 };
 
 export type FlavorRewardReconciliation = {
@@ -108,7 +112,8 @@ function commissionFils(netSalesFils: number): number {
 
 function collectOrders(events: readonly FlavorPaymentEvent[]): {
   orders: PaymentOrder[];
-  latestEventByFlavor: Map<string, string>;
+  milestoneEventByFlavor: Map<string, string>;
+  latestEventByOrder: Map<string, string>;
 } {
   const uniqueEvents = new Map<string, FlavorPaymentEvent>();
   for (const event of events) {
@@ -124,7 +129,18 @@ function collectOrders(events: readonly FlavorPaymentEvent[]): {
     Date.parse(left.occurredAt) - Date.parse(right.occurredAt)
       || left.eventId.localeCompare(right.eventId));
   const orders = new Map<string, PaymentOrder>();
-  const latestEventByFlavor = new Map<string, string>();
+  const firstOrderByCustomer = new Map<string, string>();
+  const nextEligibleOrderNumberByFlavor = new Map<string, number>();
+  const eligibleOrderCountByFlavor = new Map<string, number>();
+  const milestoneEventByFlavor = new Map<string, string>();
+  const latestEventByOrder = new Map<string, string>();
+
+  const recordMilestoneIfReached = (flavorId: string, eventId: string) => {
+    if ((eligibleOrderCountByFlavor.get(flavorId) ?? 0) >= 100
+      && !milestoneEventByFlavor.has(flavorId)) {
+      milestoneEventByFlavor.set(flavorId, eventId);
+    }
+  };
 
   for (const event of orderedEvents) {
     if (event.type === "payment_succeeded") {
@@ -145,6 +161,18 @@ function collectOrders(events: readonly FlavorPaymentEvent[]): {
           throw new Error("A payment order cannot change its verified payment or flavor identity.");
         }
       } else {
+        const customerKey = `${event.flavorId}:${event.customerUserId}`;
+        const qualifiesForRewards = !firstOrderByCustomer.has(customerKey);
+        let eligibleOrderNumber: number | null = null;
+        if (qualifiesForRewards) {
+          firstOrderByCustomer.set(customerKey, event.orderId);
+          eligibleOrderNumber = (nextEligibleOrderNumberByFlavor.get(event.flavorId) ?? 0) + 1;
+          nextEligibleOrderNumberByFlavor.set(event.flavorId, eligibleOrderNumber);
+          eligibleOrderCountByFlavor.set(
+            event.flavorId,
+            (eligibleOrderCountByFlavor.get(event.flavorId) ?? 0) + 1,
+          );
+        }
         orders.set(event.orderId, {
           orderId: event.orderId,
           paymentIntentId: event.paymentIntentId,
@@ -152,25 +180,32 @@ function collectOrders(events: readonly FlavorPaymentEvent[]): {
           creatorUserId: event.creatorUserId,
           customerUserId: event.customerUserId,
           paidAt: event.occurredAt,
+          paymentEventId: event.eventId,
+          eligibleOrderNumber,
+          qualifiesForRewards,
           eligibleNetSalesFils: event.eligibleNetSalesFils,
           refundedFils: 0,
           disputes: new Map(),
         });
+        latestEventByOrder.set(event.orderId, event.eventId);
+        if (qualifiesForRewards) recordMilestoneIfReached(event.flavorId, event.eventId);
+        continue;
       }
-      latestEventByFlavor.set(event.flavorId, event.eventId);
+      latestEventByOrder.set(event.orderId, event.eventId);
       continue;
     }
 
     const order = orders.get(event.orderId);
     if (!order || order.paymentIntentId !== event.paymentIntentId) continue;
 
+    const wasEligible = order.qualifiesForRewards && effectiveNet(order) > 0;
     if (event.type === "refund_updated") {
       if (!isFils(event.cumulativeEligibleRefundFils)
         || event.cumulativeEligibleRefundFils > order.eligibleNetSalesFils) {
         throw new Error("A verified refund exceeds the eligible flavor net sales.");
       }
       order.refundedFils = Math.max(order.refundedFils, event.cumulativeEligibleRefundFils);
-      latestEventByFlavor.set(order.flavorId, event.eventId);
+      latestEventByOrder.set(order.orderId, event.eventId);
     } else if (event.type === "chargeback_updated") {
       if (!event.disputeId.trim() || !isFils(event.eligibleDisputedFils)
         || event.eligibleDisputedFils > order.eligibleNetSalesFils) {
@@ -180,12 +215,18 @@ function collectOrders(events: readonly FlavorPaymentEvent[]): {
         status: event.status,
         amountFils: event.eligibleDisputedFils,
       });
-      latestEventByFlavor.set(order.flavorId, event.eventId);
     }
+    const isEligible = order.qualifiesForRewards && effectiveNet(order) > 0;
+    if (wasEligible !== isEligible) {
+      const currentCount = eligibleOrderCountByFlavor.get(order.flavorId) ?? 0;
+      eligibleOrderCountByFlavor.set(order.flavorId, currentCount + (isEligible ? 1 : -1));
+    }
+    latestEventByOrder.set(order.orderId, event.eventId);
+    recordMilestoneIfReached(order.flavorId, event.eventId);
     // Failed/cancelled events intentionally never create or remove a paid order.
   }
 
-  return { orders: [...orders.values()], latestEventByFlavor };
+  return { orders: [...orders.values()], milestoneEventByFlavor, latestEventByOrder };
 }
 
 function effectiveNet(order: PaymentOrder): number {
@@ -215,7 +256,8 @@ export function assertFlavorOrderAllowed(
 
 /**
  * Recalculates target earnings from verified Test Mode event history and
- * returns append-only signed corrections; it never deletes financial history.
+ * returns append-only signed commission corrections. A granted milestone is
+ * immutable; inconsistent legacy milestone adjustments fail closed for review.
  */
 export function reconcileFlavorRewards(
   events: readonly FlavorPaymentEvent[],
@@ -226,23 +268,13 @@ export function reconcileFlavorRewards(
       throw new Error("Existing reward ledger entries must have stable keys and integer fils.");
     }
   }
-  const { orders, latestEventByFlavor } = collectOrders(events);
-
-  const firstOrderByCustomer = new Map<string, PaymentOrder>();
-  for (const order of orders.sort((left, right) =>
-    Date.parse(left.paidAt) - Date.parse(right.paidAt)
-      || left.orderId.localeCompare(right.orderId))) {
-    const key = `${order.flavorId}:${order.customerUserId}`;
-    if (!firstOrderByCustomer.has(key)) firstOrderByCustomer.set(key, order);
-  }
-  const eligibleFirstOrders = [...firstOrderByCustomer.values()];
-  const eligibleByFlavor = new Map<string, PaymentOrder[]>();
-  for (const order of eligibleFirstOrders) {
-    const net = effectiveNet(order);
-    if (net < 1) continue;
-    const list = eligibleByFlavor.get(order.flavorId) ?? [];
+  const { orders, milestoneEventByFlavor, latestEventByOrder } = collectOrders(events);
+  const ordersByFlavor = new Map<string, PaymentOrder[]>();
+  for (const order of orders) {
+    if (!order.qualifiesForRewards) continue;
+    const list = ordersByFlavor.get(order.flavorId) ?? [];
     list.push(order);
-    eligibleByFlavor.set(order.flavorId, list);
+    ordersByFlavor.set(order.flavorId, list);
   }
 
   const desired = new Map<string, {
@@ -252,45 +284,66 @@ export function reconcileFlavorRewards(
     type: "milestone_bonus" | "commission";
     amountFils: number;
     reason: "paid_order_milestone" | "eligible_order_101_plus";
+    sourceEventId: string;
   }>();
   const summaries: FlavorRewardSummary[] = [];
 
-  for (const [flavorId, flavorOrders] of eligibleByFlavor) {
-    flavorOrders.sort((left, right) =>
-      Date.parse(left.paidAt) - Date.parse(right.paidAt)
+  const flavorIds = new Set([
+    ...ordersByFlavor.keys(),
+    ...milestoneEventByFlavor.keys(),
+    ...existingLedger.map(entry => entry.flavorId),
+  ]);
+
+  for (const flavorId of flavorIds) {
+    const flavorOrders = (ordersByFlavor.get(flavorId) ?? []).sort((left, right) =>
+      (left.eligibleOrderNumber ?? Number.MAX_SAFE_INTEGER)
+        - (right.eligibleOrderNumber ?? Number.MAX_SAFE_INTEGER)
+        || Date.parse(left.paidAt) - Date.parse(right.paidAt)
         || left.orderId.localeCompare(right.orderId));
-    const effectiveNetSales = flavorOrders.reduce((sum, order) => sum + BigInt(effectiveNet(order)), 0n);
+    const activeOrders = flavorOrders.filter(order => effectiveNet(order) > 0);
+    const effectiveNetSales = activeOrders.reduce((sum, order) => sum + BigInt(effectiveNet(order)), 0n);
     if (effectiveNetSales > BigInt(Number.MAX_SAFE_INTEGER)) {
       throw new Error("Flavor reward sales exceed safe integer precision.");
     }
     const effectiveNetSalesFils = Number(effectiveNetSales);
     summaries.push({
       flavorId,
-      verifiedEligibleOrderCount: flavorOrders.length,
+      verifiedEligibleOrderCount: activeOrders.length,
       effectiveNetSalesFils,
+      milestoneEarned: false,
     });
 
     const milestoneKey = `milestone:${flavorId}`;
     const existingMilestone = existingLedger.filter(entry => entry.targetKey === milestoneKey);
-    const milestoneWasEverGranted = existingMilestone.some(entry =>
+    const positiveMilestoneAwards = existingMilestone.filter(entry =>
       entry.type === "milestone_bonus" && entry.amountFils > 0);
-    const milestoneBalance = existingMilestone.reduce((sum, entry) => sum + entry.amountFils, 0);
-    const milestoneTarget = flavorOrders.length >= 100
-      ? (milestoneWasEverGranted ? milestoneBalance : 200_000)
-      : (milestoneWasEverGranted ? 0 : milestoneBalance);
-    if (milestoneTarget !== 0) {
+    if (positiveMilestoneAwards.length > 1
+      || positiveMilestoneAwards.some(entry => entry.amountFils !== 200_000)
+      || existingMilestone.some(entry => entry.type !== "milestone_bonus" || entry.amountFils !== 200_000)) {
+      throw new Error("Existing milestone history is inconsistent and requires review.");
+    }
+    const milestoneWasEverGranted = positiveMilestoneAwards.length === 1;
+    const milestoneWasReached = milestoneEventByFlavor.has(flavorId)
+      || activeOrders.length >= 100
+      || milestoneWasEverGranted;
+    const summary = summaries[summaries.length - 1]!;
+    summary.milestoneEarned = milestoneWasReached;
+    if (milestoneWasReached) {
       desired.set(milestoneKey, {
         targetKey: milestoneKey,
         flavorId,
         orderId: null,
         type: "milestone_bonus",
-        amountFils: milestoneTarget,
+        amountFils: 200_000,
         reason: "paid_order_milestone",
+        sourceEventId: milestoneEventByFlavor.get(flavorId)
+          ?? positiveMilestoneAwards[0]?.sourceEventId
+          ?? "reconciliation",
       });
     }
 
-    flavorOrders.forEach((order, index) => {
-      if (index < 100) return;
+    for (const order of flavorOrders) {
+      if (order.eligibleOrderNumber === null || order.eligibleOrderNumber <= 100) continue;
       const targetKey = `commission:${order.orderId}`;
       desired.set(targetKey, {
         targetKey,
@@ -299,8 +352,9 @@ export function reconcileFlavorRewards(
         type: "commission",
         amountFils: commissionFils(effectiveNet(order)),
         reason: "eligible_order_101_plus",
+        sourceEventId: latestEventByOrder.get(order.orderId) ?? order.paymentEventId,
       });
-    });
+    }
   }
 
   const ledgerByTarget = new Map<string, FlavorRewardLedgerEntry[]>();
@@ -330,10 +384,19 @@ export function reconcileFlavorRewards(
 
     const flavorId = target?.flavorId ?? oldEntries[0]?.flavorId;
     if (!flavorId) continue;
-    const sourceEventId = latestEventByFlavor.get(flavorId)
+    if (targetKey === `milestone:${flavorId}` && (delta < 0 || oldEntries.length > 0)) {
+      throw new Error("A milestone bonus cannot be reversed, deducted, or awarded twice.");
+    }
+    const sourceEventId = target?.sourceEventId
       ?? newestEventById.find(event => event.type === "payment_succeeded" && event.flavorId === flavorId)?.eventId
       ?? "reconciliation";
-    const reason = target?.reason ?? "refund_or_dispute_adjustment";
+    const reason = target
+      ? (delta > 0 && oldEntries.length === 0
+        ? target.reason
+        : targetKey === `milestone:${flavorId}`
+        ? "paid_order_milestone"
+        : "refund_or_dispute_adjustment")
+      : "refund_or_dispute_adjustment";
     entries.push({
       idempotencyKey: `flavor-reward:${sourceEventId}:${targetKey}`,
       targetKey,

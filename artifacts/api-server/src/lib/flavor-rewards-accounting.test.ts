@@ -152,7 +152,7 @@ test("one customer cannot use a second flavor order; regular store orders remain
   assert.doesNotThrow(() => assertFlavorOrderAllowed([first], "same-customer", null));
 });
 
-test("a full refund removes the order from the milestone count and appends a reversal", () => {
+test("the milestone remains earned after refunds reduce the eligible count below 100", () => {
   const payments = Array.from({ length: 100 }, (_, index) => paidOrder(index + 1));
   const earned = reconcileFlavorRewards(payments);
   const corrected = reconcileFlavorRewards(
@@ -160,10 +160,72 @@ test("a full refund removes the order from the milestone count and appends a rev
     earned.ledgerEntries,
   );
   assert.equal(corrected.summaries[0]?.verifiedEligibleOrderCount, 99);
-  assert.equal(corrected.ledgerEntries.length, 1);
-  assert.equal(corrected.ledgerEntries[0]?.type, "correction");
-  assert.equal(corrected.ledgerEntries[0]?.amountFils, -200_000);
-  assert.equal(corrected.ledgerEntries[0]?.reason, "refund_or_dispute_adjustment");
+  assert.equal(corrected.summaries[0]?.milestoneEarned, true);
+  assert.deepEqual(corrected.ledgerEntries, []);
+  assert.equal(sumForTarget(earned.ledgerEntries, `milestone:${flavorId}`), 200_000);
+});
+
+test("full event replay preserves a milestone earned before a later full refund", () => {
+  const payments = Array.from({ length: 100 }, (_, index) => paidOrder(index + 1));
+  const replay = reconcileFlavorRewards([...payments, refundOrder(100, 10_000)]);
+  assert.equal(replay.summaries[0]?.verifiedEligibleOrderCount, 99);
+  assert.equal(replay.summaries[0]?.milestoneEarned, true);
+  assert.equal(sumForTarget(replay.ledgerEntries, `milestone:${flavorId}`), 200_000);
+  assert.ok(replay.ledgerEntries.every(entry =>
+    entry.targetKey !== `milestone:${flavorId}` || entry.amountFils > 0));
+});
+
+test("inconsistent historical milestone deductions fail closed for review", () => {
+  const payments = Array.from({ length: 100 }, (_, index) => paidOrder(index + 1));
+  const earned = reconcileFlavorRewards(payments);
+  const invalidAdjustment: FlavorRewardLedgerEntry = {
+    idempotencyKey: "legacy-milestone-deduction",
+    targetKey: `milestone:${flavorId}`,
+    flavorId,
+    orderId: null,
+    type: "correction",
+    amountFils: -200_000,
+    sourceEventId: "evt-legacy-refund",
+    reason: "refund_or_dispute_adjustment",
+  };
+  assert.throws(
+    () => reconcileFlavorRewards(
+      [...payments, refundOrder(100, 10_000)],
+      [...earned.ledgerEntries, invalidAdjustment],
+    ),
+    /inconsistent.*review/i,
+  );
+});
+
+test("reaching 100 eligible orders again never awards the milestone twice", () => {
+  const payments = Array.from({ length: 100 }, (_, index) => paidOrder(index + 1));
+  const earned = reconcileFlavorRewards(payments);
+  const afterRefund = [...payments, refundOrder(100, 10_000)];
+  const nextPayment = paidOrder(101, {
+    occurredAt: "2026-01-03T00:00:00.000Z",
+  });
+  const afterReturningTo100 = reconcileFlavorRewards(
+    [...afterRefund, nextPayment],
+    earned.ledgerEntries,
+  );
+  assert.equal(afterReturningTo100.summaries[0]?.verifiedEligibleOrderCount, 100);
+  assert.equal(afterReturningTo100.summaries[0]?.milestoneEarned, true);
+  assert.equal(sumForTarget(earned.ledgerEntries, `milestone:${flavorId}`), 200_000);
+  assert.ok(afterReturningTo100.ledgerEntries.every(entry =>
+    entry.targetKey !== `milestone:${flavorId}`));
+  assert.equal(sumForTarget(afterReturningTo100.ledgerEntries, "commission:order-101"), 1_500);
+});
+
+test("a refund on an earlier order does not renumber later commissions", () => {
+  const payments = Array.from({ length: 101 }, (_, index) => paidOrder(index + 1));
+  const earned = reconcileFlavorRewards(payments);
+  const corrected = reconcileFlavorRewards(
+    [...payments, refundOrder(100, 10_000)],
+    earned.ledgerEntries,
+  );
+  assert.equal(corrected.summaries[0]?.verifiedEligibleOrderCount, 100);
+  assert.deepEqual(corrected.ledgerEntries, []);
+  assert.equal(sumForTarget(earned.ledgerEntries, "commission:order-101"), 1_500);
 });
 
 test("a partial refund appends only the commission reduction", () => {
@@ -174,6 +236,9 @@ test("a partial refund appends only the commission reduction", () => {
     earned.ledgerEntries,
   );
   assert.equal(sumForTarget(corrected.ledgerEntries, "commission:order-101"), -600);
+  assert.equal(sumForTarget(earned.ledgerEntries, `milestone:${flavorId}`), 200_000);
+  assert.ok(corrected.ledgerEntries.every(entry =>
+    entry.targetKey !== `milestone:${flavorId}`));
   assert.ok(corrected.ledgerEntries.every(entry => entry.type === "correction"));
 });
 
@@ -199,6 +264,9 @@ test("open chargebacks reverse the commission and a won dispute restores it as a
   );
   assert.equal(opened.ledgerEntries.length, 1);
   assert.equal(opened.ledgerEntries[0]?.amountFils, -1_500);
+  assert.equal(sumForTarget(earned.ledgerEntries, `milestone:${flavorId}`), 200_000);
+  assert.ok(opened.ledgerEntries.every(entry =>
+    entry.targetKey !== `milestone:${flavorId}`));
   const won = reconcileFlavorRewards(
     [...payments, chargebackOrder(101, "open", "evt-dispute-open"), chargebackOrder(101, "won", "evt-dispute-won")],
     [...earned.ledgerEntries, ...opened.ledgerEntries],
