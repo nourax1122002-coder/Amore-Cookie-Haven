@@ -76,8 +76,16 @@ echo "PASS: duplicate-creator preflight preserved both historical rows and rolle
 "
 
 "${PSQL[@]}" --single-transaction -f "$ROOT_DIR/supabase/migrations/20261117090000_flavor_rewards_paid_order_schema.sql"
+echo "Checking security boundary immediately after migration 900..."
+"${PSQL[@]}" -f "$ROOT_DIR/supabase/tests/local/flavor_rewards_migration_security.sql"
+
 "${PSQL[@]}" --single-transaction -f "$ROOT_DIR/supabase/migrations/20261117091000_flavor_rewards_interest_guard.sql"
+echo "Checking security boundary immediately after migration 910..."
+"${PSQL[@]}" -f "$ROOT_DIR/supabase/tests/local/flavor_rewards_migration_security.sql"
+
 "${PSQL[@]}" --single-transaction -f "$ROOT_DIR/supabase/migrations/20261117092000_flavor_rewards_paid_order_security.sql"
+echo "Checking security boundary immediately after migration 920..."
+"${PSQL[@]}" -f "$ROOT_DIR/supabase/tests/local/flavor_rewards_migration_security.sql"
 "${PSQL[@]}" -f "$ROOT_DIR/supabase/tests/flavor_rewards_paid_orders.sql"
 
 echo "Flavor Rewards migration tests passed on a disposable local PostgreSQL instance."

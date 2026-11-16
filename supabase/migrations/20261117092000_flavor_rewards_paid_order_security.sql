@@ -120,6 +120,3 @@ begin
   end if;
 end;
 $verify$;
-
-comment on migration is
-  'Verifies the first migration committed with RLS and least-privilege grants already in place.';

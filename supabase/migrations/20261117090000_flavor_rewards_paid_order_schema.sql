@@ -337,102 +337,6 @@ begin
 end;
 $function$;
 
--- Establish the complete least-privilege boundary in this migration.
--- Supabase grants new public tables and functions to API roles by default;
--- do not leave any commit point between schema creation and this hardening.
-alter table public.flavor_creation_claims enable row level security;
-alter table public.flavor_reward_products enable row level security;
-alter table public.flavor_reward_order_snapshots enable row level security;
-alter table public.flavor_reward_stripe_events enable row level security;
-alter table public.flavor_reward_order_disputes enable row level security;
-alter table public.flavor_reward_event_reviews enable row level security;
-alter table public.flavor_reward_paid_order_ledger enable row level security;
-
-revoke all on table
-  public.flavor_creation_claims,
-  public.flavor_reward_products,
-  public.flavor_reward_order_snapshots,
-  public.flavor_reward_stripe_events,
-  public.flavor_reward_order_disputes,
-  public.flavor_reward_event_reviews,
-  public.flavor_reward_paid_order_ledger
-from public, anon, authenticated, service_role;
-
-grant select on table
-  public.flavor_creation_claims,
-  public.flavor_reward_paid_order_ledger
-to authenticated, service_role;
-grant select on table public.flavor_reward_event_reviews to authenticated, service_role;
-grant select on table
-  public.flavor_reward_products,
-  public.flavor_reward_order_snapshots,
-  public.flavor_reward_stripe_events,
-  public.flavor_reward_order_disputes
-to service_role;
-
-create policy "Creators and administrators read lifetime creation claims"
-  on public.flavor_creation_claims
-  for select to authenticated
-  using (
-    creator_user_id = (select auth.uid())
-    or private.flavor_rewards_is_admin()
-  );
-
-create policy "Creators and administrators read paid-order reward ledger"
-  on public.flavor_reward_paid_order_ledger
-  for select to authenticated
-  using (
-    creator_user_id = (select auth.uid())
-    or private.flavor_rewards_is_admin()
-  );
-
-create policy "Administrators read pending payment review events"
-  on public.flavor_reward_event_reviews
-  for select to authenticated
-  using (private.flavor_rewards_is_admin());
-
--- Trigger functions are invoked by PostgreSQL triggers, never by API clients.
-revoke all on function private.claim_flavor_creation_once()
-  from public, anon, authenticated, service_role;
-revoke all on function private.reject_flavor_reward_ledger_mutation()
-  from public, anon, authenticated, service_role;
-
-revoke all on function public.link_flavor_reward_product(uuid, uuid, uuid)
-  from public, anon, authenticated, service_role;
-revoke all on function public.claim_flavor_reward_order(text, uuid)
-  from public, anon, authenticated, service_role;
-revoke all on function public.record_flavor_reward_review_event(
-  text, text, text, text, text, text, bigint, text, text, jsonb, timestamptz
-) from public, anon, authenticated, service_role;
-revoke all on function public.resolve_flavor_reward_event_review(uuid, text, text, text)
-  from public, anon, authenticated, service_role;
-revoke all on function public.process_flavor_reward_stripe_event(
-  text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text,
-  timestamptz, bigint, bigint
-) from public, anon, authenticated, service_role;
-
-grant execute on function public.link_flavor_reward_product(uuid, uuid, uuid)
-  to service_role;
-grant execute on function public.claim_flavor_reward_order(text, uuid)
-  to service_role;
-grant execute on function public.record_flavor_reward_review_event(
-  text, text, text, text, text, text, bigint, text, text, jsonb, timestamptz
-) to service_role;
-grant execute on function public.resolve_flavor_reward_event_review(uuid, text, text, text)
-  to service_role;
-grant execute on function public.process_flavor_reward_stripe_event(
-  text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text,
-  timestamptz, bigint, bigint
-) to service_role;
-
--- Payouts and manual sales remain disabled from the first migration commit.
-revoke all on function public.record_flavor_net_sale(uuid, uuid, text, bigint, text)
-  from public, anon, authenticated, service_role;
-revoke all on function public.request_flavor_payout(uuid, bigint, uuid)
-  from public, anon, authenticated, service_role;
-revoke all on function public.review_flavor_payout_request(uuid, uuid, text, text, text)
-  from public, anon, authenticated, service_role;
-
 create or replace function public.claim_flavor_reward_order(
   p_customer_order_id text,
   p_flavor_id uuid
@@ -1057,3 +961,99 @@ begin
   );
 end;
 $function$;
+
+-- Establish the complete least-privilege boundary in this migration.
+-- Supabase grants new public tables and functions to API roles by default;
+-- do not leave any commit point between schema creation and this hardening.
+alter table public.flavor_creation_claims enable row level security;
+alter table public.flavor_reward_products enable row level security;
+alter table public.flavor_reward_order_snapshots enable row level security;
+alter table public.flavor_reward_stripe_events enable row level security;
+alter table public.flavor_reward_order_disputes enable row level security;
+alter table public.flavor_reward_event_reviews enable row level security;
+alter table public.flavor_reward_paid_order_ledger enable row level security;
+
+revoke all on table
+  public.flavor_creation_claims,
+  public.flavor_reward_products,
+  public.flavor_reward_order_snapshots,
+  public.flavor_reward_stripe_events,
+  public.flavor_reward_order_disputes,
+  public.flavor_reward_event_reviews,
+  public.flavor_reward_paid_order_ledger
+from public, anon, authenticated, service_role;
+
+grant select on table
+  public.flavor_creation_claims,
+  public.flavor_reward_paid_order_ledger
+to authenticated, service_role;
+grant select on table public.flavor_reward_event_reviews to authenticated, service_role;
+grant select on table
+  public.flavor_reward_products,
+  public.flavor_reward_order_snapshots,
+  public.flavor_reward_stripe_events,
+  public.flavor_reward_order_disputes
+to service_role;
+
+create policy "Creators and administrators read lifetime creation claims"
+  on public.flavor_creation_claims
+  for select to authenticated
+  using (
+    creator_user_id = (select auth.uid())
+    or private.flavor_rewards_is_admin()
+  );
+
+create policy "Creators and administrators read paid-order reward ledger"
+  on public.flavor_reward_paid_order_ledger
+  for select to authenticated
+  using (
+    creator_user_id = (select auth.uid())
+    or private.flavor_rewards_is_admin()
+  );
+
+create policy "Administrators read pending payment review events"
+  on public.flavor_reward_event_reviews
+  for select to authenticated
+  using (private.flavor_rewards_is_admin());
+
+-- Trigger functions are invoked by PostgreSQL triggers, never by API clients.
+revoke all on function private.claim_flavor_creation_once()
+  from public, anon, authenticated, service_role;
+revoke all on function private.reject_flavor_reward_ledger_mutation()
+  from public, anon, authenticated, service_role;
+
+revoke all on function public.link_flavor_reward_product(uuid, uuid, uuid)
+  from public, anon, authenticated, service_role;
+revoke all on function public.claim_flavor_reward_order(text, uuid)
+  from public, anon, authenticated, service_role;
+revoke all on function public.record_flavor_reward_review_event(
+  text, text, text, text, text, text, bigint, text, text, jsonb, timestamptz
+) from public, anon, authenticated, service_role;
+revoke all on function public.resolve_flavor_reward_event_review(uuid, text, text, text)
+  from public, anon, authenticated, service_role;
+revoke all on function public.process_flavor_reward_stripe_event(
+  text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text,
+  timestamptz, bigint, bigint
+) from public, anon, authenticated, service_role;
+
+grant execute on function public.link_flavor_reward_product(uuid, uuid, uuid)
+  to service_role;
+grant execute on function public.claim_flavor_reward_order(text, uuid)
+  to service_role;
+grant execute on function public.record_flavor_reward_review_event(
+  text, text, text, text, text, text, bigint, text, text, jsonb, timestamptz
+) to service_role;
+grant execute on function public.resolve_flavor_reward_event_review(uuid, text, text, text)
+  to service_role;
+grant execute on function public.process_flavor_reward_stripe_event(
+  text, text, text, text, text, boolean, text, bigint, bigint, text, bigint, text,
+  timestamptz, bigint, bigint
+) to service_role;
+
+-- Payouts and manual sales remain disabled from the first migration commit.
+revoke all on function public.record_flavor_net_sale(uuid, uuid, text, bigint, text)
+  from public, anon, authenticated, service_role;
+revoke all on function public.request_flavor_payout(uuid, bigint, uuid)
+  from public, anon, authenticated, service_role;
+revoke all on function public.review_flavor_payout_request(uuid, uuid, text, text, text)
+  from public, anon, authenticated, service_role;
