@@ -132,8 +132,9 @@ export function safeStripeTestCheckoutUrl(value: string): string {
   } catch {
     throw new HttpError(502, "Invalid Stripe Test Mode redirect.");
   }
-  if (url.protocol !== "https:" || url.username || url.password
-    || url.hostname !== "checkout.stripe.com" || !url.pathname.startsWith("/c/pay/cs_test_")) {
+  const isStripeTestCheckoutPath = /^\/(?:c|g)\/pay\/cs_test_[A-Za-z0-9_]+$/.test(url.pathname);
+  if (url.protocol !== "https:" || url.username || url.password || url.port
+    || url.hostname !== "checkout.stripe.com" || !isStripeTestCheckoutPath) {
     throw new HttpError(502, "Invalid Stripe Test Mode redirect.");
   }
   return url.toString();
